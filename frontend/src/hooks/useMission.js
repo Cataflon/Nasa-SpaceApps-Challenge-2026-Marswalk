@@ -38,7 +38,8 @@ export function useLive(route) {
     if (!routeId || busy) return;
     setBusy(true); setError('');
     try {
-      const r = await controlLive({ action, speed: nextSpeed, route_id: routeId }, mock);
+      // Backendul reia misiunea cand route_id lipseste; retrimiterea lui o reseteaza.
+      const r = await controlLive({ action, speed: nextSpeed, ...(action === 'start' && state === 'idle' ? { route_id: routeId } : {}) }, mock);
       if (!r.data?.ok) throw new Error('Comanda nu a fost confirmată.');
       if (action === 'reset') dispatch({ type: 'reset' });
       setState(r.data.state); setSpeed(nextSpeed);

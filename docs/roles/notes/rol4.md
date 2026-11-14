@@ -2,6 +2,8 @@
 
 ## Gata
 
+- Reparat build-ul CI după ce un merge a fost comis cu marcaje de conflict în App.jsx, client.js, BudgetPanel.jsx și DecisionPanel.jsx. Păstrată arhitectura desktop/3D; adăugată compatibilitatea API liveControl, injectEvent cu params și subscribeLive fără callback de status. Reluarea backendului nu mai retrimite route_id (care ar reseta misiunea). `npm run build` trece local; nu s-au rulat comenzi Git care modifică repository-ul.
+
 - Eliminată complet harta 2D din componentă. Vizualizare 3D unică pe desktop și mod compact, cu 250000 de vârfuri CTX native și triangulație comună cu traseele.
 - Habitat modelat și etichetat distinct, puncte de interes etichetate/selectabile, raycast pentru selecție liberă, animație top → perspectivă traseu, revenire top și urmărire astronaut.
 - Arhiva utilizatorului inspectată fără executare: adaptată logica A* și comparația variantelor la grila reală într-un Web Worker. Referință/documentare în `frontend/design/archive-integration.md`. Clasele sintetice și bugetele presupuse din arhivă nu se folosesc pentru validarea sitului.
