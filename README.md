@@ -28,6 +28,8 @@ Teste: `cd backend && ../.venv/Scripts/python -m pytest`.
 
 ---
 
+> **Limba:** toată aplicația e în engleză (interfața, mesajele din API, explicațiile LLM-ului, slide-urile), pentru că juriul e internațional. Documentația internă a echipei (acest README, fișierele de rol) rămâne în română.
+
 ## 1. Ideea
 
 ### Problema
@@ -172,7 +174,7 @@ Un **tick = 1 minut simulat**. La fiecare tick:
 - **Alternativele:** ocolire nord (+25 min, O₂ final 31%), ocolire sud (+40 min, O₂ final 22%), WAIT, RETURN.
 - **Validatorul:** elimină ocolirea sud, pentru că 22% e sub rezerva de 30%.
 - **Regula:** alege ocolirea nord, care are cel mai mic risc. Pe hartă, traseul se redesenează instant.
-- **LLM-ul**, 2 secunde mai târziu: *„Furtuna ajunge pe traseu în 16 min. Ocolirea nord adaugă 25 min și lasă 31% O₂, peste rezerva de 30%."*
+- **LLM-ul**, 2 secunde mai târziu: *„Storm reaches your route in 16 min. The north detour adds 25 min and leaves 31% O₂, above the 30% reserve."*
 
 Dacă furtuna e regională, nicio ocolire nu trece validatorul și regula alege RETURN pe ruta din Dijkstra invers.
 
@@ -256,15 +258,15 @@ cost = distanță × f(pantă) × f(teren) + w_pericol × pericol(x, y, t) + w_r
 - **Ieșire** (schemă JSON, ~60 de tokeni):
 
 ```json
-{"decizie": "REROUTE",
- "alternativa_id": "ocolire_nord",
- "motiv": "Furtuna ajunge pe traseu în 16 min. Ocolirea nord adaugă 25 min și lasă 31% O₂, peste rezerva de 30%."}
+{"decision": "REROUTE",
+ "alternative_id": "detour_north",
+ "reason": "Storm reaches your route in 16 min. The north detour adds 25 min and leaves 31% O₂, above the 30% reserve."}
 ```
 
-  `decizie` și `alternativa_id` sunt copiate din decizia regulii (servesc ca verificare de consistență), iar `motiv` are maxim 25 de cuvinte.
+  `decision` și `alternative_id` sunt copiate din decizia regulii (servesc ca verificare de consistență), iar `reason` are maxim 25 de cuvinte, în engleză.
 - **Viteză:** `keep_alive: -1` și un request de încălzire la pornirea backendului, ca prima explicație să nu plătească încărcarea modelului.
 - **Chat cu unelte** pentru planificare: `plan_route`, `oxygen_budget`, `layer_value`, `science_stops`, `daylight`. Puține unelte, cu parametri simpli, pentru că un 7B le apelează nesigur.
-- **Fallback:** dacă nu răspunde în ~3 s, JSON-ul e invalid sau `alternativa_id` nu se potrivește cu decizia, se afișează un text din șablon (ex. „Furtună pe traseu în {t} min. Ocolire {nume}: O₂ final {o2}%.").
+- **Fallback:** dacă nu răspunde în ~3 s, JSON-ul e invalid sau `alternative_id` nu se potrivește cu decizia, se afișează un text din șablon (ex. „Hazard on route in {t} min. Detour {name}: +{extra} min, O₂ on arrival {o2}%.").
 - **Reproductibilitate:** `temperature: 0` și `seed` reduc variația, dar nu o garantează la bit. De aceea explicațiile se pun în cache după hash-ul stării, iar demo-ul și benchmark-ul se repetă identic.
 
 ### 5.8 Backendul (FastAPI, Python 3.11)
@@ -288,7 +290,7 @@ cost = distanță × f(pantă) × f(teren) + w_pericol × pericol(x, y, t) + w_r
 - **Controale de simulare:** start/pauză, viteza ceasului, butoane de evenimente.
 - **Imagini Perseverance** la opriri.
 - **Bonus:** vedere HUD (ce vede astronautul în cască) și Survival Guide printabil.
-- **Ecranul „Cum calculăm":** formulele, pragurile și sursele.
+- **Ecranul „How we calculate":** formulele, pragurile și sursele.
 
 ---
 

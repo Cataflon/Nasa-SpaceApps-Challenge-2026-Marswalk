@@ -30,6 +30,14 @@ export const injectEvent = (event, params = {}) =>
     body: JSON.stringify({ event, params }),
   }).catch(() => null);
 
+// Start / pauză / reset / viteză pentru motorul live (vezi shared/contracts/live_control.json).
+export const liveControl = (action, extra = {}) =>
+  fetch("/api/live/control", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action, ...extra }),
+  }).catch(() => null);
+
 // Abonare la fluxul live. Întoarce o funcție de dezabonare.
 export function subscribeLive(onMessage) {
   let closed = false;

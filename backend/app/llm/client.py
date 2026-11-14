@@ -51,11 +51,14 @@ async def explain(summary: dict) -> dict:
         return fallback
 
     # Verificare de consistență: LLM-ul nu are voie să schimbe decizia.
-    if out.get("decizie") != summary["decision"] or out.get("alternativa_id") != summary.get("alternative_id"):
+    if out.get("decision") != summary["decision"] or out.get("alternative_id") != summary.get("alternative_id"):
         log.warning("LLM-ul a contrazis decizia, folosesc șablonul: %s", out)
         return fallback
+    if not isinstance(out.get("reason"), str) or not out["reason"].strip():
+        log.warning("LLM-ul nu a dat un motiv, folosesc șablonul: %s", out)
+        return fallback
 
-    result = {"text": out["motiv"], "source": "llm"}
+    result = {"text": out["reason"].strip(), "source": "llm"}
     cache.put(summary, result)
     return result
 

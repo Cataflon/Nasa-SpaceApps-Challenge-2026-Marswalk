@@ -1,16 +1,19 @@
-# Cum calculăm
+# How we calculate
 
-Sursa pentru ecranul „Cum calculăm” din aplicație și pentru slide-uri. Fiecare cifră are o sursă sau e marcată **presupunere**.
+Source for the in-app "How we calculate" screen and for the slides. Every number has a source or is marked **assumption**.
 
-| Mărime | Formulă / valoare | Sursă | Status |
+| Quantity | Formula / value | Source | Status |
 |---|---|---|---|
-| Viteza de mers | Tobler: `6·exp(-3.5·|tan θ + 0.05|)` km/h × factor costum 0,6 | Tobler (1993); factor costum | presupunere |
-| Consum O₂ | TODO | NASA NTRS (Apollo, teste de mers în costum) | de verificat |
-| Rezervă O₂ la sosire | 30% | — | presupunere |
-| Pantă maximă | 25° | studii NASA de ieșiri umane | de verificat |
-| Marjă față de apus | 30 min | — | presupunere |
-| Doza la suprafață | ~10 µSv/h (ordin de mărime) | Curiosity RAD | de verificat |
-| Limita de doză pe ieșire | 1 mSv | — | presupunere |
-| Apusul | Mars24 | NASA GISS | TODO |
-| Apus efectiv cu praf | `apus − max(0, τ − 0,5)·30` min | — | presupunere |
-| Preset-uri de ponderi | vezi `backend/app/core/costmap.py` | — | fix, ales de echipă |
+| Walking speed | Tobler: `6·exp(-3.5·|tan θ + 0.05|)` km/h × suit factor 0.6 | Tobler (1993); suit factor | assumption |
+| O₂ consumption | 0.12 %/min at rest, ~0.25 %/min walking (220 W extra metabolic load) | NASA NTRS (Apollo EVAs, suited walking tests) | to verify |
+| O₂ reserve on arrival | 30% | — | assumption |
+| Maximum slope | 25° | NASA human EVA studies | to verify |
+| Margin before sunset | 30 min | — | assumption |
+| Surface dose rate | ~10 µSv/h (order of magnitude) | Curiosity RAD | to verify |
+| Dose limit per EVA | 1 mSv | — | assumption |
+| Solar particle event | dose rate × 20 for 60 min | — | assumption |
+| Suit leak | +0.15 %/min O₂ | — | assumption |
+| Fatigue | speed × 0.8, O₂ × 1.15 | — | assumption |
+| Sunset | Mars24 | NASA GISS | TODO |
+| Effective sunset with dust | `sunset − max(0, τ − 0.5)·30` min | — | assumption |
+| Weight presets | see `backend/app/core/costmap.py` | — | fixed, chosen by the team |

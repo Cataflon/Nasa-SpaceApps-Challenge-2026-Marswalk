@@ -24,7 +24,7 @@ Citește din `README.md`: secțiunile 2 (zona), 3 (sursele de date), 5.1 (pipeli
 
 Exact același format ca situl sintetic (`pipeline/make_synthetic_site.py` e referința):
 
-- `meta.json`: **toate** cheile din `shared/contracts/meta.json`, cu `site_id: "jezero"` și `source: "nasa"`. Ținte reale (argilă la frontul deltei, carbonați la margine etc.), fiecare cu pantă ≤ 25° în celula ei. Habitatul pe teren plat.
+- `meta.json`: **toate** cheile din `shared/contracts/meta.json`, cu `site_id: "jezero"` și `source: "nasa"`. Ținte reale (argilă la frontul deltei, carbonați la margine etc.), cu `name` în engleză (ex. „Clay, delta front”), fiecare cu pantă ≤ 25° în celula ei. Habitatul pe teren plat.
 - `elevation.npy`, `slope.npy`, `terrain.npy`, `minerals.npy`, `radiation.npy`, `unsafe.npy`: forma `shape`, cu tipurile din `meta.json`. Convenție: `row` crește spre sud, `col` spre est, celula are 20 m.
 - `png/<strat>.png` pentru fiecare strat, 500×500.
 - Imaginile de la opriri: `png/stops/<target_id>.jpg` (≤ 300 KB fiecare). În `meta.json`, `targets[].image = "/static/layers/stops/<target_id>.jpg"`. Backendul servește deja `png/` la `/static/layers`, deci nu e nevoie de nicio schimbare în backend.
@@ -56,8 +56,9 @@ Rolul 3 apelează `generate(seed, duration_min, events) -> Scenario`. Nu schimba
 **P2:**
 6. **`docs/sources.md`:** toate sursele din secțiunea 3 a README-ului, fiecare cu link **verificat** (deschis efectiv), ce date folosim din ea și statusul (verificat / de verificat).
 7. **`docs/how-we-calculate.md`:** completează fiecare rând cu sursa. Constantele din `backend/app/core/budget.py` și `costmap.py` le citești (nu le modifici). Dacă vrei alte valori, scrie-le în notele tale la „Cereri pentru rolul 2”.
-8. **`docs/demo.md`:** scenariul demo-ului de 2 minute, secundă cu secundă: ce se apasă și ce se spune. **`docs/slides.md`:** structura slide-urilor după criteriile juriului.
-9. **Imaginile de la opriri:** imagini raw Perseverance (Mastcam-Z / Navcam) apropiate de fiecare țintă, redimensionate.
+8. **Documentele de prezentare sunt în engleză** (juriul e internațional): `docs/sources.md`, `docs/how-we-calculate.md`, `docs/demo.md`, `docs/slides.md`.
+9. **`docs/demo.md`:** scenariul demo-ului de 2 minute, secundă cu secundă: ce se apasă și ce se spune. **`docs/slides.md`:** structura slide-urilor după criteriile juriului.
+10. **Imaginile de la opriri:** imagini raw Perseverance (Mastcam-Z / Navcam) apropiate de fiecare țintă, redimensionate.
 
 ## Teste: rulează doar ce ai modificat
 
@@ -103,7 +104,8 @@ Din `backend/`:
 - Testele noi stau doar în folderele tale de teste. Un test existent din zona ta poate fi modificat, nu șters.
 
 ### Cod
-- Python compatibil cu 3.11 (CI rulează 3.12, local e 3.14). Comentariile și mesajele sunt în română, ca în restul codului; numele de variabile și funcții sunt în engleză.
+- Python compatibil cu 3.11 (CI rulează 3.12, local e 3.14). Numele de variabile și funcții sunt în engleză; comentariile pot rămâne în română.
+- **Tot ce vede utilizatorul sau juriul e în engleză:** mesajele din API (`detail` la erori), textele generate (șabloane, explicații LLM), numele țintelor și straturilor, documentele de prezentare.
 - Determinism peste tot: seed fix, sortări stabile, fără `time.time()` în logică.
 
 ### Note de predare: `docs/roles/notes/rol1.md`

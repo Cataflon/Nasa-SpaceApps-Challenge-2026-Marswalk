@@ -3,9 +3,9 @@
   "lines": [
     { "type": "tool_call", "name": "science_stops", "args": { "max_duration_min": 300 } },
     { "type": "tool_result", "name": "science_stops", "result": { "order": ["clay_delta"], "science_value": 10, "o2_end_pct": 46 } },
-    { "type": "token", "text": "Recomand " },
-    { "type": "token", "text": "proba de argilă de la frontul deltei: " },
-    { "type": "token", "text": "215 min dus-întors, O₂ final 46%." },
+    { "type": "token", "text": "I recommend " },
+    { "type": "token", "text": "the clay sample at the delta front: " },
+    { "type": "token", "text": "215 min round trip, 46% O₂ on arrival." },
     { "type": "route", "route": { "route_id": "plan_1", "_same_shape_as": "route_response.json" } },
     { "type": "done" }
   ]

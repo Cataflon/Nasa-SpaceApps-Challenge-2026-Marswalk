@@ -44,7 +44,7 @@ Dependențele sunt doar `react` și `vite`. Graficele (profilul de altitudine, b
 
 **P1, ziua 2:**
 7. **Chatul:** citește streamul NDJSON (`chat_stream.json`). Apelurile de unelte apar ca etichete, iar un mesaj `route` desenează traseul pe hartă.
-8. **Ecranul „Cum calculăm”:** importă `docs/how-we-calculate.md?raw` și randează-l cu un mini-renderer propriu de markdown (titluri, tabele, liste), fără dependențe noi.
+8. **Ecranul „How we calculate”:** importă `docs/how-we-calculate.md?raw` și randează-l cu un mini-renderer propriu de markdown (titluri, tabele, liste), fără dependențe noi.
 
 **P2, bonus:**
 9. **Vederea HUD** (ce vede astronautul în cască): O₂, timpul până la apus, săgeata spre următorul punct al traseului, alertele.
@@ -80,7 +80,7 @@ Durează ~1 s și prinde erorile de import și de sintaxă. Nu adăuga framework
 - Rulezi doar `npm run build`, nu altceva, la fiecare schimbare.
 
 ### Cod
-- React 18 cu componente funcționale și hook-uri, JavaScript (JSX), fără TypeScript. Textele din UI sunt în română; numele de variabile în engleză.
+- React 18 cu componente funcționale și hook-uri, JavaScript (JSX), fără TypeScript. **Toate textele din UI sunt în engleză** (juriul e internațional); numele de variabile în engleză, comentariile pot rămâne în română.
 - Coordonatele pe hartă: `x = col`, `y = row`, iar `viewBox` e în celule de grilă. Mărimile în metri se împart la `cell_size_m`.
 
 ### Note de predare: `docs/roles/notes/rol4.md`

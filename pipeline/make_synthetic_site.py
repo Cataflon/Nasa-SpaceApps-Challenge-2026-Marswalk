@@ -22,9 +22,9 @@ MAX_SLOPE_DEG = 25.0
 
 HABITAT = (300, 200)
 TARGETS = [
-    {"id": "clay_delta", "name": "Argilă, frontul deltei", "kind": "clay", "row": 180, "col": 140, "science_value": 10, "dwell_min": 30, "image": None},
-    {"id": "carbonate_rim", "name": "Carbonați, marginea", "kind": "carbonate", "row": 120, "col": 260, "science_value": 7, "dwell_min": 20, "image": None},
-    {"id": "olivine_floor", "name": "Olivină, fundul craterului", "kind": "olivine", "row": 340, "col": 330, "science_value": 4, "dwell_min": 15, "image": None},
+    {"id": "clay_delta", "name": "Clay, delta front", "kind": "clay", "row": 180, "col": 140, "science_value": 10, "dwell_min": 30, "image": None},
+    {"id": "carbonate_rim", "name": "Carbonates, delta margin", "kind": "carbonate", "row": 120, "col": 260, "science_value": 7, "dwell_min": 20, "image": None},
+    {"id": "olivine_floor", "name": "Olivine, crater floor", "kind": "olivine", "row": 340, "col": 330, "science_value": 4, "dwell_min": 15, "image": None},
 ]
 DELTA_APEX_M = (1200.0, 0.0)  # (y, x)
 DELTA_RADIUS_M = 3600.0
