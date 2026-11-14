@@ -2,6 +2,9 @@
 
 ## Gata
 
+Teste: `python -m pytest tests/core` → 72 trecute în 0,8 s
+(`test_decision` 6, `test_grid` 13, `test_costmap` 27, `test_routing` 26).
+
 ### R2-0: pornire, utilitare de grilă și de test
 
 - `backend/app/core/grid.py` (nou): `pad_and_flatten`, `to_flat`, `to_cell`, `NEIGHBORS`, `octile`.
@@ -11,45 +14,60 @@
 - `backend/tests/core/grids.py` (nou, helperi): `make_site`, `wall_with_gap`, `synthetic_site_or_skip`.
   `make_site` citește `shared/contracts/meta.json` și construiește fiecare strat cu `dtype`-ul de acolo.
 - `backend/tests/core/test_grid.py` (nou): 13 teste.
-- Teste: `python -m pytest tests/core` → 19 trecute în 0,2 s (6 în `test_decision.py` + 13 noi).
 
-Timpi măsurați pe situl sintetic 500×500 (Python 3.14.6, numpy 2.5.4, mediana din 15 rulări):
+### R2-1: harta de cost, `costmap.static_cost` (cu corecția de normalizare și `slope_k`)
 
-| Funcție | Măsurat | Țintă |
-|---|---|---|
-| `grid.pad_and_flatten(cost)` | 5,4 ms (max 7,1 ms) | fără țintă proprie; 0,5 % din bugetul de 1 s al lui `routing.astar` |
-| `grid.to_cell` + `grid.octile`, o dată pentru fiecare din cele 250.000 de celule | 70 ms | fără țintă proprie; cazul cel mai rău pentru euristica A*, 7 % din bugetul de 1 s |
-
-### Harta de cost: `costmap.static_cost`
-
-- `backend/app/core/costmap.py`: `static_cost(site, preset)` implementat; semnătura, `PRESETS`,
-  `TERRAIN_FACTOR` și `hazard_cost` sunt neschimbate.
+- `backend/app/core/costmap.py`: `static_cost(site, preset)` implementat; semnătura,
+  `TERRAIN_FACTOR`, `hazard_cost` și cheile existente din `PRESETS` sunt neschimbate.
   `cost = f_slope × TERRAIN_FACTOR[teren] + w_radiation × rad_norm`, cu
-  `f_slope = 1 + SLOPE_K × (pantă / max_slope)²` și `rad_norm = radiație / max(radiație)`.
+  `f_slope = 1 + slope_k × (pantă / max_slope)²` și
+  `rad_norm = (rad − rad.min()) / max(rad.min(), RADIATION_EPS)`.
   `inf` peste `meta.max_slope_deg`, pe masca `unsafe` și pe `NaN`. Vectorizat, float64.
+- `PRESETS` are o cheie nouă, `slope_k` (safe 5,0; science 3,0; fast 1,5). Un preset fără ea
+  folosește `SLOPE_K = 3,0`.
 - `ValueError` dacă habitatul sau o țintă cade pe o celulă interzisă ori în afara grilei
   (greșeală de date, pentru rolul 1), dacă stratul `terrain` are o clasă fără factor, sau dacă
   preset-ul nu există.
 - Cache per `(id(site), preset)`, cu referință slabă la sit: intrarea dispare când situl e
   eliberat, deci un sit nou care primește același `id` nu ia costul celui vechi (verificat: din
-  7 situri create pe rând, 2 au refolosit un `id`). Nou: `clear_cost_cache()`.
-- `backend/tests/core/test_costmap.py` (nou): 20 de teste.
-- Teste: `python -m pytest tests/core` → 39 trecute în 0,4 s.
+  7 situri create pe rând, 2 au refolosit un `id`). `clear_cost_cache()` îl golește.
+- `backend/tests/core/test_costmap.py`: 27 de teste.
 
-Timpi măsurați pe situl sintetic 500×500 (mediana din 25 de rulări):
+### R2-2: `routing.astar`
+
+- `backend/app/core/routing.py`: `astar(cost, start, goal)` implementat peste `grid.py`.
+  8 vecini, costul unui pas = lungimea pasului × costul celulei în care intri, euristică
+  octilă × costul minim (admisibilă, deci traseul e optim), coadă ordonată `(f, g, row, col)`.
+- `None` dacă ținta e pe o celulă interzisă sau e izolată; `ValueError` dacă start sau goal e în
+  afara grilei ori harta are costuri negative. Celulele din traseu sunt `int` simplu (merg în JSON).
+- Celula de start poate fi interzisă: costul se plătește la intrare, deci astronautul poate
+  pleca dintr-o celulă acoperită între timp de un pericol.
+- `backend/tests/core/test_routing.py` (nou): 26 de teste. Optimalitatea e verificată față de un
+  Dijkstra scris independent în test, pe 8 grile aleatoare cu seed fix.
+- `reverse_dijkstra`, `path_home` și `astar_spacetime` sunt încă neimplementate.
+
+### Timpi măsurați pe situl sintetic 500×500
+
+Python 3.14.6, numpy 2.5.4; mediana din mai multe rulări.
 
 | Funcție | Măsurat | Țintă |
 |---|---|---|
-| `costmap.static_cost(site, "safe")`, fără cache | 7,7 ms (max 13,5 ms) | < 0,2 s |
+| `grid.pad_and_flatten(cost)` | 5,4 ms (max 7,1 ms) | fără țintă proprie; inclus în timpul lui `astar` |
+| `costmap.static_cost(site, "safe")`, fără cache | 7,1 ms (max 10,4 ms) | < 0,2 s |
 | `costmap.static_cost(site, "safe")`, din cache | 0,0003 ms | < 0,2 s |
+| `routing.astar`, habitat → `clay_delta` (121 celule, 2,9 km) | 27–29 ms, după preset | < 1 s |
+| `routing.astar`, habitat → `carbonate_rim` (181 celule, 4,1 km) | 39–43 ms | < 1 s |
+| `routing.astar`, habitat → `olivine_floor` (131 celule, 2,9 km) | 27–30 ms | < 1 s |
+| `routing.astar`, colț la colț, (0,0) → (499,499) | 0,53 s (max 0,90 s) | < 1 s |
+| `routing.astar`, țintă izolată (fără traseu, explorează toată harta) | **1,34 s (max 1,53 s)** | < 1 s, **depășit** |
 
-Pe situl sintetic: 1,34 % din celule sunt interzise; costul finit e între 2,96 și 13,97 la
-`safe`, 1,49 și 12,49 la `fast`, 1,98 și 12,98 la `science`.
+Pe situl sintetic: 1,34 % din celule sunt interzise. Costul finit e între 1,03 și 18,04 la
+`safe`, 1,02 și 12,02 la `science`, 1,01 și 7,51 la `fast`. Termenul de radiație e între 0 și
+0,074 la `safe` (`rad_norm` între 0 și 0,037).
 
 ## În lucru
 
-- Urmează D1: `routing.astar` peste `grid.py` (8 vecini, euristică octilă × cost minim,
-  tie-break `(f, g, row, col)`).
+- Urmează `routing.reverse_dijkstra` + `path_home`.
 
 ## Cereri
 
@@ -57,25 +75,30 @@ Pe situl sintetic: 1,34 % din celule sunt interzise; costul finit e între 2,96 
   ajunge la toți apelanții, din cache). `cost + altceva` merge; o modificare pe loc
   (`cost[mask] = ...`, `cost += ...`) aruncă `ValueError`. Cine are nevoie face `cost.copy()`.
   Dacă straturile unui `Site` se schimbă pe loc, trebuie apelat `costmap.clear_cost_cache()`.
-- **Pentru echipă, de decis (normalizarea radiației):** cu `rad_norm = radiație / max`, termenul
-  de radiație e aproape constant pe situl sintetic. Radiația e între 9,82 și 10,18 µSv/h, deci
-  `rad_norm` e între 0,964 și 1,0, iar la `safe` termenul stă între 1,93 și 2,00 pe toată harta,
-  pe când `pantă × teren` variază între 1,0 și 12,0. Două urmări:
-  radiația nu ghidează traseul, iar preset-ul `safe` ajunge să penalizeze panta relativ mai
-  puțin decât `fast` (la limita de pantă, pe rocă: 6,0 față de 3,0 pe plat la `safe`, adică 2×;
-  4,5 față de 1,5 la `fast`, adică 3×). Am implementat exact formula cerută. Varianta min–max,
-  `(rad − min) / (max − min)`, ar face termenul să varieze între 0 și `w_radiation`; e o
-  schimbare de o linie și nu strică testul „plat, rocă, radiație 0 → exact 1,0”.
-- Nimic blocant.
-- Pentru oameni, de știut: `.venv` nu exista local. L-am creat cu `python -m venv .venv` și
+- **Pentru rolul 3:** `astar` întoarce `None` când nu există traseu și aruncă `ValueError`
+  pentru celule în afara grilei. Când ținta e izolată, răspunsul vine abia după ~1,3 s, pentru
+  că A* trebuie să epuizeze harta. După ce există `reverse_dijkstra`, verificarea ieftină va fi
+  `cost_to_home[celulă] == inf`, înainte de a chema `astar`.
+- **Pentru oameni, de decis (preset-urile dau aproape același traseu pe situl sintetic):**
+  cu `slope_k` pe preset, traseele habitat → `clay_delta` diferă între `safe` și `fast`, dar
+  numai prin 3 celule din 121; au aceeași lungime (2897 m) și aceeași pantă maximă (7,3°).
+  `science` și `fast` dau trasee identice la toate cele 3 ținte, iar spre `olivine_floor` toate
+  preset-urile dau același traseu. Cauza: situl sintetic e aproape plat (pantă mediană 0,43°,
+  percentila 90 la 1,5°), deci `f_slope` e ≈ 1 aproape peste tot, la orice `slope_k`.
+  Urmare pentru `alternatives.generate`: preset-urile singure nu vor produce ocoliri distincte
+  pe acest sit. Ocolirile vor trebui să vină din termenul de pericol (`w_hazard × câmp`) sau din
+  blocarea pe rând a unei părți a pericolului (nord / sud).
+- **Pentru oameni:** documentul de pași (R2-0, R2-1, R2-2, …) nu e în repo. R2-2 l-am
+  implementat după `ROL2_algoritmi.md` (sarcina 2) și după docstring-ul din `routing.py`. Dacă
+  pasul are cerințe în plus, trebuie să le primesc.
+- **Pentru oameni, de știut:** `.venv` nu exista local. L-am creat cu `python -m venv .venv` și
   `pip install -r backend/requirements.txt` (exact lista înghețată, fără pachete în plus, fără
   `npm install`). Situl sintetic l-am generat cu `pipeline/make_synthetic_site.py`, nemodificat.
   Ambele sunt în `.gitignore`.
 
 ## Presupuneri
 
-Constante fără sursă, pentru rolul 1 (de documentat sau de înlocuit cu valori cu sursă).
-Deocamdată sunt cele găsite în schelet; nu am schimbat niciuna.
+Constante și alegeri fără sursă, pentru rolul 1 (de documentat sau de înlocuit cu valori cu sursă).
 
 | Unde | Constantă | Valoare | Ce înseamnă |
 |---|---|---|---|
@@ -84,10 +107,13 @@ Deocamdată sunt cele găsite în schelet; nu am schimbat niciuna.
 | `types.Limits` | `max_slope_deg` | 25° | panta maximă pe jos, în costum |
 | `types.Limits` | `max_dose_msv` | 1,0 mSv | doza maximă pe ieșire |
 | `costmap.PRESETS` | `w_hazard` / `w_radiation` / `w_science` | safe 10 / 2 / 0,15; fast 4 / 0,5 / 0,2; science 6 / 1 / 0,4 | ponderile celor 3 preset-uri |
+| `costmap.PRESETS` | `slope_k` | safe 5,0; science 3,0; fast 1,5 | cât penalizează preset-ul panta: la limita de pantă, mersul costă de 1 + `slope_k` ori mai mult decât pe plat (6× / 4× / 2,5×). Valorile sunt alese ca preset-urile să dea trasee diferite, nu măsurate |
+| `costmap` | `SLOPE_K` | 3,0 | `slope_k` implicit pentru un preset fără cheie; forma pătratică `1 + k·(s/max)²` e tot o alegere |
 | `costmap.TERRAIN_FACTOR` | rocă / regolit / nisip / bolovani | 1,0 / 1,2 / 1,8 / 3,0 | multiplicator de cost pe teren |
-| `costmap` | `SLOPE_K` | 3,0 | la limita de pantă, mersul costă de 1 + 3 = 4 ori mai mult decât pe plat; forma pătratică `1 + K·(s/max)²` e tot o alegere |
-| `costmap` | normalizarea radiației | `radiație / max(radiație pe sit)` | radiația intră în cost ca fracție din maximul sitului, nu în µSv/h; costul nu e comparabil între situri |
-| `costmap` | `RADIATION_EPS` | 1e-9 | protecție tehnică la împărțire când radiația e zero peste tot, nu fizică |
+| `costmap` | normalizarea radiației | `(rad − rad.min()) / rad.min()` | excesul relativ față de minimul sitului; vezi mai jos |
+| `costmap` | `RADIATION_EPS` | 1e-9 | protecție tehnică la împărțire când minimul radiației e zero, nu fizică |
+| `routing.astar` | costul unui pas | lungimea pasului × costul celulei în care intri | convenție; alternativa ar fi media celor două celule |
+| `routing.astar` | tăierea colțurilor | permisă | un pas pe diagonală e permis și când una sau ambele celule alăturate pe laturi sunt interzise; vezi mai jos |
 | `budget` | `SUIT_FACTOR` | 0,6 | costumul reduce viteza la 60 % |
 | `budget` | `MARS_G_FACTOR` | 1,0 | ajustarea pentru 0,38 g încă nu e aplicată |
 | `budget` | `O2_PCT_PER_MIN_REST` | 0,12 %/min | consumul de O₂ în repaus |
@@ -99,6 +125,24 @@ Deocamdată sunt cele găsite în schelet; nu am schimbat niciuna.
 | `decision` | `MIN_IMPROVEMENT` | 0,2 | histerezis: alternativa trebuie să fie cu ≥ 20 % mai bună |
 | `daylight.effective_sunset_min` | 30 min per unitate de tau peste 0,5 | liniar | cu cât apune „mai devreme” când e praf |
 | `stops.solver_params` | `random_seed` 42, `max_deterministic_time` 5,0 | CP-SAT | alegeri de determinism, nu fizică |
+
+**Normalizarea radiației (decizia rolului 2).** Radiația intră în cost ca exces relativ față de
+minimul sitului: un strat uniform nu costă nimic, iar o zonă cu 10 % mai multă radiație costă
+`w_radiation × 0,1` în plus. Motivul:
+- împărțirea la maxim lăsa un decalaj aproape constant pe toată harta (1,93–2,00 la `safe`), care
+  făcea ca `safe` să penalizeze panta relativ mai puțin decât `fast`;
+- min–max ar întinde la 0..1 și un strat aproape uniform, adică ar amplifica zgomotul (±1,8 % pe
+  situl sintetic) până la valoarea unei pante.
+
+Limita dură pe doză rămâne în validator. De știut: dacă minimul stratului e 0 (de exemplu nodata
+codat ca 0) și restul e pozitiv, împărțirea se face la `RADIATION_EPS` și costul iese uriaș; un
+astfel de strat trebuie curățat de rolul 1 înainte.
+
+**Tăierea colțurilor în `astar`.** Am păstrat cei 8 vecini simpli din `ROL2_algoritmi.md`. Un
+traseu poate deci trece pe diagonală printre două celule interzise care se ating doar în colț.
+Validatorul nu vede asta, pentru că toate celulele din traseu sunt permise. Dacă echipa vrea
+varianta strictă (diagonala permisă doar când ambele celule alăturate sunt libere), se schimbă
+în `astar` și trebuie păstrată la fel în `reverse_dijkstra` și `astar_spacetime`.
 
 Doar în teste (nu afectează produsul):
 

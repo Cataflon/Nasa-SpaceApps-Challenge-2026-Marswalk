@@ -29,7 +29,7 @@ def test_slope_above_limit_is_forbidden():
     cost = static_cost(make_site(slope))
 
     assert np.isinf(cost[0, 0])
-    assert cost[0, 1] == 1.0 + SLOPE_K
+    assert cost[0, 1] == 1.0 + PRESETS["safe"]["slope_k"]
     assert np.count_nonzero(np.isinf(cost)) == 1
 
 
@@ -66,7 +66,26 @@ def test_cost_grows_strictly_with_slope():
 
     assert np.all(np.isfinite(row))
     assert np.all(np.diff(row) > 0)
-    assert row[0] == 1.0 and row[-1] == 1.0 + SLOPE_K
+    assert row[0] == 1.0 and row[-1] == 1.0 + PRESETS["safe"]["slope_k"]
+
+
+def test_same_slope_costs_more_on_safe_than_science_than_fast():
+    slope = flat_slope()
+    slope[0, 0] = 20.0
+    site = make_site(slope)
+
+    safe, science, fast = (static_cost(site, p)[0, 0] for p in ("safe", "science", "fast"))
+    assert safe > science > fast
+    for preset, value in (("safe", safe), ("science", science), ("fast", fast)):
+        assert value == pytest.approx(1.0 + PRESETS[preset]["slope_k"] * (20.0 / 25.0) ** 2)
+
+
+def test_preset_without_slope_k_falls_back_to_default(monkeypatch):
+    monkeypatch.setitem(PRESETS, "legacy", {"w_hazard": 1.0, "w_radiation": 0.0, "w_science": 0.0})
+    slope = flat_slope()
+    slope[0, 0] = 25.0
+
+    assert static_cost(make_site(slope), "legacy")[0, 0] == 1.0 + SLOPE_K
 
 
 def test_terrain_order_sand_regolith_bedrock():
@@ -86,14 +105,15 @@ def test_unknown_terrain_class_is_reported():
         static_cost(make_site(flat_slope(), terrain=terrain))
 
 
-def test_presets_differ_only_by_radiation_term():
+def test_on_flat_ground_presets_differ_only_by_radiation_term():
+    # Pe plat f_slope = 1 la orice preset, deci rămâne doar diferența de w_radiation.
     rng = np.random.default_rng(42)
-    slope = rng.uniform(0.0, 20.0, (N, N))
     terrain = rng.integers(0, 4, (N, N))
     radiation = rng.uniform(5.0, 10.0, (N, N))
-    site = make_site(slope, terrain=terrain, radiation=radiation)
+    site = make_site(flat_slope(), terrain=terrain, radiation=radiation)
 
-    rad_norm = site.layers["radiation"].astype(np.float64) / float(site.layers["radiation"].max())
+    rad = site.layers["radiation"].astype(np.float64)
+    rad_norm = (rad - rad.min()) / rad.min()
     costs = {preset: static_cost(site, preset) for preset in PRESETS}
 
     for preset in ("fast", "science"):
@@ -101,16 +121,24 @@ def test_presets_differ_only_by_radiation_term():
         np.testing.assert_allclose(costs["safe"] - costs[preset], delta_w * rad_norm, rtol=0, atol=1e-12)
 
 
-def test_radiation_is_normalised_to_site_maximum():
-    radiation = np.zeros((N, N), dtype=np.float32)
-    radiation[0, 0] = 12.0  # maximul sitului -> rad_norm = 1
-    radiation[0, 1] = 6.0  # jumătate
-    cost = static_cost(make_site(flat_slope(), radiation=radiation), "safe")
+@pytest.mark.parametrize("level", [0.0, 0.3, 9.8, 250.0])
+def test_uniform_radiation_adds_nothing(level):
+    radiation = np.full((N, N), level, dtype=np.float32)
+    site = make_site(flat_slope(), radiation=radiation)
 
-    w = PRESETS["safe"]["w_radiation"]
-    assert cost[0, 0] == pytest.approx(1.0 + w)
-    assert cost[0, 1] == pytest.approx(1.0 + 0.5 * w)
-    assert cost[5, 5] == 1.0
+    for preset in PRESETS:
+        assert np.all(static_cost(site, preset) == 1.0), preset
+
+
+def test_radiation_ten_percent_higher_costs_a_tenth_of_the_weight():
+    radiation = np.full((N, N), 10.0, dtype=np.float32)
+    radiation[:3, :3] = 11.0  # zonă cu +10 %
+    site = make_site(flat_slope(), radiation=radiation)
+
+    for preset, weights in PRESETS.items():
+        cost = static_cost(site, preset)
+        assert cost[1, 1] == pytest.approx(1.0 + weights["w_radiation"] * 0.1)
+        assert cost[5, 5] == 1.0
 
 
 def test_target_on_forbidden_cell_raises():
@@ -205,3 +233,15 @@ def test_synthetic_site_is_fast_and_targets_are_reachable():
     forbidden = (slope > site.meta["max_slope_deg"]) | unsafe
     np.testing.assert_array_equal(np.isinf(cost), forbidden)
     assert np.nanmin(cost) >= 1.0
+
+
+def test_synthetic_site_presets_give_different_grids():
+    site = synthetic_site_or_skip()
+    costs = {preset: static_cost(site, preset) for preset in ("safe", "science", "fast")}
+
+    assert not np.array_equal(costs["safe"], costs["science"])
+    assert not np.array_equal(costs["safe"], costs["fast"])
+    assert not np.array_equal(costs["science"], costs["fast"])
+    # Ce e interzis nu depinde de preset.
+    np.testing.assert_array_equal(np.isinf(costs["safe"]), np.isinf(costs["fast"]))
+    np.testing.assert_array_equal(np.isinf(costs["safe"]), np.isinf(costs["science"]))

@@ -8,8 +8,19 @@ Partea statică, calculată aici (costul de a traversa o celulă, pe unitate de 
 
     cost = f_slope(pantă) × TERRAIN_FACTOR[teren] + w_radiation × rad_norm
 
+    f_slope(s) = 1 + slope_k × (s / max_slope)²          (slope_k vine din preset)
+    rad_norm   = (rad − rad.min()) / rad.min()           (excesul relativ față de minimul sitului)
+
 `distanță` (1 sau √2 celule) o înmulțește routing.py la fiecare pas, iar termenul de pericol se
 adaugă separat, la fiecare tick, cu `hazard_cost`.
+
+De ce excesul relativ față de minim, și nu altă normalizare a radiației:
+- împărțirea la maxim lasă un decalaj aproape constant pe toată harta, care diluează panta
+  tocmai la preset-ul `safe` (cel cu w_radiation mai mare);
+- min–max ar întinde la 0..1 și un strat aproape uniform, adică ar amplifica zgomotul (±1,8 % pe
+  situl sintetic) până la valoarea unei pante.
+Cu excesul relativ, o zonă cu 10 % mai multă radiație costă w_radiation × 0,1 în plus, iar un
+strat uniform nu costă nimic. Limita dură pe doză rămâne în validator.
 """
 
 import weakref
@@ -18,20 +29,23 @@ import numpy as np
 
 from app.core.site_data import Site
 
+# `slope_k`: cât de mult penalizează preset-ul panta (vezi f_slope). Diferă între preset-uri ca
+# ele să dea trasee diferite: alternatives.generate le folosește pentru ocoliri.
 PRESETS: dict[str, dict[str, float]] = {
-    "safe": {"w_hazard": 10.0, "w_radiation": 2.0, "w_science": 0.15},
-    "fast": {"w_hazard": 4.0, "w_radiation": 0.5, "w_science": 0.2},
-    "science": {"w_hazard": 6.0, "w_radiation": 1.0, "w_science": 0.4},
+    "safe": {"w_hazard": 10.0, "w_radiation": 2.0, "w_science": 0.15, "slope_k": 5.0},
+    "fast": {"w_hazard": 4.0, "w_radiation": 0.5, "w_science": 0.2, "slope_k": 1.5},
+    "science": {"w_hazard": 6.0, "w_radiation": 1.0, "w_science": 0.4, "slope_k": 3.0},
 }
 
 # Multiplicator de cost pe clasa de teren (vezi meta.json -> terrain_classes). Presupuneri.
 TERRAIN_FACTOR = {0: 1.0, 1: 1.2, 2: 1.8, 3: 3.0}
 
-# Presupunere: la limita de pantă, mersul costă de 1 + SLOPE_K = 4 ori mai mult decât pe plat.
-# Costul crește continuu, ca A* să ocolească pantele mari înainte să ajungă la limită.
+# Valoarea implicită pentru un preset fără cheia `slope_k`. Presupunere: la limita de pantă,
+# mersul costă de 1 + SLOPE_K = 4 ori mai mult decât pe plat. Costul crește continuu, ca A* să
+# ocolească pantele mari înainte să ajungă la limită.
 SLOPE_K = 3.0
 
-# Protecție la împărțire când stratul de radiație e zero peste tot.
+# Protecție la împărțire când minimul stratului de radiație e zero.
 RADIATION_EPS = 1e-9
 
 # Cache: (id(site), preset) -> (referință slabă la sit, cost). np.ndarray nu e hashable, deci
@@ -43,9 +57,10 @@ _cost_cache: dict[tuple[int, str], tuple[weakref.ref, np.ndarray]] = {}
 def static_cost(site: Site, preset: str = "safe") -> np.ndarray:
     """Costul static pe celulă (fără pericole dinamice). np.inf = celulă interzisă.
 
-    - f_slope(s) = 1 + SLOPE_K × (s / max_slope)², iar peste `meta.max_slope_deg` celula e interzisă;
+    - f_slope(s) = 1 + slope_k × (s / max_slope)², cu `slope_k` din preset (implicit SLOPE_K);
+      peste `meta.max_slope_deg` celula e interzisă;
     - f(teren) din TERRAIN_FACTOR;
-    - + w_radiation × radiația normalizată la 0..1 (împărțită la maximul sitului);
+    - + w_radiation × excesul relativ de radiație față de minimul sitului;
     - inf pe masca `unsafe` (FOM).
 
     Rezultatul e float64 și se ține în cache per (sit, preset). Tabloul întors e DOAR PENTRU
@@ -101,11 +116,14 @@ def _compute_static_cost(site: Site, preset: str) -> np.ndarray:
             f"clasele 0..{len(terrain_table) - 1}."
         )
 
-    slope_factor = 1.0 + SLOPE_K * (slope / max_slope) ** 2
-    # Fără normalizare, valorile în µSv/h (~10) ar acoperi tot restul costului.
-    rad_norm = radiation / max(float(radiation.max()), RADIATION_EPS)
+    weights = PRESETS[preset]
+    slope_factor = 1.0 + weights.get("slope_k", SLOPE_K) * (slope / max_slope) ** 2
+    # Excesul relativ față de minimul sitului: 0 pe un strat uniform, 0,1 unde radiația e cu 10 %
+    # mai mare. Fără normalizare, valorile în µSv/h (~10) ar acoperi tot restul costului.
+    rad_min = float(radiation.min())
+    rad_norm = (radiation - rad_min) / max(rad_min, RADIATION_EPS)
 
-    cost = slope_factor * terrain_table[terrain] + PRESETS[preset]["w_radiation"] * rad_norm
+    cost = slope_factor * terrain_table[terrain] + weights["w_radiation"] * rad_norm
     # Interzis: prea abrupt, mascat ca nesigur sau fără date (NaN).
     cost[(slope > max_slope) | unsafe | ~np.isfinite(cost)] = np.inf
     return cost
