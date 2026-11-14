@@ -1,0 +1,136 @@
+{
+  "source": {
+    "citation": "Viúdez-Moreiras D., de la Torre Juárez M., Gómez-Elvira J., Lorenz R.D. et al. (2022), Winds at the Mars 2020 Landing Site. 2. Wind Variability and Turbulence, JGR Planets",
+    "ntrs": "https://ntrs.nasa.gov/citations/20230001086",
+    "registry": "[S7]",
+    "dataset": "Mars 2020 MEDA wind sensor at 1.5 m, mission sols <= 315 (MY36 Ls 22-153)",
+    "checked": "values transcribed from the full text (Tables 1-2, sections 4-5); mean c*Gamma(1+1/k) checked against Table 2 in pipeline/tests/test_meda_winds.py"
+  },
+  "weibull_by_timeslot": {
+    "early_morning": {
+      "ltst_h": [
+        3,
+        7
+      ],
+      "c_ms": 1.31,
+      "k": 1.97,
+      "table2_mean_ms": 1.16,
+      "p95_ms": 2.29,
+      "p99_ms": 2.84,
+      "mean_ms": 1.16
+    },
+    "morning": {
+      "ltst_h": [
+        7,
+        10
+      ],
+      "c_ms": 3.02,
+      "k": 2.01,
+      "table2_mean_ms": 2.68,
+      "p95_ms": 5.22,
+      "p99_ms": 6.47,
+      "mean_ms": 2.68
+    },
+    "midday": {
+      "ltst_h": [
+        10,
+        15
+      ],
+      "c_ms": 5.28,
+      "k": 2.16,
+      "table2_mean_ms": 4.67,
+      "p95_ms": 8.77,
+      "p99_ms": 10.69,
+      "mean_ms": 4.68
+    },
+    "afternoon": {
+      "ltst_h": [
+        15,
+        18
+      ],
+      "c_ms": 6.8,
+      "k": 3.02,
+      "table2_mean_ms": 6.08,
+      "p95_ms": 9.78,
+      "p99_ms": 11.28,
+      "mean_ms": 6.07
+    },
+    "nightfall": {
+      "ltst_h": [
+        18,
+        21
+      ],
+      "c_ms": 3.24,
+      "k": 1.97,
+      "table2_mean_ms": 2.87,
+      "p95_ms": 5.66,
+      "p99_ms": 7.03,
+      "mean_ms": 2.87
+    },
+    "night_1": {
+      "ltst_h": [
+        21,
+        24
+      ],
+      "c_ms": 3.42,
+      "k": 2.54,
+      "table2_mean_ms": 3.04,
+      "p95_ms": 5.26,
+      "p99_ms": 6.23,
+      "mean_ms": 3.04
+    },
+    "night_2": {
+      "ltst_h": [
+        0,
+        3
+      ],
+      "c_ms": 2.13,
+      "k": 1.49,
+      "table2_mean_ms": 1.91,
+      "p95_ms": 4.45,
+      "p99_ms": 5.94,
+      "mean_ms": 1.92
+    }
+  },
+  "weibull_total": {
+    "c_ms": 3.57,
+    "k": 1.49,
+    "table2_mean_ms": 3.22,
+    "p95_ms": 7.46,
+    "p99_ms": 9.95,
+    "mean_ms": 3.23
+  },
+  "turbulence": {
+    "definition": "TI = standard deviation of wind speed / mean wind speed, over 10-min periods",
+    "ti_day": {
+      "mean": 0.36,
+      "sd": 0.1
+    },
+    "ti_night": {
+      "mean": 0.22,
+      "sd": 0.1
+    },
+    "sigma_v_day_ms": {
+      "mean": 1.85,
+      "sd": 0.57,
+      "midday_peaks_above": 3.5
+    },
+    "sigma_v_night_ms": {
+      "mean": 0.57,
+      "sd": 0.29
+    }
+  },
+  "convective_vortices": {
+    "midday_c_increase_frac": 0.65,
+    "midday_k": {
+      "all": 2.16,
+      "around_pressure_drops": 2.36
+    },
+    "peak_over_background": 9.2
+  },
+  "notes": [
+    "Dust devils move with the background wind (registry 3.1), so the relative speed variability of a moving hazard can be taken from TI: 36 +/- 10 % in daytime (the current storms.py assumption is 15 %).",
+    "TI is measured over 10-min windows at 1.5 m; the translation speed of a vortex averages over its size, so 36 % is an upper bound for its speed noise.",
+    "The paper gives no single number for wind-direction variability; it reports full wind rotations at 19-21 h LTST and strong direction disturbances during vortex passages."
+  ]
+}

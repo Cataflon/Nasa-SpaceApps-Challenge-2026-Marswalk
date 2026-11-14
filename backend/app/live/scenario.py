@@ -56,16 +56,24 @@ TAU_SIGMA = 0.05  # variația lentă într-o zi fără furtună (presupunere)
 TAU_TAU_MIN = 120.0  # timpul de corelație al zgomotului (presupunere)
 TAU_RANGE = (0.1, 10.0)  # MY34: tau > 8 la Gale (Guzewich et al. 2019, GRL). de verificat
 
-# Vântul la ~1,5 m: eșantionat dintr-o distribuție Weibull, nu o sinusoidă cu rafale adăugate.
-# Rafalele (de la calm la 10-15 m/s în minute) vin din coada distribuției (registrul [S7], Newman et
-# al. 2022, Science Advances; MEDA WS). Turbulența = zgomot corelat pe câteva minute, trecut prin
-# funcția de repartiție Weibull (copulă gaussiană), deci fiecare minut are exact marginala Weibull.
-# Media urmează ciclul zilnic: calm dimineața, maxim după-amiaza. Forma k și mediile sunt de ajustat
-# pe datele MEDA (registrul: nivel B pentru parametri). de verificat
-WIND_WEIBULL_K = 2.0
-WIND_MEAN_MS = 3.0  # media dimineața și noaptea
-WIND_DIURNAL_MS = 3.0  # în plus la vârful de după-amiază (media ajunge la 6 m/s)
-WIND_PEAK_LTST_H = 14.0
+# Vântul la 1,5 m: eșantionat dintr-o distribuție Weibull, nu o sinusoidă cu rafale adăugate.
+# Rafalele (de la calm la 10-15 m/s în minute) vin din coada distribuției. Turbulența = zgomot
+# corelat pe câteva minute, trecut prin funcția de repartiție Weibull (copulă gaussiană), deci
+# fiecare minut are exact marginala Weibull a orei lui.
+# Parametrii (c, k) pe intervale LTST: Viúdez-Moreiras et al. 2022, JGR Planets, „Winds at the Mars
+# 2020 Landing Site. 2. Wind Variability and Turbulence”, Tabelul 1 (MEDA, solurile ≤ 315), citit în
+# textul complet (NTRS 20230001086, registrul [S7]). Aceleași cifre, verificate pe Tabelul 2, sunt în
+# data/processed/jezero/wind_stats.json (pipeline/meda_winds.py); testul le ține sincrone.
+# Între mijloacele intervalelor, media și k se interpolează liniar (alegerea noastră).
+WIND_WEIBULL_BY_LTST = {  # nume: (început h, sfârșit h, c m/s, k)
+    "early_morning": (3, 7, 1.31, 1.97),
+    "morning": (7, 10, 3.02, 2.01),
+    "midday": (10, 15, 5.28, 2.16),
+    "afternoon": (15, 18, 6.80, 3.02),
+    "nightfall": (18, 21, 3.24, 1.97),
+    "night_1": (21, 24, 3.42, 2.54),
+    "night_2": (0, 3, 2.13, 1.49),
+}
 WIND_TAU_MIN = 3.0  # timpul de corelație al turbulenței (presupunere)
 WIND_RANGE = (0.0, 40.0)
 
@@ -144,7 +152,7 @@ SENSOR_LABELS = {
 # Valorile constante, folosite de motor (rolul 3) ca fallback. Media la începutul ieșirii.
 BASELINE = {
     "dust_tau": TAU_MEAN,
-    "wind_ms": 5.0,
+    "wind_ms": 2.5,  # media MEDA la 08:00 LTST (wind_weibull_at(8.0))
     "temp_c": -40.0,
     "pressure_pa": PRESSURE_MEAN_PA,
     "dose_rate_usv_h": DOSE_RATE_USV_H,
@@ -232,15 +240,33 @@ def _local_storm_duration(params: dict) -> float:
     return LOCAL_STORM["duration_min"]
 
 
-def _weibull(z: np.ndarray, mean: np.ndarray, k: float) -> np.ndarray:
-    """Zgomot normal standard -> viteze cu marginala Weibull(k) și media dată (copulă gaussiană)."""
+def _weibull(z: np.ndarray, mean, k) -> np.ndarray:
+    """Zgomot normal standard -> viteze cu marginala Weibull(k) și media dată (copulă gaussiană).
+
+    `mean` și `k` pot fi scalari sau tablouri de aceeași lungime cu `z`.
+    """
     u = 0.5 * (1.0 + _erf(z / np.sqrt(2.0)))
     u = np.clip(u, 1e-12, 1.0 - 1e-12)
-    scale = mean / math.gamma(1.0 + 1.0 / k)
+    k = np.asarray(k, dtype=np.float64)
+    scale = np.asarray(mean, dtype=np.float64) / _gamma(1.0 + 1.0 / k)
     return scale * (-np.log1p(-u)) ** (1.0 / k)
 
 
+def wind_weibull_at(ltst_h: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """(media m/s, k) la ora LTST dată, interpolate liniar (ciclic) între mijloacele intervalelor MEDA."""
+    mids, means, ks = [], [], []
+    for start, end, c, k in WIND_WEIBULL_BY_LTST.values():
+        mids.append((start + end) / 2.0)
+        means.append(c * math.gamma(1.0 + 1.0 / k))
+        ks.append(k)
+    order = np.argsort(mids)
+    mids, means, ks = (np.asarray(a, dtype=np.float64)[order] for a in (mids, means, ks))
+    h = np.asarray(ltst_h, dtype=np.float64) % 24.0
+    return np.interp(h, mids, means, period=24.0), np.interp(h, mids, ks, period=24.0)
+
+
 _erf = np.vectorize(math.erf, otypes=[np.float64])
+_gamma = np.vectorize(math.gamma, otypes=[np.float64])
 
 
 def _event_key(ev: ScheduledEvent) -> tuple:
@@ -274,8 +300,8 @@ def generate(seed: int = 42, duration_min: int = 300, events: list[ScheduledEven
 
     # 2. Seriile de bază.
     tau = TAU_MEAN + _ou(eps[0], TAU_SIGMA, TAU_TAU_MIN)
-    wind_mean = WIND_MEAN_MS + WIND_DIURNAL_MS * np.clip(_diurnal(t, WIND_PEAK_LTST_H), 0, None)
-    wind = _weibull(_ou(eps[1], 1.0, WIND_TAU_MIN), wind_mean, WIND_WEIBULL_K)
+    wind_mean, wind_k = wind_weibull_at(ltst_hours(t))
+    wind = _weibull(_ou(eps[1], 1.0, WIND_TAU_MIN), wind_mean, wind_k)
     pressure = (PRESSURE_MEAN_PA + PRESSURE_DIURNAL_PA * _diurnal(t, PRESSURE_PEAK_LTST_H)
                 + _ou(eps[2], PRESSURE_SIGMA_PA, PRESSURE_TAU_MIN))
     temp_noise = _ou(eps[3], TEMP_SIGMA_C, TEMP_TAU_MIN)

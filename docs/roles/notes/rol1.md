@@ -174,16 +174,46 @@ Verificată rulând motorul cu alternativele reale ale rolului 2: test `test_dem
   - Slide-ul despre limite e onest: 33 de constante cu sursă, 36 de presupuneri, 4 de verificat.
 - **README §8** e actualizat cu scena nouă și cifrele reale. Am corectat „5 misiuni” → **4** (MRO, Mars Odyssey, Mars 2020, MSL; MGS și MAVEN apar doar ca context în `sources.md`).
 
+### Răspuns la cererile din notele celorlalte roluri (14.11, doar în `pipeline/` și `data/`)
+- **Rolul 4: alinierea reliefului 3D.** Fișier nou **`data/processed/jezero/grid.json`**, generat de `pipeline/grid_alignment.py`. Conține georeferențierea grilei (proj4, geotransform GDAL, formula centrului de celulă, colțurile în lat/lon), datumul elevației (areoid, corecția pe rover −5,76 m, NoData: niciunul) și blocul `to_frontend_terrain` cu transformarea exactă spre `frontend/public/terrain/jezero.json`.
+  - **Grilele NU se suprapun celulă cu celulă.** Relieful vostru e în proiecția nativă a mozaicului USGS (echirectangulară, `lat_ts = 0`), al nostru e echirectangular local (`lat_ts = 18,44°`). Centrul e același; rândurile coincid (`their_row ≈ row + 0,39`), dar pe est-vest `their_col ≈ 249,5 + (col − 249,5) / cos 18,44° + 0,1`. Cele 500 de coloane ale noastre acoperă 527 de pixeli la voi, deci la margini diferența ajunge la ~13 pixeli (~260 m).
+  - **Măsurat**, cu corelația pantelor: 0,33 dacă tratați grilele ca identice, 0,62 cu transformarea exactă, 0,67 cu un decalaj rezidual de **~40 m spre nord** (diferența dintre mozaicul CTX TRN și DTM-urile noastre HiRISE/CTX; e raportat, nu aplicat). Altitudinile noastre sunt cu **6,75 m mai jos** (mediană; MAD 4,3 m), pentru că sunt calibrate pe cele 306 puncte ale roverului.
+  - Pentru suprapuneri (traseu, habitat, ținte, hardware NASA): treceți fiecare celulă `(row, col)` prin formula din `grid.json`.
+- **Rolul 2: zgomotul furtunilor cu sursă.** Fișier nou **`data/processed/jezero/wind_stats.json`**, generat de `pipeline/meda_winds.py`. Sursa e [S7] = Viúdez-Moreiras et al. 2022 (NTRS 20230001086), **citit în textul complet**. Conține:
+  - Weibull pe intervale orare: dimineața 07-10 h c = 3,02 m/s, k = 2,01 (media 2,68); prânz 10-15 h c = 5,28, k = 2,16 (media 4,67); după-amiază 15-18 h c = 6,80, k = 3,02 (media 6,08); totalul c = 3,57, k = 1,49;
+  - **intensitatea turbulenței TI = σv / v: 36 ± 10 % ziua, 22 ± 10 % noaptea**; σv = 1,85 ± 0,57 m/s ziua;
+  - la vârtejuri: c crește cu 65 %, vârfurile ajung la 9,2 × vântul de fond.
+
+  Vârtejurile merg cu vântul de fond, deci zgomotul relativ de viteză din `storms.py` (acum 15 %) poate fi TI-ul de zi, cu 36 % ca limită de sus. Articolul nu dă o cifră pentru variabilitatea direcției. Transcrierea e verificată: din (c, k) din Tabelul 1 se reobțin media și percentilele 95/99 % din Tabelul 2 (`pipeline/tests/test_meda_winds.py`).
+- **Rolul 2: straturile sunt sigure pentru harta de cost.** Radiația are minimul 27,5 µSv/h (fără 0, fără NaN), niciun strat nu are NaN, iar habitatul și țintele sunt pe celule permise (pantă ≤ 7,4°, sub 20°). Testul `test_layers_safe_for_costmap` păzește asta în CI. Doza (cererea veche cu ≈ 10 → 28) e rezolvată din capitolul 8.
+
+### Vântul din scenariu calibrat pe MEDA (14.11, doar fișierele rolului 1)
+- `scenario.py`: `WIND_WEIBULL_BY_LTST` = Tabelul 1 din Viúdez-Moreiras et al. 2022 (c, k pe 7 intervale LTST). Media și k se interpolează liniar între mijloacele intervalelor (`wind_weibull_at`). Au dispărut `WIND_WEIBULL_K`, `WIND_MEAN_MS`, `WIND_DIURNAL_MS` și `WIND_PEAK_LTST_H`. `BASELINE["wind_ms"]` e 5,0 → 2,5 (media MEDA la 08:00).
+- Teste noi în `tests/scenario`: mediile pe ore (2,68 / 4,67 / 6,08 m/s) și tabelul identic cu `data/processed/jezero/wind_stats.json`.
+- `how-we-calculate.md` (vântul trece pe `source`) și `sources.md` ([S7] e „verified (full text read)”).
+
+### Panta maximă = 20° (decizia echipei, 14.11)
+- `MAX_SLOPE_DEG = 20` în `make_synthetic_site.py` (**v8**) și în `build_layers.py`. Ambele scriu acum explicit `max_slope_deg: 20` în `meta.json`, peste valoarea din contract.
+- Situl sintetic e regenerat, Jezero e reconstruit: habitatul și țintele **nu s-au mutat** (pantă ≤ 7,4°). Terenul interzis pe Jezero e 2,05% (era 0,86%). Doar `meta.json` și `grid.json` (amprenta) s-au schimbat.
+- Scena demo dă aceleași trei decizii (testul pe Jezero trece). `how-we-calculate.md`: rândul pantei e 20°, `source` [S26].
+
 ## În lucru
 
 ## Cereri
 
+- **Pentru rolurile 2 + 3 (panta 20°, AUDIT-011):** datele au acum 20°. Mai trebuie schimbat în fișierele voastre: `backend/app/core/types.py` → `Limits.max_slope_deg = 20.0` (rolul 2) și `shared/contracts/meta.json` + `shared/contracts/site.json` → `"max_slope_deg": 20` (contract comun; mock-ul pe care îl vede frontendul fără sit). După asta, testul `test_max_slope_is_the_same_everywhere` trece și i se poate scoate `xfail`.
+
+- **Pentru rolul 2 (testele de audit, `backend/tests/regression/test_reg_live.py`):** AUDIT-001, AUDIT-002 și AUDIT-036 sunt reparate de rolul 1 în `bf5f062` (capitolul 8, vezi „Registrul aplicat”). Testele lor trec acum și, fiind `xfail(strict=True)`, apar ca FAILED (XPASS). Scoateți marcajul `xfail` de pe `test_engine_real_core_hazard_on_route_produces_decision`, `test_engine_default_schedules_demo_events` și `test_injected_local_storm_raises_sensor_dust`. CI-ul nu e afectat, pentru că nu rulează `tests/regression`.
+- **Pentru rolul 4 (AUDIT-026):** cea mai simplă rezolvare e să folosiți `data/processed/jezero/elevation.npy`. E deja în grila backendului (500 × 500, 20 m reali pe teren, HiRISE + CTX, calibrat pe rover). Alternativ, păstrați decupajul vostru și treceți punctele prin formula din `grid.json`.
+
 - **Pentru rolurile 2 + 3 (benchmark în UI):** `GET /api/benchmark` întoarce încă 501, iar `run_benchmark` nu are `headline`. Pe Jezero, `run_benchmark()` durează ~30 s, deci trebuie calculat o dată și ținut în cache, nu la fiecare cerere. Cifrele din slide-uri sunt măsurate pe 14.11; dacă se schimbă algoritmul, trebuie remăsurate.
+- **Pentru rolul 2:** cifrele cerute pentru zgomotul din `storms.py` sunt acum în `data/processed/jezero/wind_stats.json` (vezi mai sus). După ce le preluați, `calibrate_sigma_v` dă un `SIGMA_REL` cu sursă.
+- **Pentru rolul 4:** folosiți `data/processed/jezero/grid.json` ca să puneți traseul și punctele pe relieful 3D (grilele diferă pe est-vest cu factorul 1 / cos 18,44°).
 - **Pentru rolul 2 (de discutat):** furtunile din benchmark (`storms.py`) au propriul model, separat de scenariul demo. Registrul (§3) cere mărimi reale: front de zeci de km, vârtejuri ≤ 135 m. Merită verificat dacă `storms.py` le respectă.
 - **Pentru rolul 4:** interfața are încă texte în română (`utils.js`: „Furtună locală”…, butoanele „Trimite”, „Ceas”, „Apus”…). Regula echipei cere engleză pentru tot ce vede juriul.
 
 - **Pentru rolul 2 (performanță, de văzut):** decizia pentru furtuna regională (`alternatives.generate` cu pericol pe toată grila) durează **~1,2 s**. La 10 minute simulate pe secundă, demo-ul are o pauză de ~1 s în acel moment. Celelalte decizii durează 0,1-0,3 s.
-- **Pentru echipă (de decis):** `max_slope_deg` 25 → 20 (registrul §4.1) nu e făcut, pentru că atinge contracte înghețate.
+- ~~Echipa: `max_slope_deg` 25 → 20~~: **decis 20°**; datele sunt actualizate, restul e cererea de mai sus pentru rolurile 2 + 3.
 - ~~Rolul 3: `sensors_at` / `with_event` / `demo_events`~~: **rezolvat** (de rolul 1, cu acordul oamenilor; vezi mai sus).
 - ~~Rolul 2: normalizarea radiației~~: **rezolvat de rolul 2**. `static_cost` folosește excesul relativ `(rad − min) / min`, care nu depinde de scară.
 - ~~Mock-ul `live_messages.json` cu doza 9,8~~: **rezolvat**. Acum doza la minutul 72 e 25,3 µSv/h.
@@ -195,7 +225,7 @@ Verificată rulând motorul cu alternativele reale ale rolului 2: test `test_dem
 - **Pentru oameni / rolul 4 (amânat, de reamintit):** `npm install` avertizează că scriptul `postinstall` al `esbuild@0.21.5` nu e aprobat (`npm install-scripts approve esbuild`). Dacă `npm run build` pică, de acolo e.
 
 ## Presupuneri
-- Scenarii: ieșirea pornește la 08:00 LTST. Ciclul diurn e un cosinus, deci minimul de temperatură e ~00:30, nu chiar înainte de răsărit (pentru o ieșire de zi contează doar partea de zi). Sunt presupuneri: zgomotul (sigma, timpi de corelație), parametrii Weibull (k = 2 și mediile, până la ajustarea pe MEDA), amortizarea temperaturii de către praf, legarea ciclului dozei de mareea presiunii și amplitudinile evenimentelor. Vârtejul demo e la 08:30, deși vârful lor e la 12-13 LTST: alegere de demo. Cifrele din literatură sunt marcate „de verificat” în cod; le verific la `docs/sources.md`.
+- Scenarii: ieșirea pornește la 08:00 LTST. Ciclul diurn e un cosinus, deci minimul de temperatură e ~00:30, nu chiar înainte de răsărit (pentru o ieșire de zi contează doar partea de zi). Sunt presupuneri: zgomotul (sigma, timpi de corelație), interpolarea liniară între intervalele Weibull MEDA, amortizarea temperaturii de către praf, legarea ciclului dozei de mareea presiunii și amplitudinile evenimentelor. Vârtejul demo e la 08:30, deși vârful lor e la 12-13 LTST: alegere de demo. Cifrele din literatură sunt marcate „de verificat” în cod; le verific la `docs/sources.md`.
 - Doza: RAD a măsurat la Gale (~-4,5 km); Jezero e mai sus (~-2,6 km), deci are puțină atmosferă în minus deasupra și probabil o doză puțin mai mare. Folosim valoarea Gale.
 - Jezero: coordonatele țintelor sunt aproximative, după traversa Perseverance și harta USGS SIM 3464 (de verificat pe Mars Trek). Tranziția HiRISE -> CTX are 100 m. Radiația e modelul după altitudine (scala 11 km).
 - Fetch: HiRISE citit la 4 m (nu 1 m), din motive de timp și volum. Panta „la rezoluție completă” se face deci la 4 m: prinde obstacolele de peste ~8 m, nu bolovanii de 1-2 m.

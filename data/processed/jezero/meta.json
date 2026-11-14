@@ -16,7 +16,7 @@
     "row": 229,
     "col": 264
   },
-  "max_slope_deg": 25,
+  "max_slope_deg": 20.0,
   "layers": {
     "elevation": {
       "file": "elevation.npy",
@@ -1162,7 +1162,7 @@
     "license": "CC0-1.0 (USGS Astrogeology ARD)"
   },
   "fingerprint": {
-    "forbidden_pct": 0.86,
+    "forbidden_pct": 2.05,
     "unsafe_pct": 0.13,
     "elevation_mean_m": -2558.7
   }

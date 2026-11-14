@@ -45,7 +45,7 @@ Source numbers [S1]…[S34] follow the team's parameter registry (`docs/roles/PA
 | Quantity | Value | Source | Status |
 |---|---|---|---|
 | Maximum walking slope, planning (`PLANNER_LIMITS`) | 20° (NASA lunar EVA concept of operations; Apollo 15 crossed ~17°) | [S26] | source |
-| Maximum slope, map and live validator (`Limits.max_slope_deg`, `meta.max_slope_deg`) | 25° (the team was asked to lower it to 20°) | — | assumption |
+| Maximum slope (`meta.max_slope_deg`, `planner.PLANNER_LIMITS`, `Limits.max_slope_deg`) | 20°: steeper cells are forbidden on the map (2.05% of Jezero) and in every route | NASA concept of operations for lunar EVAs: 20° maximum walking slope; Apollo 15 crossed ~17° [S26] | source |
 | Margin before sunset (`Limits.sunset_margin_min`) | 30 min | — | assumption |
 | Dose limit per EVA (`Limits.max_dose_msv`) | 1 mSv (a 5-8 h EVA gets ~0.13-0.22 mSv, so this limit is rarely reached: on Mars, radiation matters over a whole mission, not one EVA) | — | assumption |
 | Verdict NO-GO | the validator finds any violation | — | source |
@@ -102,7 +102,8 @@ Simulated, seeded series ("simulated scenarios, calibrated on MEDA, REMS and RAD
 | Dust reduces the daily temperature swing | factor 1 / (1 + 0.35·(τ − 0.5)) | observed in Jezero storms (Lemmon et al. 2022); factor chosen by us | assumption |
 | Pressure | 720 Pa ± 12 Pa thermal tide, maximum around 08:00 | Sánchez-Lavega et al. 2023 [S5] [S6] | source |
 | Wind: distribution | Weibull: each minute is drawn from it; gusts come from its tail, not from a sine wave. Turbulence correlated over ~3 min | Viúdez-Moreiras et al. 2022 [S7] | source |
-| Wind: parameters | shape k = 2; mean 3 m/s in the morning, 6 m/s at the 14:00 peak (to fit on MEDA data) | [S7] | to verify |
+| Wind: parameters (`WIND_WEIBULL_BY_LTST`) | MEDA fits by time of day: morning 07-10 h c = 3.02 m/s, k = 2.01 (mean 2.7 m/s) · midday 10-15 h c = 5.28, k = 2.16 (mean 4.7) · afternoon 15-18 h c = 6.80, k = 3.02 (mean 6.1) · evening and night 1.2-3.0 m/s. Linear interpolation between the slot midpoints is our choice | Viúdez-Moreiras et al. 2022, Table 1 (full text, NTRS 20230001086) [S7]; also in `data/processed/jezero/wind_stats.json` | source |
+| Wind turbulence (reference) | turbulence intensity (σ/mean over 10 min) 36 ± 10% by day, 22 ± 10% by night; around dust devils the Weibull scale rises by 65% and peaks reach 9.2 × the background wind | same paper, sections 4-5 | source |
 | Dust opacity τ, quiet season | 0.5; rises only during dust events | Savijärvi et al. [S8] | source |
 | Surface dose rate | 28 µSv/h dose equivalent (0.67 mSv/day, galactic cosmic rays, Aug 2012 - Jun 2013; absorbed dose 0.21 mGy/day) | Hassler, SwRI release of 9 Dec 2013 [S11] (checked on the page); Hassler et al. 2014 [S12] | source |
 | Dose daily cycle (`DOSE_DIURNAL_FRAC`) | ±11% (180-225 µGy/day), lowest when pressure is highest; tied to the pressure tide by us | Hassler et al. 2014, Rafkin et al. 2014 [S12] | to verify |
