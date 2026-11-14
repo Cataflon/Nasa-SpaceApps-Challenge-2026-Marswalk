@@ -38,3 +38,14 @@ def test_site_mock_has_artifacts():
     mock = json.loads((CONTRACTS_DIR / "site.json").read_text(encoding="utf-8"))
     assert {a["id"] for a in mock["artifacts"]} >= {"three_forks_depot", "landing_site", "descent_stage"}
     assert "rover_traverse" in mock
+
+
+def test_site_mock_clock_matches_scenario():
+    """Fără sit generat (CI), /api/site întoarce mock-ul: ceasul și întârzierea trebuie să fie aceleași."""
+    from app.live import scenario
+
+    mock = json.loads((CONTRACTS_DIR / "site.json").read_text(encoding="utf-8"))
+    assert mock["eva_start_ltst_h"] == scenario.EVA_START_LTST_H
+    assert mock["earth_delay_min"] == {"one_way": scenario.EARTH_ONE_WAY_DELAY_MIN,
+                                       "round_trip": scenario.EARTH_ROUND_TRIP_MIN,
+                                       "source": scenario.EARTH_DELAY_SOURCE}
