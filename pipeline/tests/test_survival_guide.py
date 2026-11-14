@@ -49,7 +49,7 @@ def test_events_match_code():
     mult, rise, decay = (float(g) for g in spe.groups())
     assert f"up to about {num(mult)} times normal" in FLAT
     assert rise == 120 and "over about 2 hours" in FLAT
-    assert decay == 2160 and "about a day and a half" in FLAT
+    assert decay == 2880 and "more than two days" in FLAT
     leak = const("backend/app/live/engine.py", r"^SUIT_LEAK_PCT_PER_MIN = ([\d.]+)")
     speed = const("backend/app/live/engine.py", r"^FATIGUE_SPEED_FACTOR = ([\d.]+)")
     o2 = const("backend/app/live/engine.py", r"^FATIGUE_O2_FACTOR = ([\d.]+)")

@@ -108,7 +108,7 @@
       "instrument": "HiRISE + CTX",
       "source": "nasa",
       "product_id": "DTEEC_023524_1985_023379_1985_U01, DTEEC_045994_1985_046060_1985_U01, DTEEC_048842_1985_048908_1985_U01, DTEEC_022680_1985_022746_1985_A01, DTEEC_002387_1985_003798_1985_A01, J03_045994_1986_XN_18N282W__J03_046060_1986_XN_18N282W, J10_048842_1986_XN_18N282W__J11_048908_1986_XN_18N282W, K13_058574_1983_XN_18N282W__K13_058640_1983_XN_18N282W",
-      "derived": "slope > 35° at 4 m (FOM legend not published)"
+      "derived": "slope > 35° at 4 m (the HiRISE FOM measures DTM quality, not hazard; it decides where HiRISE is replaced by CTX)"
     }
   },
   "terrain_classes": {
@@ -243,39 +243,39 @@
       "id": "descent_stage",
       "name": "Mars 2020 Descent Stage (sky crane) crash site",
       "type": "hazard_debris",
-      "row": 217,
-      "col": 238,
-      "lat": 18.451,
-      "lon": 77.446,
+      "row": 213,
+      "col": 228,
+      "lat": 18.4524,
+      "lon": 77.4425,
       "caution_radius_m": 150,
       "note": "Sharp metal debris and possible hydrazine residue: keep clear.",
-      "source": "approximate, to verify on the NASA location map",
+      "source": "measured on the labelled HiRISE image ESP_068294_1985 (University of Arizona), anchored on the landing site; about ±150 m, no official coordinates published",
       "status": "to verify"
     },
     {
       "id": "backshell_parachute",
       "name": "Backshell and supersonic parachute",
       "type": "hazard_debris",
-      "row": 161,
-      "col": 250,
-      "lat": 18.47,
-      "lon": 77.45,
+      "row": 213,
+      "col": 206,
+      "lat": 18.4523,
+      "lon": 77.4345,
       "caution_radius_m": 100,
       "note": "Backshell and parachute on the surface: risk of snagging on cables and fabric.",
-      "source": "approximate, to verify on the NASA location map",
+      "source": "measured on the labelled HiRISE image ESP_068294_1985 (University of Arizona), anchored on the landing site; about ±150 m, no official coordinates published",
       "status": "to verify"
     },
     {
       "id": "heat_shield",
       "name": "Mars 2020 heat shield",
       "type": "historical_hardware",
-      "row": 289,
-      "col": 305,
-      "lat": 18.4267,
-      "lon": 77.4697,
+      "row": 209,
+      "col": 312,
+      "lat": 18.4538,
+      "lon": 77.4721,
       "caution_radius_m": 50,
-      "note": "Carbon-composite heat shield with ablative cork, ~1.5 km southeast of the landing site.",
-      "source": "approximate, to verify on the NASA location map",
+      "note": "Carbon-composite heat shield with ablative cork, ~1.3 km east-northeast of the landing site.",
+      "source": "measured on the labelled HiRISE image ESP_068294_1985 (University of Arizona), anchored on the landing site; about ±150 m, no official coordinates published",
       "status": "to verify"
     },
     {
@@ -1173,6 +1173,56 @@
       "DTEEC_045994_1985_046060_1985_U01",
       "DTEEC_048842_1985_048908_1985_U01"
     ],
+    "fom_quality": {
+      "DTEEC_022680_1985_022746_1985_A01": {
+        "pct_by_class": {
+          "good correlation": 98.75,
+          "low end of the good correlation range": 1.09,
+          "manually edited / interpolated": 0.0,
+          "suspicious (edge, corner, did not correlate, seed DTM)": 0.16,
+          "interpolated / extrapolated from neighbours": 0.0,
+          "saturated in the source images": 0.0,
+          "shadow": 0.0
+        },
+        "cells_replaced_by_ctx": 4
+      },
+      "DTEEC_023524_1985_023379_1985_U01": {
+        "pct_by_class": {
+          "good correlation": 52.71,
+          "low end of the good correlation range": 37.32,
+          "manually edited / interpolated": 2.74,
+          "suspicious (edge, corner, did not correlate, seed DTM)": 7.24,
+          "interpolated / extrapolated from neighbours": 0.0,
+          "saturated in the source images": 0.0,
+          "shadow": 0.0
+        },
+        "cells_replaced_by_ctx": 1896
+      },
+      "DTEEC_045994_1985_046060_1985_U01": {
+        "pct_by_class": {
+          "good correlation": 78.98,
+          "low end of the good correlation range": 17.77,
+          "manually edited / interpolated": 0.49,
+          "suspicious (edge, corner, did not correlate, seed DTM)": 2.76,
+          "interpolated / extrapolated from neighbours": 0.01,
+          "saturated in the source images": 0.0,
+          "shadow": 0.0
+        },
+        "cells_replaced_by_ctx": 382
+      },
+      "DTEEC_048842_1985_048908_1985_U01": {
+        "pct_by_class": {
+          "good correlation": 70.88,
+          "low end of the good correlation range": 26.4,
+          "manually edited / interpolated": 0.38,
+          "suspicious (edge, corner, did not correlate, seed DTM)": 2.35,
+          "interpolated / extrapolated from neighbours": 0.0,
+          "saturated in the source images": 0.0,
+          "shadow": 0.0
+        },
+        "cells_replaced_by_ctx": 106
+      }
+    },
     "ctx_dtms": [
       "J03_045994_1986_XN_18N282W__J03_046060_1986_XN_18N282W",
       "J10_048842_1986_XN_18N282W__J11_048908_1986_XN_18N282W",
@@ -1204,7 +1254,7 @@
     "license": "CC0-1.0 (USGS Astrogeology ARD)"
   },
   "fingerprint": {
-    "forbidden_pct": 2.05,
+    "forbidden_pct": 2.04,
     "unsafe_pct": 0.13,
     "elevation_mean_m": -2558.7
   }

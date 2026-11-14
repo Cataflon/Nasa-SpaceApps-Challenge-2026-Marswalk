@@ -2,7 +2,7 @@
   "version": 1,
   "site_id": "jezero",
   "fingerprint": {
-    "forbidden_pct": 2.05,
+    "forbidden_pct": 2.04,
     "unsafe_pct": 0.13,
     "elevation_mean_m": -2558.7
   },
@@ -103,9 +103,9 @@
         "mad": 4.31
       },
       "slope_correlation": {
-        "same_cells_assumed": 0.332,
-        "exact_transform": 0.623,
-        "with_residual_shift": 0.673
+        "same_cells_assumed": 0.333,
+        "exact_transform": 0.624,
+        "with_residual_shift": 0.674
       },
       "residual_shift": {
         "their_rows": -2.0,

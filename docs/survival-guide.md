@@ -46,7 +46,7 @@ These rules travel with every EVA sheet. The route, your **return-by time** and 
 ## Solar storm (solar particle event)
 
 - The dose rises over about 2 hours, up to about 2.5 times normal (the largest event measured on the surface, September 2017).
-- **Go to shelter** (the habitat, or any shelter on your route) or **return**. Stay inside until the habitat gives the all-clear: the dose falls slowly, over about a day and a half.
+- **Go to shelter** (the habitat, or any shelter on your route) or **return**. Stay inside until the habitat gives the all-clear: in 2017 the high readings lasted more than two days.
 
 ## Suit leak
 

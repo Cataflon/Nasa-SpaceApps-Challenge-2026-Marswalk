@@ -165,7 +165,7 @@ def _diff(key, event, t_min=60, duration=240, seed=11):
 
 
 def test_solar_particle_event_rises_over_hours_and_decays_slowly():
-    """SPE implicit (Zeitlin et al. 2018): × 2,5, crește în ~2 h, scade pe ~36 h."""
+    """SPE implicit (Zeitlin et al. 2018; NASA/JPL 2017): × 2,5, crește în ~2 h, valori mari peste 2 zile."""
     base = sc.generate(11, 480)
     spe = sc.generate(11, 480, [ScheduledEvent(60, "solar_particle_event")])
     ratio = [b["dose_rate_usv_h"] / a["dose_rate_usv_h"] for a, b in zip(base.sensors, spe.sensors)]

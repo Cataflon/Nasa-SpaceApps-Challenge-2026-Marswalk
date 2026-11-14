@@ -1,0 +1,44 @@
+{
+  "headline": {
+    "copilot_safe_pct": 81.0,
+    "plan_safe_pct": 51.0,
+    "n_scenarios": 100
+  },
+  "seed": 42,
+  "site_id": "jezero",
+  "site_fingerprint": {
+    "forbidden_pct": 2.04,
+    "unsafe_pct": 0.13,
+    "elevation_mean_m": -2558.7
+  },
+  "plan_only": {
+    "safe_pct": 51.0,
+    "exposed_pct": 49.0,
+    "o2_end_min_pct": 70.0,
+    "o2_end_mean_pct": 70.0,
+    "dose_mean_msv": 0.0718,
+    "science_pct": 100.0
+  },
+  "copilot": {
+    "safe_pct": 81.0,
+    "exposed_pct": 19.0,
+    "o2_end_min_pct": 60.3,
+    "o2_end_mean_pct": 81.4,
+    "dose_mean_msv": 0.0445,
+    "science_pct": 41.0
+  },
+  "storm_kinds": {
+    "dust_devil": 67,
+    "local_storm": 27,
+    "regional_storm": 6
+  },
+  "rescued_by_copilot": 30,
+  "made_worse_by_copilot": 0,
+  "decisions": {
+    "CONTINUE": 25,
+    "EMERGENCY": 19,
+    "RETURN": 51,
+    "WAIT": 31
+  },
+  "method": "core.benchmark.run_benchmark (role 2): same storms for both strategies, no LLM; safe = home with exposure below the hazard threshold, O2 above the reserve, before sunset minus the margin"
+}

@@ -346,3 +346,56 @@ def test_jezero_artifacts_and_traverse(jezero):
         assert d * meta["cell_size_m"] < 500
         path = meta["rover_traverse"]["path"]
         assert len(path) > 50 and all(0 <= r < bl.N and 0 <= c < bl.N for r, c in path)
+
+
+# --- FOM HiRISE: calitatea DTM-ului (legenda din README-urile echipei HiRISE) ----------------------
+
+
+def _fom_pixel(rgb, shade):
+    """O culoare din legendă amestecată 50 % cu griul reliefului umbrit, ca în fișierele USGS."""
+    return [0.5 * c + 0.5 * shade for c in rgb]
+
+
+def test_fom_classes_read_shaded_legend_colours():
+    cases = {cls: col for cls, (col, _) in bl.FOM_LEGEND.items()}
+    pixels = [_fom_pixel(col, shade) for col in cases.values() for shade in (60, 140, 220)]
+    pixels += [[0, 0, 0], [128, 128, 128]]  # fără date; gri curat (nu se poate citi)
+    rgb = np.array(pixels, dtype=np.float64).T.reshape(3, 1, -1)
+    got = bl.fom_classes(rgb.clip(0, 255).astype(np.uint8))[0].tolist()
+    expected = [cls for cls in cases for _ in range(3)] + [bl.FOM_NO_DATA, 1]
+    assert got == expected
+
+
+def test_untrusted_cells_majority_rule():
+    k = 5
+    bad = np.zeros((10, 10), dtype=np.float32)
+    bad[:5, :5] = 1.0                     # celula (0, 0): toată nesigură
+    bad[:5, 5:] = 0.0
+    bad[:2, 5:] = 1.0                     # celula (0, 1): 40 % nesigură -> rămâne HiRISE
+    bad[5:, :] = np.nan                   # fără FOM
+    holes = bl.untrusted_cells(bad, k)
+    assert holes[:5, :5].all() and not holes[:5, 5:].any() and not holes[5:].any()
+
+
+def test_delta_fill_matches_surroundings_without_steps():
+    k = 5
+    yy, xx = np.mgrid[0:60, 0:60].astype(np.float64)
+    base = 0.2 * xx                                  # CTX: o pantă lină
+    top = base + 7.0 + 0.01 * yy                     # HiRISE: același relief, decalat ~7 m
+    holes = np.zeros_like(top, dtype=bool)
+    holes[20:35, 20:35] = True
+    bad = top.copy()
+    bad[holes] += 30.0                               # valori HiRISE greșite în gol
+    out = bl.delta_fill(bad, base, holes, k)
+    assert np.abs(out[holes] - top[holes]).max() < 0.5   # golul are nivelul HiRISE din jur, nu +30 m
+    step = np.abs(np.diff(out, axis=1)).max()
+    assert step < 0.6                                     # fără trepte la marginea golului
+    assert np.array_equal(out[:10, :10], bad[:10, :10])   # departe de gol, HiRISE neatins
+
+
+def test_upsample_bilinear_is_smooth_and_exact_at_centres():
+    cell = np.array([[0.0, 10.0], [20.0, 30.0]])
+    fine = bl.upsample_bilinear(cell, 5)
+    assert fine.shape == (10, 10)
+    assert fine[2, 2] == pytest.approx(0.0) and fine[7, 7] == pytest.approx(30.0)  # centrele celulelor
+    assert np.abs(np.diff(fine, axis=1)).max() <= 2.0 + 1e-9                       # pași mici, fără salt de 10

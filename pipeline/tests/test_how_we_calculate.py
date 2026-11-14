@@ -13,13 +13,15 @@ DOC = (ROOT / "docs" / "how-we-calculate.md").read_text(encoding="utf-8")
 
 FILES = ["backend/app/core/budget.py", "backend/app/core/costmap.py", "backend/app/core/decision.py",
          "backend/app/core/hazards.py", "backend/app/core/daylight.py", "backend/app/core/planner.py",
-         "backend/app/live/engine.py"]
+         "backend/app/core/validator.py", "backend/app/live/engine.py", "backend/app/live/scenario.py"]
 IGNORED = {
     "TOBLER_MAX_KMH", "TOBLER_DECAY", "TOBLER_OFFSET",  # formula Tobler e scrisă întreagă
     "PRESETS",  # documentat pe componente: slope_k, w_hazard, w_radiation, w_science
     "RADIATION_EPS", "UNCERTAINTY_GROWTH_PER_MIN", "PROFILE_POINTS", "SQRT2",  # tehnice / nefolosite
     "O2_PCT_PER_MIN_WALK",  # derivată din WALK_WATTS
     "REEVAL_MIN", "HIT_HORIZON_MIN", "MAX_DURATION_MIN",  # cadența motorului, nu fizică
+    # scenario.py: liste de nume și etichete (contractul), nu cifre
+    "NON_SENSOR_EVENTS", "SENSOR_EVENTS", "ALLOWED_EVENTS", "SENSOR_KEYS", "SENSOR_LABELS",
 }
 CONST = re.compile(r"^([A-Z][A-Z0-9_]{2,})\s*(?::[^=]*)?=", re.M)
 
@@ -36,6 +38,15 @@ def constants():
 def test_every_decision_constant_is_documented():
     missing = [f"{rel}: {name}" for rel, name in constants() if name not in DOC]
     assert not missing, "Lipsesc din docs/how-we-calculate.md:\n" + "\n".join(missing)
+
+
+def test_every_limit_is_documented():
+    """Pragurile validatorului (types.Limits) apar fiecare ca `Limits.<câmp>`."""
+    src = (ROOT / "backend/app/core/types.py").read_text(encoding="utf-8")
+    body = src.split("class Limits", 1)[1].split("@dataclass", 1)[0]
+    fields = re.findall(r"^\s+(\w+): float = ", body, re.M)
+    assert fields, "Limits nu are câmpuri?"
+    assert [f for f in fields if f"Limits.{f}" not in DOC] == []
 
 
 def test_status_badges_are_valid():

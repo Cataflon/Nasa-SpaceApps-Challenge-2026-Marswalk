@@ -125,12 +125,13 @@ LOCAL_STORM = {"intensity": 0.7, "peak_after_min": 16.0, "duration_min": 30.0, "
 # Furtună regională: crește treptat și nu se termină în timpul ieșirii (durează zile).
 REGIONAL_STORM = {"intensity": 0.9, "ramp_min": 120.0, "tau_peak": 3.0, "wind_add_ms": 10.0}
 # Furtună solară (SEP): multiplicatorul dozei. Cea mai mare furtună solară văzută de RAD la suprafață
-# (sept. 2017) a dat doza × 2-3 față de fond, cu creștere pe parcursul câtorva ore și scădere lentă
-# pe ~36 h (Zeitlin et al. 2018, GRL, doi:10.1029/2018GL077760; registrul [S14] [S15]) -> × 2,5.
+# (sept. 2017) a dat doza × 2-3 față de fond, cu creștere pe parcursul câtorva ore (Zeitlin et al. 2018,
+# GRL, doi:10.1029/2018GL077760, [S14]); NASA/JPL: „more than double any previously measured”, iar
+# „the high readings lasted more than two days” ([S15], citit pe pagină) -> × 2,5, scădere pe 48 h.
 # Contractul (live_messages.json) folosește `dose_rate_multiplier` și `duration_min`
 # (= creștere + platou; creșterea e cel mult duration_min). DOI-urile sunt verificate în docs/sources.md.
 SOLAR_PARTICLE_EVENT = {"dose_rate_multiplier": 2.5, "duration_min": 240.0, "rise_min": 120.0,
-                        "decay_min": 2160.0}
+                        "decay_min": 2880.0}
 
 # Evenimentele care nu schimbă senzorii de mediu: efectul lor (zonă blocată, consum de O₂,
 # viteză) îl aplică motorul (rolul 3) și core/ (rolul 2).
