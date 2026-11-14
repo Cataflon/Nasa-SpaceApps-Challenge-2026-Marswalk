@@ -2,8 +2,47 @@
 
 ## Gata
 
-Teste: `python -m pytest tests/core` → 109 trecute
-(`test_decision` 6, `test_grid` 14, `test_costmap` 27, `test_routing` 51, `test_budget` 11).
+Teste: `python -m pytest tests/core` → 132 trecute
+(`test_decision` 6, `test_grid` 14, `test_costmap` 27, `test_routing` 51, `test_budget` 11,
+`test_daylight` 9, `test_stops` 14).
+
+### R2-6: `stops` (CP-SAT + forță brută)
+
+- O singură definiție a problemei (clasa internă `_Problem`), folosită de ambele metode:
+  aceleași valori scalate, rotunjite o singură dată (minute × 10, O₂ × 100, valoare × 100),
+  aceeași regulă de fezabilitate, același obiectiv lexicografic. Rata de repaus vine din
+  `budget.O2_PCT_PER_MIN_REST`. Cifrele din `StopPlan` sunt recalculate din valorile reale.
+- `plan_stops`: `AddCircuit` cu buclă pe fiecare țintă (sărită). Am pus buclă și pe habitat,
+  pentru turul gol: fără ea, `AddCircuit` nu admite un circuit doar cu habitatul, deci planul gol
+  ar fi imposibil. Bucla pe habitat obligă toate țintele să fie sărite.
+  Etapa 1: `maximize Σ valoare × BIG − durată`, cu BIG > orice durată posibilă.
+  **Etapa 2 (criteriul 3):** cu timpi simetrici, un tur și inversul lui au aceeași valoare și
+  durată, deci egalitățile sunt frecvente. Cu valoarea și durata fixate, se alege pas cu pas,
+  de la habitat, nodul următor cel mai mic (întâi întoarcerea acasă, apoi id-urile alfabetic):
+  câte o rezolvare per oprire. Fără ea, CP-SAT și forța brută ar da ordini inverse.
+  Statusul etapei 1 decide `optimal`.
+- `brute_force_stops`: semnătura `*args, **kwargs` păstrată; argumentele se leagă de
+  semnătura lui `plan_stops` (`inspect.signature(...).bind`). Toate permutările tuturor
+  submulțimilor; > 6 ținte → `ValueError`; lista goală e soluție validă.
+- Pe 30 de instanțe aleatoare (2-5 ținte, valori științifice întregi, deci cu egalități),
+  cele două metode dau aceeași ordine, aceeași valoare și aceeași durată.
+
+### R2-5: `daylight`, plan A (Mars24)
+
+- `sunrise_sunset_min(lat, lon, sol_start_utc)`: Mars24 (Allison & McEwen 2000) fără termenii
+  PBS de perturbație, doar `math`. Rezultatul e în **minute terestre** de la `sol_start_utc`;
+  o oră marțiană = 3698,98 s. `lon_deg` e longitudine estică (Mars24 folosește vestică; conversia
+  e în cod). Apusul = primul apus de după start; răsăritul = apus − durata zilei (poate fi
+  negativ dacă ieșirea începe ziua), deci răsărit < apus mereu.
+- Funcții publice noi: `mars_ls_deg`, `solar_declination_deg`, `ltst_hours`, `mst_hours`.
+- Verificat față de exemplul din pagina Mars24 (2000-01-06 00:00 UTC): Ls = 277,19° și
+  MST = 23,994 h. La aterizarea Perseverance (2021-02-18 20:55 UTC): Ls 5,65°, ora locală
+  15,44 h, zi de 12,18 ore marțiene. La 2022-01-01: Ls 150,65°, zi de 12,62 ore marțiene.
+- **Eroare estimată:** Ls ≈ 0,01° din perturbațiile omise (neglijabil). Răsăritul și apusul:
+  ≈ ±5 min, dominat de alegerea `h0 = −0,5°` (refracție și disc). Praful e tratat separat, de
+  `effective_sunset_min`.
+- Greșeală găsită și corectată în timpul pasului: constanta 44796 din formula MST e în soluri,
+  nu în ore (decalaj de 12 h). Testul nou pe exemplul Mars24 o prinde.
 
 ### R2-4: bugetul (`budget.py`) + câmpurile D4 din `types.Budget`
 
@@ -117,6 +156,11 @@ Python 3.14.6, numpy 2.5.4; mediana din mai multe rulări.
 | `budget.point_of_no_return`, 241 de puncte | 0,016 ms | < 50 ms |
 | `budget.o2_cost_grid` / `minutes_grid` | 17 ms / 16 ms | fără țintă proprie |
 | `routing.reverse_dijkstra` pe `o2_cost_grid` | 0,64 s | < 2 s, o dată per hartă |
+| `daylight.sunrise_sunset_min` | 3,9 µs pe apel | instant |
+| `stops.plan_stops`, 10 ținte | 0,17-0,19 s (max 0,20 s) | < 1 s pentru ≤ 10 ținte |
+| `stops.plan_stops`, 6 / 15 ținte | 0,03 s / 0,93 s | 15 e peste țintă, doar informativ |
+| `stops.brute_force_stops`, 6 ținte (1957 de ordini) | 0,018 s | fără țintă proprie |
+| importul `ortools` (o dată per proces, la primul apel) | 0,75 s | de știut pentru primul `POST /api/route` |
 
 Timpii lui `astar` sunt cu regula „fără tăierea colțurilor” și cu convenția D2 (media celor două
 celule). Față de R2-2, traseele spre ținte au rămas sub 65 ms; cazul colț la colț a crescut de
@@ -130,7 +174,7 @@ Pe situl sintetic: 1,34 % din celule sunt interzise. Costul finit e între 1,03 
 
 ## În lucru
 
-- Urmează R2-5 (`daylight`).
+- Urmează R2-7 (`planner.plan_route`).
 - De preluat din `docs/roles/PARAMETRI_REFERINTA.md`, la pașii care le ating (constantele
   din `budget.py` sunt deja preluate la R2-4):
   - registrul `core/params.py` (un singur loc pentru constante, cu nivel A/B/C și sursă);
@@ -151,6 +195,9 @@ Pe situl sintetic: 1,34 % din celule sunt interzise. Costul finit e între 1,03 
   ieftină, înainte de a chema `astar` de la habitat: `cost_to_home[celulă] == inf` din
   `reverse_dijkstra` (calculat o dată per hartă). Pentru traseul de întoarcere nu e nevoie de
   `astar` deloc: `path_home(parent_index, celulă)` durează sub 0,1 ms.
+- **Pentru rolul 3:** primul apel la `stops.plan_stops` dintr-un proces plătește importul
+  OR-Tools (0,75 s). Dacă primul `POST /api/route` trebuie să fie rapid, un `import
+  ortools.sat.python.cp_model` la pornirea backendului mută costul acolo.
 - **Pentru oameni, de știut (R2-4):** pasul propunea `M_TOTAL` ≈ 170 kg și păstrarea
   constantelor de O₂ existente (0,12 și 0,0006). Am luat valorile din registru, după regula
   „constantele se iau din PARAMETRI_REFERINTA.md”: `M_TOTAL` 196 kg (B), 0,125 și 0,000711 (B).
@@ -218,7 +265,15 @@ Constante din `budget.py` care au nivel și sursă în registru (scrise și în 
 | `decision` | `RISK_THRESHOLD` | 0,3 | sub acest risc, traseul curent continuă |
 | `decision` | `MIN_IMPROVEMENT` | 0,2 | histerezis: alternativa trebuie să fie cu ≥ 20 % mai bună |
 | `daylight.effective_sunset_min` | 30 min per unitate de tau peste 0,5 | liniar | cu cât apune „mai devreme” când e praf |
+| `daylight` | `SUNRISE_ALTITUDE_DEG` | −0,5° | C: altitudinea Soarelui la răsărit/apus; refracția e neglijabilă în atmosfera subțire, discul solar are ≈ 0,35° |
+| `daylight.sunrise_sunset_min` | care răsărit/apus | primul apus de după start, răsăritul aceleiași zile | C: convenție, ca răsărit < apus mereu |
+
+Constante din `daylight.py` cu nivel și sursă (scrise și în cod): coeficienții Mars24 și
+formula declinației (A, registru §5), `MARS_HOUR_S` 3698,98 s (A, registru §5),
+`TT_MINUS_UTC_S` 69,184 s (A, IERS: 32,184 s + 37 secunde intercalate; registrul nu o conține).
 | `stops.solver_params` | `random_seed` 42, `max_deterministic_time` 5,0 | CP-SAT | alegeri de determinism, nu fizică |
+| `stops` | scalarea la întregi | minute × 10, O₂ × 100, valoare × 100 | C: rezoluție 0,1 min, 0,01 % O₂, 0,01 valoare; o limită poate fi depășită cu cel mult o rotunjire pe termen |
+| `stops` | criteriul 3 de egalitate | lista de id-uri cea mai mică lexicografic, prefixul înaintea listei mai lungi | C: convenție pentru determinism, cerută de pas |
 
 **Normalizarea radiației (decizia rolului 2).** Radiația intră în cost ca exces relativ față de
 minimul sitului: un strat uniform nu costă nimic, iar o zonă cu 10 % mai multă radiație costă
