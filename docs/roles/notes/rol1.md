@@ -29,7 +29,7 @@
   - `SENSOR_LABELS`: misiunea și instrumentul pentru fiecare mărime.
 - Teste: `backend/tests/scenario/test_scenario.py`, 26 de teste, 0,2 s.
 
-### Doza = doză echivalentă RAD, 26,7 µSv/h (decizia echipei, 14.11)
+### Doza = doză echivalentă RAD, 26,7 µSv/h (decizia echipei, 14.11) — înlocuită cu 28 µSv/h, vezi „Registrul aplicat”
 - RAD: 0,64 mSv/zi = 26,7 µSv/h (Hassler et al. 2014). Înainte era ~10, adică de fapt doza absorbită în µGy/h, etichetată greșit „µSv”.
 - `scenario.DOSE_RATE_USV_H = 26.7`. Situl sintetic e acum **v3**: `radiation.npy` are media ~26,7 µSv/h. **Regenerați situl** (`dev.ps1` o face automat).
 - O ieșire de 5 h dă ~0,13 mSv; o furtună solară ×20 timp de 60 min adaugă ~0,5 mSv. Limita de 1 mSv (`types.Limits`) se atinge doar la evenimente solare.
@@ -135,35 +135,67 @@
 - **Întârzierea Pământ-Marte la data demo-ului (14.11.2026):** 1,319 UA → **11,0 min** într-un sens. Ajutorul de la Houston = 2 × 11 + 5 min reacție = **27 min**. Calculul e în `scenario.earth_mars_light_min()` (elementele kepleriene JPL/Standish), verificat pe opoziția din ianuarie 2025 și conjuncția din noiembrie 2023.
 - **`/api/site`** (cu acordul oamenilor) trimite acum `eva_start_ltst_h` și `earth_delay_min` (`one_way`, `round_trip`, `source`), deci ceasul de întoarcere și contorul din frontend au datele reale. Test în `tests/api/test_site_artifacts.py`.
 
+### Registrul aplicat + reparații în motorul live (14.11, cu acordul oamenilor)
+**Scenariul (`scenario.py`), după `PARAMETRI_REFERINTA.md`:**
+- doza de fond **28 µSv/h** (0,67 mSv/zi: comunicatul SwRI din 9.12.2013, fraza citită pe pagină), cu ciclu zilnic **±11%** invers cu presiunea (`DOSE_DIURNAL_FRAC`);
+- furtuna solară **× 2,5**: crește în 2 h, platou până la 4 h, scade pe 36 h (Zeitlin 2018);
+- tau de bază **0,5**; temperatura **−83 → −23 °C**, vârf la 12:30, zgomot ±2,5 K;
+- vântul are marginala **Weibull** (k = 2, media 3 m/s dimineața, 6 m/s la 14:00). Rafalele vin din coada distribuției: copulă gaussiană peste zgomotul corelat. Constantele `GUST_*` au dispărut.
+- durata trecerii unei furtuni se calculează acum din întinderea elipsei **pe direcția de mers**: un front de 30 × 5 km care înaintează perpendicular trece în ~6 min, nu într-o oră.
+
+**Scena demo nouă** (`DEMO_SCENARIO_EVENTS` pe sintetic, `JEZERO_DEMO_EVENTS` pe Jezero), cu mărimi reale:
+- min 30: vârtej mare (130 m, 3 m/s) → **REROUTE**;
+- min 80: frontul unei furtuni (30 × 5 km, 15 m/s) peste astronautul de la `clay_delta` → nicio variantă nu-l evită → **EMERGENCY** (întoarcere imediată);
+- min 125: furtună regională → **RETURN**.
+
+Verificată rulând motorul cu alternativele reale ale rolului 2: test `test_demo_scene_decisions_on_jezero` (~2 s).
+
+**Motorul live (`engine.py`, al rolului 3; modificări minime):**
+1. **Crash** la prima decizie cu alternativele reale: `alternatives.generate` (din `aff051f`) cere ca `remaining_path` să înceapă la poziția curentă, iar motorul trimitea traseul fără ea. Testul existent nu prindea, pentru că înlocuiește `generate` cu o funcție falsă.
+2. **Pericol nevăzut în timpul opririi:** `_path_with_eta` verifica poziția doar la sfârșitul opririi. Un front care trecea peste astronaut cât stătea la țintă nu declanșa nicio decizie. Acum fiecare minut al opririi e verificat.
+3. **Evenimentele demo nu porneau deloc:** motorul chema `generate(seed, 720, None)`, deci fără evenimente. Acum folosește `demo_events(meta.site_id)`, iar senzorii le includ. Evenimentele injectate intră în scenariu cu `with_event`, deci praful, vântul și doza cresc corect.
+4. **Furtuna solară** e luată din scenariu (× 2,5 cu rampă). Multiplicatorul propriu al motorului mai e folosit doar ca fallback fără scenariu.
+5. **`HAZARD_DEFAULTS`** (butoanele de injectare fără parametri): vârtej de 130 m la 4 m/s; `local_storm` = front 30 × 5 km la 15 m/s.
+6. **Apusul fără plan** se calculează ca în planner (≈ 633 min), nu 420.
+7. **Reevaluarea furtunii regionale** după RETURN e sărită: costa ~1,2 s pe tick și ar fi blocat demo-ul la 10 min/s.
+
+**Altele:**
+- `test_uses_core_alternatives_when_available`: scos patch-ul inutil pe `from_contract`. Acum trece.
+- `MissionSheet.jsx`: fallback `?? 9` → `?? 8`.
+- Contractul `live_messages.json`: SPE 20 → 2,5 (240 min); doza la minutul 72 → 25,3 µSv/h (dimineața presiunea e mare, deci doza e mai mică).
+- Pipeline: `DOSE_RATE_USV_H = 28` în `make_synthetic_site.py` (**v7**) și în `build_layers.py`. Am regenerat situl sintetic și am reconstruit Jezero: s-au schimbat doar `radiation.npy` și `radiation.png`, elevația are același hash.
+- `how-we-calculate.md` și `sources.md` sunt actualizate. Am documentat și `SIGMA_REL` / `HIT_THRESHOLD`, noi la rolul 2.
+
+### 8. `docs/demo.md` și `docs/slides.md` (în engleză)
+- **`demo.md`:** demo de 2 minute, secundă cu secundă: ce se apasă și ce se spune. Conține numărul de titlu, click-ul cu sursa, hardware-ul NASA, ceasul „Return by 11:56”, contorul „27 min vs < 0,1 s”, cele trei decizii de la minutele 30, 80 și 125, benchmark-ul și Survival Guide-ul. Mai are o listă de verificare înainte de scenă și un tabel „dacă ceva merge prost”.
+- **`slides.md`:** 11 slide-uri, fiecare legat de un criteriu al juriului.
+  - Primul slide are numărul de titlu, măsurat pe Jezero (100 de scenarii, seed 42): **copilot 81%, plan fix 51%**. Copilotul a salvat 30 de ieșiri și n-a stricat niciuna. Prețul e știința: 41% din probe față de 100%.
+  - Slide-ul Influence: același motor pentru salvamont, într-un tabel Marte ↔ munții noștri.
+  - Slide-ul despre limite e onest: 33 de constante cu sursă, 36 de presupuneri, 4 de verificat.
+- **README §8** e actualizat cu scena nouă și cifrele reale. Am corectat „5 misiuni” → **4** (MRO, Mars Odyssey, Mars 2020, MSL; MGS și MAVEN apar doar ca context în `sources.md`).
+
 ## În lucru
 
 ## Cereri
 
-- **Pentru rolul 3 (motorul live):**
-  - Citiți senzorii cu `scenario.sensors_at(s, t_min)`, nu cu `s.sensors[int(t)]`: indexul e limitat la interval, deci nu apare `IndexError` după `duration_min`.
-  - Pentru `POST /api/live/event`, înlocuiți scenariul cu `scenario.with_event(s, ScheduledEvent(t_min, event, params))`. Minutele trecute rămân identice.
-  - Pentru demo, folosiți `scenario.demo_events(SITE_ID)` în loc de `DEMO_SCENARIO_EVENTS`, ca pe situl Jezero furtuna să fie pusă corect.
-  - Valorile din `_allowed_events` care nu sunt la senzori (`suit_leak`, `fatigue`, `marsquake`) le aplicați voi pe O₂, viteză și zone blocate.
+- **Pentru rolurile 2 + 3 (benchmark în UI):** `GET /api/benchmark` întoarce încă 501, iar `run_benchmark` nu are `headline`. Pe Jezero, `run_benchmark()` durează ~30 s, deci trebuie calculat o dată și ținut în cache, nu la fiecare cerere. Cifrele din slide-uri sunt măsurate pe 14.11; dacă se schimbă algoritmul, trebuie remăsurate.
+- **Pentru rolul 2 (de discutat):** furtunile din benchmark (`storms.py`) au propriul model, separat de scenariul demo. Registrul (§3) cere mărimi reale: front de zeci de km, vârtejuri ≤ 135 m. Merită verificat dacă `storms.py` le respectă.
+- **Pentru rolul 4:** interfața are încă texte în română (`utils.js`: „Furtună locală”…, butoanele „Trimite”, „Ceas”, „Apus”…). Regula echipei cere engleză pentru tot ce vede juriul.
 
+- **Pentru rolul 2 (performanță, de văzut):** decizia pentru furtuna regională (`alternatives.generate` cu pericol pe toată grila) durează **~1,2 s**. La 10 minute simulate pe secundă, demo-ul are o pauză de ~1 s în acel moment. Celelalte decizii durează 0,1-0,3 s.
+- **Pentru echipă (de decis):** `max_slope_deg` 25 → 20 (registrul §4.1) nu e făcut, pentru că atinge contracte înghețate.
+- ~~Rolul 3: `sensors_at` / `with_event` / `demo_events`~~: **rezolvat** (de rolul 1, cu acordul oamenilor; vezi mai sus).
 - ~~Rolul 2: normalizarea radiației~~: **rezolvat de rolul 2**. `static_cost` folosește excesul relativ `(rad − min) / min`, care nu depinde de scară.
-- ~~Mock-ul `live_messages.json` cu doza 9,8~~: **rezolvat** (cu acordul oamenilor). Acum `dose_rate_usv_h: 26.5` și `dose_total_msv: 0.032` (72 min × 26,7 µSv/h).
-- **Pentru rolurile 2 + 3 (test picat, nu de la rolul 1):** `tests/live/test_engine.py::test_uses_core_alternatives_when_available` pică pe `main` de la commit-ul `a67c375`, pentru că `hazards.predict` primește un `dict` în loc de `Hazard` (`AttributeError: 't0_min'`). Verificat pe o copie curată a HEAD.
-- **Pentru rolul 3:** `engine.DEFAULT_SUNSET_MIN = 420`, dar apusul planificat la data demo-ului e ≈ 633 min (planner). E doar fallback, dar dacă motorul pornește fără plan, ceasul de întoarcere ar fi cu ~3,5 h mai devreme.
-- **Pentru rolul 4:** `MissionSheet.jsx` are fallback `eva_start_ltst_h ?? 9`. Valoarea reală e 8 și vine acum din `/api/site`; schimbați fallback-ul la 8.
-- **Pentru oameni (de decis):** registrul `PARAMETRI_REFERINTA.md` recomandă pentru `scenario.py` mai multe schimbări care nu sunt încă făcute:
-  - furtuna solară × 2,5 (nu × 20), cu creștere pe ore și scădere pe 36 h;
-  - tau de bază 0,5 (nu 0,6);
-  - vânt Weibull;
-  - doza 28 µSv/h (0,67 mSv/zi; eu am 26,7, din 0,64 în rezumatul Hassler 2014);
-  - scena demo cu vârtej mare + front de furtună.
-  
-  Le pot face; schimbă comportamentul demo-ului.
-- **Pentru rolul 3 (motorul live pe Jezero):** folosiți `scenario.demo_events(SITE_ID)`. Furtuna pe Jezero e calibrată pe traseul habitat (229, 264) -> `clay_delta` (211, 115). Dacă planner-ul alege alt traseu, ajustați `center` în `JEZERO_DEMO_EVENTS` sau spuneți-mi.
+- ~~Mock-ul `live_messages.json` cu doza 9,8~~: **rezolvat**. Acum doza la minutul 72 e 25,3 µSv/h.
+- ~~Rolurile 2 + 3: test picat `test_uses_core_alternatives_when_available`~~: **rezolvat**.
+- ~~Rolul 3: `DEFAULT_SUNSET_MIN = 420`~~: **rezolvat** (apusul se calculează ca în planner).
+- ~~Rolul 4: fallback `?? 9` în `MissionSheet.jsx`~~: **rezolvat** (8).
+- ~~Oameni: recomandările registrului pentru `scenario.py`~~: **aplicate**.
 - **Pentru oameni (de verificat, P2):** legenda culorilor FOM HiRISE (produsele `DTFEC_*`) nu e pe paginile USGS sau UA. Se poate căuta în arhiva PDS `MRO-M-HIRISE-5-DTM-V1.0`. Până atunci, `unsafe` = pantă > 35°.
 - **Pentru oameni / rolul 4 (amânat, de reamintit):** `npm install` avertizează că scriptul `postinstall` al `esbuild@0.21.5` nu e aprobat (`npm install-scripts approve esbuild`). Dacă `npm run build` pică, de acolo e.
 
 ## Presupuneri
-- Scenarii: ieșirea pornește la 09:00 LTST. Ciclul diurn e un cosinus, deci minimul de temperatură e ~01:30, nu chiar înainte de răsărit (pentru o ieșire de zi contează doar partea de zi). Sunt presupuneri: zgomotul (sigma, timpi de corelație), rafalele, amortizarea temperaturii de către praf, legătura doză-presiune și amplitudinile evenimentelor. Cifrele din literatură sunt marcate „de verificat” în cod; le verific la `docs/sources.md`.
+- Scenarii: ieșirea pornește la 08:00 LTST. Ciclul diurn e un cosinus, deci minimul de temperatură e ~00:30, nu chiar înainte de răsărit (pentru o ieșire de zi contează doar partea de zi). Sunt presupuneri: zgomotul (sigma, timpi de corelație), parametrii Weibull (k = 2 și mediile, până la ajustarea pe MEDA), amortizarea temperaturii de către praf, legarea ciclului dozei de mareea presiunii și amplitudinile evenimentelor. Vârtejul demo e la 08:30, deși vârful lor e la 12-13 LTST: alegere de demo. Cifrele din literatură sunt marcate „de verificat” în cod; le verific la `docs/sources.md`.
 - Doza: RAD a măsurat la Gale (~-4,5 km); Jezero e mai sus (~-2,6 km), deci are puțină atmosferă în minus deasupra și probabil o doză puțin mai mare. Folosim valoarea Gale.
 - Jezero: coordonatele țintelor sunt aproximative, după traversa Perseverance și harta USGS SIM 3464 (de verificat pe Mars Trek). Tranziția HiRISE -> CTX are 100 m. Radiația e modelul după altitudine (scala 11 km).
 - Fetch: HiRISE citit la 4 m (nu 1 m), din motive de timp și volum. Panta „la rezoluție completă” se face deci la 4 m: prinde obstacolele de peste ~8 m, nu bolovanii de 1-2 m.

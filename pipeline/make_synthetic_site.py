@@ -31,10 +31,11 @@ UNSAFE_SLOPE_DEG = 35.0  # înlocuitor pentru FOM-ul HiRISE
 # v4: textele vizibile în engleză (numele țintelor și sitului, etichetele straturilor).
 # v5: `artifacts` (hardware NASA ca POI) și `rover_traverse` (None pe situl sintetic).
 # v6: Ingenuity = Wright Brothers Field (primul zbor); epava e în afara hărții Jezero.
-GENERATOR_VERSION = 6
+# v7: doza de fond 28 µSv/h (0,67 mSv/zi, RAD), ca scenario.DOSE_RATE_USV_H.
+GENERATOR_VERSION = 7
 # Doza echivalentă la suprafață: RAD 0,64 mSv/zi = 26,7 µSv/h (Hassler et al. 2014, Science).
 # Aceeași valoare ca scenario.DOSE_RATE_USV_H (backend/app/live/scenario.py).
-DOSE_RATE_USV_H = 26.7
+DOSE_RATE_USV_H = 28.0
 DEFAULT_OUT = ROOT / "data" / "synthetic"
 
 # Etichetele fiecărui strat: ce tip de date e și ce instrument NASA imită în situl real.

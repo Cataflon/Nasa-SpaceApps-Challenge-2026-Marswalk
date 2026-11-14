@@ -8,7 +8,7 @@ import { number } from '../utils';
 export default function MissionSheet({site,route,live,planner,planning,setPlanning,selected,onSelect,chat,setChat,mock}) {
   const budget={...route?.budget,...live.tick?.budget};
   const minutes=budget.return_by_min;
-  const hours=(site.eva_start_ltst_h??9)+(minutes??0)/61.65;
+  const hours=(site.eva_start_ltst_h??8)+(minutes??0)/61.65;
   const clock=Number.isFinite(minutes)?`${String(Math.floor(hours)%24).padStart(2,'0')}:${String(Math.floor(hours%1*60)).padStart(2,'0')}`:'—:—';
   const remaining=Number.isFinite(minutes)?minutes-(live.tick?.t_min??0):null;
   return <aside className="mission-sidebar field-sheet">

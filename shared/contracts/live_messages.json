@@ -9,8 +9,8 @@
       "wind_ms": 11.2,
       "temp_c": -38.0,
       "pressure_pa": 715,
-      "dose_rate_usv_h": 26.5,
-      "dose_total_msv": 0.032
+      "dose_rate_usv_h": 25.3,
+      "dose_total_msv": 0.030
     },
     "hazards": [
       {
@@ -61,6 +61,6 @@
     "t_min": 140,
     "event": "solar_particle_event",
     "severity": "high",
-    "params": { "dose_rate_multiplier": 20, "duration_min": 60 }
+    "params": { "dose_rate_multiplier": 2.5, "duration_min": 240 }
   }
 ]
