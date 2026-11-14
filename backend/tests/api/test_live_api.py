@@ -59,3 +59,21 @@ def test_event_is_queued(client):
 def test_unknown_event_is_422(client):
     assert client.post("/api/live/event", json={"event": "alien_attack"}).status_code == 422
 
+
+def test_event_needs_active_eva_and_valid_params(client):
+    quake = {"center": {"row": 250, "col": 250}, "axes_m": [300, 300], "angle_deg": 0, "intensity": 1, "velocity_ms": [0, 0]}
+    assert client.post("/api/live/event", json={"event": "marsquake", "params": quake}).status_code == 409  # fără EVA
+    client.post("/api/live/control", json={"action": "start", "speed": 1})
+    bad = client.post("/api/live/event", json={"event": "marsquake", "params": {**quake, "axes_m": [0, 300]}})
+    assert bad.status_code == 422 and "params.axes_m.0" in bad.json()["detail"]  # text, cu câmpul greșit
+    assert client.post("/api/live/event", json={"event": "fatigue", "params": {"color": "red"}}).status_code == 422
+    ok = client.post("/api/live/event", json={"event": "marsquake", "params": quake})
+    assert ok.status_code == 200 and ok.json()["params"]["axes_m"] == [300, 300]
+
+
+def test_new_route_does_not_replace_running_eva(client):
+    route_id = client.post("/api/route", json={"start": {"row": 300, "col": 200}, "stops": ["clay_delta"]}).json()["route_id"]
+    client.post("/api/live/control", json={"action": "start", "speed": 1})
+    assert client.post("/api/live/control", json={"action": "start", "route_id": route_id}).status_code == 409
+    assert client.post("/api/route", json={"start": {"row": 300, "col": 200}, "stops": ["clay_delta"],
+                                           "max_duration_min": 900}).status_code == 422  # peste orizontul de 720 min

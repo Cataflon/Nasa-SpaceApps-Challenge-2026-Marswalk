@@ -168,6 +168,9 @@ def test_api_accepts_hazard_spec_ops_and_rejects_invalid(client):
     from app.config import CONTRACTS_DIR
 
     contract = json.loads((CONTRACTS_DIR / "live_event.json").read_text(encoding="utf-8"))
+    assert client.post("/api/live/event", json=contract["_hazard_spec_example"]).status_code == 409  # fără misiune
+    client.post("/api/route", json=json.loads((CONTRACTS_DIR / "route_request.json").read_text(encoding="utf-8")))
+    client.post("/api/live/control", json={"action": "start"})
     assert client.post("/api/live/event", json=contract).status_code == 200  # formatul vechi
     r = client.post("/api/live/event", json=contract["_hazard_spec_example"])
     assert r.status_code == 200 and r.json()["op"] == "add" and r.json()["id"] == "user_storm_1"

@@ -81,6 +81,28 @@
 - cifra de titlu: `GET /api/benchmark` → `headline` (503 + `Retry-After` cât rulează; arată un loader);
 - popup-ul de la click: `sources[strat].instrument · sources[strat].mission`, iar dacă `source === "assumption"`, scrie „model”.
 
+- **Compatibilitate cu frontendul final (P1, 14.11)**, după `frontend/contracts/FRONTEND_BACKEND_ALGORITHM.md` §5, §7, §8, §10:
+  - **`POST /api/live/event`:**
+    - parametrii se validează pe tipul evenimentului (`schemas.EVENT_PARAMS`): centru în grilă, semiaxe 1–100 000 m, unghi 0–360°, intensitate 0–1, viteză ±100 m/s, multiplicator de doză 1–100, durată 1–10 080 min, scurgere 0,001–10 %/min, factor de oboseală 0,01–1;
+    - cheile necunoscute → 422;
+    - fără misiune activă (`running` / `paused`) → **409**;
+    - răspunsul are în plus `params`, adică parametrii efectivi primiți de motor.
+  - **`POST /api/live/control start`:**
+    - după `finished` → **409** până la reset;
+    - cu un `route_id` cât rulează sau e pe pauză → **409** (un plan nou nu înlocuiește în tăcere o misiune în curs);
+    - `start` fără `route_id` pe pauză reia, ca înainte.
+  - **`POST /api/route`:** `max_duration_min` ≤ 720 (orizontul motorului) și `start_time_min` ≥ 0, altfel 422.
+  - **Erorile 422** au `detail` **text** (de exemplu `params.axes_m.0: Input should be greater than or equal to 1`), plus lista originală în `errors`.
+  - **Situl implicit e `jezero`** (`config.py`); testele rămân pe situl sintetic prin `tests/conftest.py`.
+  - **Teste adaptate:**
+    - `tests/contracts/test_contracts_requests_enums.py`: evenimentul din contract se injectează după start;
+    - `tests/regression/test_reg_live.py`: xfail-ul AUDIT-004 (centru aberant) e scos, pentru că e reparat.
+
+**Pentru rolul 4 (după P1):**
+- formularul de plan permite 1440 min, dar backendul acceptă maximum **720** (eroare 422 cu textul limitei);
+- mesajul WebSocket `{"type": "state", …}` e trimis, dar `client.js:101` îl filtrează: fără el, butonul rămâne blocat la finalul EVA;
+- la 409 pe `start` sau `event`, `detail` spune ce trebuie făcut („Reset the mission…”, „Start the mission before injecting events.”).
+
 ### Arhitectura de rutare V2 în motor și în API (făcut de rolul 2, cu acordul utilizatorului)
 
 - `live/engine.py` folosește pipeline-ul V2 din core (`core/replanner.plan`), nu `live/replan.py`.
@@ -92,7 +114,8 @@
   intrare în amprentă; reutilizare după hash-ul stării canonice; evenimente în ordinea (t, seq).
 - `step()` rulează pe un thread în `run()` (AUDIT-008 reparat), comenzile iau un `RLock`.
 - `POST /api/live/event`: formatul vechi (cu validarea parametrilor: AUDIT-004 reparat) și HazardSpec cu
-  `op` add / update / remove (`live_event.json` → `_hazard_spec_example`). Evenimente noi:
+  `op` add / update / remove (`live_event.json` → `_hazard_spec_example`), ambele cu validarea
+  de mai sus și 409 fără misiune activă. Evenimente noi:
   `crewmate_injured`, `comm_loss`, `custom`.
 - `REPLAN_EVERY_MIN` și `PROXIMITY_M` au plecat din motor (K pe mod și `core_modes.PROXIMITY_M`).
 

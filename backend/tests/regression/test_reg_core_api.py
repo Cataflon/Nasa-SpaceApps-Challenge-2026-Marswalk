@@ -153,7 +153,7 @@ def test_plan_that_drops_every_requested_target_is_not_go(synthetic_site):
     assert three["verdict"] != "GO"
 
 
-@pytest.mark.xfail(strict=True, reason="AUDIT-029: max_duration_min negativ, NaN sau Infinity sunt acceptate de schemă")
+# AUDIT-029: reparat (schemas.RouteRequest.max_duration_min: gt=0, le=720).
 def test_route_request_rejects_non_positive_duration(client, contract):
     """max_duration_min ≤ 0 e respins cu 422 la validare (o durată negativă nu are sens)."""
     assert client.post("/api/route", json={**contract("route_request.json"), "max_duration_min": -5}).status_code == 422

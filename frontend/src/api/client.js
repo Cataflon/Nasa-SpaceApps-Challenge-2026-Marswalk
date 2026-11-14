@@ -80,9 +80,9 @@ export async function controlLive(data, mock = false) {
   if (data.speed) demo.speed = data.speed;
   runDemo(); tick(); return { data: { ok: true, state: demo.state, t_min: demo.t }, mock: true };
 }
-export async function injectEvent(event, mockOrParams = false) {
+export async function injectEvent(event, mockOrParams = false, customParams = {}) {
   const mock = mockOrParams === true;
-  const params = mockOrParams && typeof mockOrParams === 'object' ? mockOrParams : {};
+  const params = mockOrParams && typeof mockOrParams === 'object' ? mockOrParams : customParams;
   if (!mock) return post('/api/live/event', { event, params });
   demoEvent(event); return { data: { ok: true }, mock: true };
 }
@@ -98,7 +98,7 @@ export function subscribeLive(onMessage, onStatus = () => {}, mock = false) {
     onStatus(attempts ? 'reconnecting' : 'connecting');
     socket = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/api/live`);
     socket.onopen = () => { attempts = 0; onStatus('live'); };
-    socket.onmessage = e => { try { const msg = JSON.parse(e.data); if (['tick', 'decision', 'explanation', 'event'].includes(msg.type)) onMessage(msg); } catch { onStatus('invalid'); } };
+    socket.onmessage = e => { try { const msg = JSON.parse(e.data); if (['tick', 'decision', 'explanation', 'event', 'state'].includes(msg.type)) onMessage(msg); } catch { onStatus('invalid'); } };
     socket.onclose = () => { if (!stopped) { onStatus('offline'); retry = setTimeout(connect, Math.min(1000 * 2 ** attempts++, 15000)); } };
     socket.onerror = () => socket.close();
   }

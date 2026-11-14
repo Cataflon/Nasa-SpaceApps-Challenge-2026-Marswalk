@@ -6,7 +6,7 @@ import '../sensors.css';
 import EquipmentSource from './EquipmentSource';
 
 function ModuleImage({module}) {
-  return <span className="module-photo" role="img" aria-label={`${module.name}, concept illustration`} style={{backgroundPosition:`${module.image%3*50}% ${module.image<3?0:100}%`}}/>;
+  return <svg className="module-photo" role="img" aria-label={module.name+', concept illustration'} viewBox={[(module.image%3)*418+8,module.image<3?120:670,402,480].join(' ')} preserveAspectRatio="xMidYMid meet"><image href="/equipment/sensor-modules.png" width="1254" height="1254"/></svg>;
 }
 function Status({state}) {return <span className={`equipment-status state-${state}`}><i/>{stateNames[state]}</span>;}
 
@@ -46,7 +46,7 @@ export default function Sensors({live,feed}) {
   const faults=Object.values(readings).filter(r=>r.state==='fault').length,warnings=Object.values(readings).filter(r=>r.state==='warning').length,available=Object.values(readings).filter(r=>Number.isFinite(r.value)).length;
   function card(m){const r=readings[m.key];return <button key={m.key} data-module={m.key} className={`equipment-module state-${r.state} ${metric===m.key?'selected':''}`} onClick={()=>setMetric(m.key)} aria-pressed={metric===m.key} aria-controls="equipment-inspector"><div className="module-top"><span>{m.code} <small>/ {String(m.image+1).padStart(2,'0')}</small></span><Status state={r.state}/></div><div className="module-body"><ModuleImage module={m}/><div><h2>{m.name}</h2><strong className="module-value">{number(r.value,m.key==='dust_tau'?2:1)}<small>{m.unit}</small></strong><p>{m.description}</p></div></div><div className="module-bottom"><span>Measured accuracy <b>{r.accuracy?`±${number(r.accuracy.value,2)} ${r.accuracy.unit}`:'Not supplied'}</b></span><Icon name="chevron" size={14}/></div></button>;}
   return <div className="equipment-page">
-    <div className="page-heading equipment-heading"><div><span className="eyebrow">Equipment & environmental telemetry</span><h1>A closer look at every system.</h1><p>Inspect a module or select its connection on the suit.</p></div><EquipmentSource feed={feed}/></div>
+    <div className="page-heading equipment-heading"><div><span className="eyebrow">Equipment & environmental telemetry</span><h1>A closer look at every system.</h1><p>Inspect a module or select its connection on the suit.</p></div><div className="equipment-source"><EquipmentSource feed={feed}/><span>{feed.demo?'Equipment simulator - simulated diagnostics':live.receivedAt?'Last received '+new Date(live.receivedAt).toLocaleTimeString():'Waiting for mission telemetry'}</span></div></div>
     {demo&&<div className="equipment-demo-note" role="status"><Icon name="activity" size={16}/><span>Equipment demo · values, accuracy and faults are simulated. Mission telemetry is unaffected.</span></div>}
     <div className="equipment-summary"><div><span className={`summary-dot ${faults?'fault':warnings?'warning':''}`}/><strong>{faults?`${faults} module fault${faults>1?'s':''}`:warnings?`${warnings} reading${warnings>1?'s':''} to verify`:available?'Telemetry available':'Awaiting measurements'}</strong></div><span>{available} / 6 channels reporting</span><span>{warnings} warnings</span><span>{faults} faults</span><span className="summary-mode">{demo?'Demo diagnostics':live.tick?'Basic data validation · hardware health unreported':'Start an EVA to receive mission values'}</span></div>
     <section className="equipment-layout" ref={container} aria-label="Suit equipment map">

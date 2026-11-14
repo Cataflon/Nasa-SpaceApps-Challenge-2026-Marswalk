@@ -45,7 +45,9 @@ def test_route_request_wrong_variants_are_rejected_with_422(client, contract):
 
 
 def test_live_event_example_is_accepted_and_unknown_event_rejected(client, contract):
-    """live_event.json -> 200; un eveniment din afara _allowed_events -> 422."""
+    """live_event.json -> 200 într-o misiune activă; un eveniment din afara _allowed_events -> 422."""
+    client.post("/api/route", json=contract("route_request.json"))
+    client.post("/api/live/control", json={"action": "start"})
     assert client.post("/api/live/event", json=contract("live_event.json")).status_code == 200
     assert client.post("/api/live/event", json={"event": "meteor", "params": {}}).status_code == 422
 

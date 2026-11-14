@@ -32,7 +32,8 @@ export function useLive(route) {
   useEffect(() => {
     dispatch({ type: 'reset' }); setState('idle'); setError('');
     if (!routeId) return;
-    return subscribeLive(msg => { if (msg.type === 'control') setState(msg.state); else dispatch(msg); }, setStatus, mock);
+    // `state` vine de la backend (la conectare și la fiecare schimbare, inclusiv `finished`); `control` vine din demo.
+    return subscribeLive(msg => { if (msg.type === 'state' || msg.type === 'control') setState(msg.state); else dispatch(msg); }, setStatus, mock);
   }, [routeId, mock]);
   async function control(action, nextSpeed = speed) {
     if (!routeId || busy) return;
@@ -45,7 +46,7 @@ export function useLive(route) {
       setState(r.data.state); setSpeed(nextSpeed);
     } catch (e) { setError(e.message); } finally { setBusy(false); }
   }
-  async function event(type) { setBusy(true); setError(''); try { await injectEvent(type, mock); } catch (e) { setError(e.message); } finally { setBusy(false); } }
+  async function event(type, params = {}) { setBusy(true); setError(''); try { await injectEvent(type, mock, params); } catch (e) { setError(e.message); } finally { setBusy(false); } }
   return { ...data, status, state, speed, busy, error, control, event, mock };
 }
 export function usePosition(tick, speed, paused) {

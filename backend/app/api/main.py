@@ -13,11 +13,13 @@ import os
 import threading
 from contextlib import asynccontextmanager
 
-from fastapi import Body, FastAPI, HTTPException, Response, WebSocket, WebSocketDisconnect
-from pydantic import ValidationError
+from fastapi import Body, FastAPI, HTTPException, Request, Response, WebSocket, WebSocketDisconnect
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import ValidationError
 
 from app.api.bench_cache import BenchmarkCache
 from app.config import CONTRACTS_DIR, FRONTEND_ORIGINS, LIVE_MOCK, SITE_ID, site_dir
@@ -28,7 +30,7 @@ from app.live import planning, scenario
 from app.live.engine import engine, mock_stream
 from app.llm import warm_up
 from app.llm.chat import chat_stream
-from app.schemas import ChatRequest, LiveControl, LiveEvent, RouteRequest
+from app.schemas import EVENT_PARAMS, ChatRequest, LiveControl, LiveEvent, RouteRequest
 
 
 LAYER_LABELS = {
@@ -91,6 +93,22 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Marswalk Copilot", lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=FRONTEND_ORIGINS, allow_methods=["*"], allow_headers=["*"])
+
+
+def readable(errors: list[dict]) -> str:
+    """Erorile Pydantic ca un singur text în engleză: „params.axes_m.0: Input should be …; …”."""
+    parts = []
+    for e in errors:
+        loc = ".".join(str(x) for x in e.get("loc", ()) if x != "body")
+        parts.append(f"{loc}: {e.get('msg', 'invalid value')}" if loc else e.get("msg", "invalid value"))
+    return "; ".join(parts) or "Invalid request."
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_error(request: Request, exc: RequestValidationError):
+    """422 cu `detail` text (frontendul afișează `detail` doar dacă e string) + lista originală în `errors`."""
+    return JSONResponse(status_code=422, content={"detail": readable(exc.errors()),
+                                                  "errors": jsonable_encoder(exc.errors())})
 
 _png_dir = site_dir() / "png"
 if _png_dir.exists():
@@ -200,18 +218,15 @@ async def chat(req: ChatRequest):
 # Rutele live sunt `async def`: rulează pe aceeași buclă ca motorul, deci fără curse între thread-uri.
 
 
-# Tipurile de pericol cu geometrie: parametrii lor se verifică la intrare (centru, semiaxe, viteze).
-_GEOMETRIC_EVENTS = {"dust_devil", "local_storm", "marsquake"}
-
-
 @app.post("/api/live/event")
 async def live_event(body: dict = Body(...)):
     """Injectează un eveniment. Două formate (ARHITECTURA_RUTARE_V2 §2.2, `live_event.json`):
 
-    - vechi: `{"event": <_allowed_events>, "params": {...}}`;
-    - HazardSpec: `{"op": "add" | "update" | "remove", "id": ..., "kind": ..., "shape": ..., "motion": ...}`.
-    Parametrii invalizi (NaN, centru care nu e {row, col} numeric, forme nevalide) → 422 cu un cod stabil,
-    înainte să ajungă la motor.
+    - vechi: `{"event": <_allowed_events>, "params": {...}}`: parametrii se validează pe tipul evenimentului
+      (422, cu câmpul greșit) și se întorc exact cum îi primește motorul la tick-ul următor;
+    - HazardSpec: `{"op": "add" | "update" | "remove", "id": ..., "kind": ..., "shape": ..., "motion": ...}`:
+      NaN, centru nenumeric, forme nevalide → 422 cu un cod stabil, înainte să ajungă la motor.
+    Ambele cer o misiune activă (409).
     """
     if "op" in body:
         op = body.get("op")
@@ -224,6 +239,7 @@ async def live_event(body: dict = Body(...)):
                                           if op == "update" else body, body.get("kind"))
             if not check.ok:
                 raise HTTPException(422, f"Invalid hazard spec: {check.error}.")
+        _require_active_eva()
         kind = str(body.get("kind") or "custom")
         engine.inject(kind, body)
         return {"accepted": True, "event": kind, "op": op, "id": body.get("id"), "state": engine.state,
@@ -231,20 +247,35 @@ async def live_event(body: dict = Body(...)):
     try:
         ev = LiveEvent(**body)
     except ValidationError as exc:
-        raise HTTPException(422, exc.errors(include_url=False, include_context=False)) from exc
-    if ev.event in _GEOMETRIC_EVENTS and ev.params:
-        check = hazard_spec.normalize({k: v for k, v in ev.params.items()
-                                       if k in ("center", "axes_m", "angle_deg", "velocity_ms", "intensity")}
-                                      | ({} if "center" in ev.params else {"center": {"row": 0, "col": 0}}), ev.event)
-        if not check.ok:
-            raise HTTPException(422, f"Invalid event parameters: {check.error}.")
-    engine.inject(ev.event, ev.params)
-    return {"accepted": True, "event": ev.event, "state": engine.state, "t_min": engine.t_min}
+        raise HTTPException(422, readable(exc.errors())) from exc
+    try:
+        params = EVENT_PARAMS[ev.event].model_validate(ev.params).model_dump(mode="json", exclude_none=True)
+    except ValidationError as exc:
+        raise HTTPException(422, readable([{**e, "loc": ("params", *e["loc"])} for e in exc.errors()])) from exc
+    if "center" in params:
+        s = get_site()
+        rows, cols = s.shape if s is not None else contract("site.json")["shape"]
+        c = params["center"]
+        if not (0 <= c["row"] < rows and 0 <= c["col"] < cols):
+            raise HTTPException(422, f"params.center: ({c['row']}, {c['col']}) is outside the {rows}x{cols} grid.")
+    _require_active_eva()
+    engine.inject(ev.event, params)
+    return {"accepted": True, "event": ev.event, "params": params, "state": engine.state, "t_min": engine.t_min}
+
+
+def _require_active_eva() -> None:
+    if engine.state not in ("running", "paused"):
+        raise HTTPException(409, f"No active EVA (state: {engine.state}). Start the mission before injecting events.")
 
 
 @app.post("/api/live/control")
 async def live_control(ctrl: LiveControl):
     if ctrl.action == "start":
+        if engine.state == "finished":
+            raise HTTPException(409, "The EVA has finished. Reset the mission before starting again.")
+        if ctrl.route_id is not None and engine.state in ("running", "paused"):
+            # Un plan nou nu înlocuiește în tăcere o misiune în curs: întâi reset.
+            raise HTTPException(409, f"An EVA is {engine.state}. Reset the mission before starting route {ctrl.route_id}.")
         try:
             engine.start(ctrl.route_id, ctrl.speed)
         except KeyError:
