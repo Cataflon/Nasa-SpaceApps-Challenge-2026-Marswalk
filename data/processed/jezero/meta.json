@@ -1,0 +1,183 @@
+{
+  "site_id": "jezero",
+  "name": "Jezero, frontul deltei (locul de aterizare Perseverance)",
+  "source": "nasa",
+  "cell_size_m": 20,
+  "shape": [
+    500,
+    500
+  ],
+  "crs": "+proj=eqc +lat_ts=18.44 +lat_0=18.44 +lon_0=77.45 +R=3396190 +units=m +no_defs +type=crs",
+  "center": {
+    "lat": 18.44,
+    "lon": 77.45
+  },
+  "habitat": {
+    "row": 229,
+    "col": 264
+  },
+  "max_slope_deg": 25,
+  "layers": {
+    "elevation": {
+      "file": "elevation.npy",
+      "dtype": "float32",
+      "unit": "m",
+      "data_type": "topographic",
+      "mission": "MRO",
+      "instrument": "HiRISE + CTX",
+      "source": "nasa",
+      "product_id": "DTEEC_023524_1985_023379_1985_U01, DTEEC_045994_1985_046060_1985_U01, DTEEC_048842_1985_048908_1985_U01, DTEEC_022680_1985_022746_1985_A01, DTEEC_002387_1985_003798_1985_A01, J03_045994_1986_XN_18N282W__J03_046060_1986_XN_18N282W, J10_048842_1986_XN_18N282W__J11_048908_1986_XN_18N282W, K13_058574_1983_XN_18N282W__K13_058640_1983_XN_18N282W"
+    },
+    "slope": {
+      "file": "slope.npy",
+      "dtype": "float32",
+      "unit": "deg",
+      "data_type": "topographic",
+      "mission": "MRO",
+      "instrument": "HiRISE + CTX",
+      "source": "nasa",
+      "product_id": "DTEEC_023524_1985_023379_1985_U01, DTEEC_045994_1985_046060_1985_U01, DTEEC_048842_1985_048908_1985_U01, DTEEC_022680_1985_022746_1985_A01, DTEEC_002387_1985_003798_1985_A01, J03_045994_1986_XN_18N282W__J03_046060_1986_XN_18N282W, J10_048842_1986_XN_18N282W__J11_048908_1986_XN_18N282W, K13_058574_1983_XN_18N282W__K13_058640_1983_XN_18N282W",
+      "derived": "pantă maximă din pixeli de 4 m"
+    },
+    "terrain": {
+      "file": "terrain.npy",
+      "dtype": "uint8",
+      "unit": "class",
+      "data_type": "thermal",
+      "mission": "—",
+      "instrument": "provizoriu: din pantă (capitolul 5: THEMIS)",
+      "source": "assumption"
+    },
+    "minerals": {
+      "file": "minerals.npy",
+      "dtype": "uint8",
+      "unit": "class",
+      "data_type": "spectral",
+      "mission": "—",
+      "instrument": "provizoriu: fără minerale (capitolul 5: CRISM / SIM 3464)",
+      "source": "assumption"
+    },
+    "radiation": {
+      "file": "radiation.npy",
+      "dtype": "float32",
+      "unit": "uSv/h",
+      "data_type": "radiation",
+      "mission": "MSL Curiosity",
+      "instrument": "RAD (model după altitudine)",
+      "source": "assumption"
+    },
+    "unsafe": {
+      "file": "unsafe.npy",
+      "dtype": "bool",
+      "unit": "mask",
+      "data_type": "topographic",
+      "mission": "MRO",
+      "instrument": "HiRISE + CTX",
+      "source": "nasa",
+      "product_id": "DTEEC_023524_1985_023379_1985_U01, DTEEC_045994_1985_046060_1985_U01, DTEEC_048842_1985_048908_1985_U01, DTEEC_022680_1985_022746_1985_A01, DTEEC_002387_1985_003798_1985_A01, J03_045994_1986_XN_18N282W__J03_046060_1986_XN_18N282W, J10_048842_1986_XN_18N282W__J11_048908_1986_XN_18N282W, K13_058574_1983_XN_18N282W__K13_058640_1983_XN_18N282W",
+      "derived": "pantă > 35° la 4 m (legenda FOM nu e publicată)"
+    }
+  },
+  "terrain_classes": {
+    "0": "bedrock",
+    "1": "regolith",
+    "2": "sand",
+    "3": "boulders"
+  },
+  "mineral_classes": {
+    "0": "none",
+    "1": "clay",
+    "2": "carbonate",
+    "3": "olivine"
+  },
+  "targets": [
+    {
+      "id": "clay_delta",
+      "name": "Argilă, frontul deltei (zona Hawksbill Gap / Three Forks)",
+      "kind": "clay",
+      "row": 211,
+      "col": 115,
+      "science_value": 10,
+      "dwell_min": 30,
+      "image": null,
+      "lat": 18.45299,
+      "lon": 77.40216,
+      "snapped_m": 0,
+      "note": "mudstone cu argile la baza frontului deltei; probe Perseverance din campania deltei",
+      "source": "de verificat (traversa Perseverance, USGS SIM 3464)"
+    },
+    {
+      "id": "carbonate_rim",
+      "name": "Carbonați, unitatea de margine",
+      "kind": "carbonate",
+      "row": 57,
+      "col": 47,
+      "science_value": 7,
+      "dwell_min": 20,
+      "image": null,
+      "lat": 18.50495,
+      "lon": 77.37798,
+      "snapped_m": 0,
+      "note": "carbonați detectați de CRISM în unitatea de margine a craterului",
+      "source": "de verificat (traversa Perseverance, USGS SIM 3464)"
+    },
+    {
+      "id": "olivine_floor",
+      "name": "Olivină, Séítah (fundul craterului)",
+      "kind": "olivine",
+      "row": 273,
+      "col": 213,
+      "science_value": 4,
+      "dwell_min": 15,
+      "image": null,
+      "lat": 18.43207,
+      "lon": 77.43702,
+      "snapped_m": 0,
+      "note": "cumulat bogat în olivină (formațiunea Séítah), eșantionat de Perseverance",
+      "source": "de verificat (traversa Perseverance, USGS SIM 3464)"
+    }
+  ],
+  "provenance": {
+    "stac_api": "https://stac.astrogeology.usgs.gov/api/",
+    "hirise_dtms": [
+      "DTEEC_023524_1985_023379_1985_U01",
+      "DTEEC_045994_1985_046060_1985_U01",
+      "DTEEC_048842_1985_048908_1985_U01",
+      "DTEEC_022680_1985_022746_1985_A01",
+      "DTEEC_002387_1985_003798_1985_A01"
+    ],
+    "hirise_with_fom": [
+      "DTEEC_022680_1985_022746_1985_A01",
+      "DTEEC_023524_1985_023379_1985_U01",
+      "DTEEC_045994_1985_046060_1985_U01",
+      "DTEEC_048842_1985_048908_1985_U01"
+    ],
+    "ctx_dtms": [
+      "J03_045994_1986_XN_18N282W__J03_046060_1986_XN_18N282W",
+      "J10_048842_1986_XN_18N282W__J11_048908_1986_XN_18N282W",
+      "K13_058574_1983_XN_18N282W__K13_058640_1983_XN_18N282W"
+    ],
+    "themis": [
+      "mc13_syrtis_major_dir",
+      "mc13_syrtis_major_nir"
+    ],
+    "vertical_bias_m": {
+      "J10_048842_1986_XN_18N282W__J11_048908_1986_XN_18N282W": 1.54,
+      "K13_058574_1983_XN_18N282W__K13_058640_1983_XN_18N282W": -12.6,
+      "DTEEC_002387_1985_003798_1985_A01": -30.97,
+      "DTEEC_022680_1985_022746_1985_A01": -42.53,
+      "DTEEC_048842_1985_048908_1985_U01": -21.71,
+      "DTEEC_045994_1985_046060_1985_U01": -32.97,
+      "DTEEC_023524_1985_023379_1985_U01": -33.15
+    },
+    "vertical_datum": "areoid (HiRISE DTEEC); CTX deplasat cu -32.97 m",
+    "hirise_coverage_pct": 94.4,
+    "fine_resolution_m": 4.0,
+    "license": "CC0-1.0 (USGS Astrogeology ARD)"
+  },
+  "fingerprint": {
+    "forbidden_pct": 0.86,
+    "unsafe_pct": 0.13,
+    "elevation_mean_m": -2552.9
+  }
+}

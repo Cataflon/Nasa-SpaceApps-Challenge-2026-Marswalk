@@ -24,6 +24,7 @@ Documentație: https://stac.astrogeology.usgs.gov/docs/data/mars/hirise_dtms
 import argparse
 import json
 import math
+import os
 import sys
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -211,8 +212,15 @@ def crop(href: str, out_path: Path, src_bounds_fn, step_m: float | None = None, 
         for k in ("photometric",):
             profile.pop(k, None)
         out_path.parent.mkdir(parents=True, exist_ok=True)
-        with rasterio.open(out_path, "w", **profile) as dst:
-            dst.write(data)
+        # Scriere atomică: fișier temporar unic + os.replace. O rulare întreruptă sau două rulări
+        # în paralel nu lasă niciodată un GeoTIFF scris pe jumătate sub numele final.
+        tmp = out_path.with_name(f".{out_path.stem}.{os.getpid()}.tmp.tif")
+        try:
+            with rasterio.open(tmp, "w", **profile) as dst:
+                dst.write(data)
+            os.replace(tmp, out_path)
+        finally:
+            tmp.unlink(missing_ok=True)
         return {"read_res_m": abs(transform.a), "shape": [out_h, out_w], "native_res_m": ds.res[0]}
 
 
@@ -305,8 +313,18 @@ def write_manifest(out: Path, products: list[Product], hirise_step_m: float) -> 
         "products": all_products,
     }
     out.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+    atomic_write_text(path, json.dumps(manifest, ensure_ascii=False, indent=2))
     return path
+
+
+def atomic_write_text(path: Path, text: str) -> None:
+    """Scrie un fișier text atomic (temporar + os.replace), ca cititorii să nu vadă jumătăți."""
+    tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    try:
+        tmp.write_text(text, encoding="utf-8")
+        os.replace(tmp, path)
+    finally:
+        tmp.unlink(missing_ok=True)
 
 
 def main() -> None:

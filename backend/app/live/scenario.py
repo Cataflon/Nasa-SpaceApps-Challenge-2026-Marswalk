@@ -324,10 +324,20 @@ DEMO_SCENARIO_EVENTS = [
     ScheduledEvent(170, "regional_storm", {"intensity": 0.9}),
 ]
 
-# Coordonatele furtunii depind de sit (habitatul și țintele sunt în alte celule pe Jezero).
-# Situl real se adaugă aici când e gata pipeline-ul.
+# Pe Jezero (data/processed/jezero): habitatul e la (229, 264), lângă locul de aterizare, iar
+# clay_delta la (211, 115), la baza frontului deltei, ~3 km vest. Traseul merge spre vest, deci
+# furtuna locală vine din SUD (3 km sub capătul vestic al traseului) și urcă spre nord cu 2,5 m/s
+# (vy < 0 = spre nord, row crește spre sud), tăind traseul în ~20 min.
+JEZERO_DEMO_EVENTS = [
+    ScheduledEvent(72, "local_storm", {"center": {"row": 361, "col": 150}, "axes_m": [1800, 1100], "angle_deg": 90,
+                                       "velocity_ms": [-2.5, 0.0], "intensity": 0.7}),
+    ScheduledEvent(170, "regional_storm", {"intensity": 0.9}),
+]
+
+# Coordonatele furtunii depind de sit (habitatul și țintele sunt în alte celule).
 DEMO_EVENTS_BY_SITE: dict[str, list[ScheduledEvent]] = {
     "synthetic": DEMO_SCENARIO_EVENTS,
+    "jezero": JEZERO_DEMO_EVENTS,
 }
 
 

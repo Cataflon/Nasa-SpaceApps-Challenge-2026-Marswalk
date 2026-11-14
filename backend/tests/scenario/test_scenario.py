@@ -210,6 +210,32 @@ def test_demo_events_returns_copy_with_fallback():
     assert [e.event for e in sc.demo_events("unknown_site")] == ["local_storm", "regional_storm"]
 
 
+def test_jezero_demo_storm_crosses_route_from_south():
+    """Furtuna demo pe Jezero pornește la sud de traseul habitat -> clay_delta și urcă spre nord."""
+    import math
+
+    from app.config import site_dir
+
+    evs = sc.demo_events("jezero")
+    storm = evs[0]
+    assert storm.event == "local_storm" and storm.params["velocity_ms"][0] < 0  # spre nord
+    meta_path = site_dir("jezero") / "meta.json"
+    if not meta_path.exists():
+        pytest.skip("situl Jezero nu e generat")
+    meta = json.loads(meta_path.read_text(encoding="utf-8"))
+    clay = next(t for t in meta["targets"] if t["id"] == "clay_delta")
+    hab = meta["habitat"]
+    c = storm.params["center"]
+    assert min(clay["col"], hab["col"]) <= c["col"] <= max(clay["col"], hab["col"])  # sub traseu
+    dist_m = (c["row"] - max(clay["row"], hab["row"])) * meta["cell_size_m"]
+    eta_min = dist_m / abs(storm.params["velocity_ms"][0]) / 60
+    assert 2000 <= dist_m <= 4000 and 10 <= eta_min <= 30
+    # durata trecerii, din geometrie: 2 × 1800 m / 2,5 m/s = 24 min
+    s = sc.generate(42, 300, evs)
+    assert max(d["dust_tau"] for d in s.sensors[80:105]) > 1.5
+    assert math.isclose(2 * max(storm.params["axes_m"]) / 2.5 / 60, 24.0)
+
+
 def test_sensor_labels_cover_all_keys():
     assert set(sc.SENSOR_LABELS) == KEYS == set(sc.BASELINE)
     for lab in sc.SENSOR_LABELS.values():
