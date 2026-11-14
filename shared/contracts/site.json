@@ -5,7 +5,7 @@
   "shape": [500, 500],
   "center": { "lat": 18.44, "lon": 77.45 },
   "habitat": { "row": 300, "col": 200 },
-  "max_slope_deg": 25,
+  "max_slope_deg": 20,
   "targets": [
     { "id": "clay_delta", "name": "Clay, delta front", "kind": "clay", "row": 180, "col": 140, "science_value": 10, "dwell_min": 30, "image": null },
     { "id": "carbonate_rim", "name": "Carbonates, delta margin", "kind": "carbonate", "row": 120, "col": 260, "science_value": 7, "dwell_min": 20, "image": null },

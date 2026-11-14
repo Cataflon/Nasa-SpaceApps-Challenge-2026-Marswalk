@@ -2,10 +2,103 @@
 
 ## Gata
 
-Teste: `python -m pytest tests/core` → 173 trecute, plus 2 lente (`-m slow`)
-(`test_decision` 6, `test_grid` 14, `test_costmap` 27, `test_routing` 62, `test_budget` 11,
-`test_daylight` 9, `test_stops` 14, `test_planner` 7, `test_hazards` 11, `test_alternatives` 8,
-`test_benchmark` 4 + 2 lente).
+Teste: `python -m pytest tests/core` → 184 trecute, plus 2 lente (`-m slow`)
+(`test_decision` 6, `test_grid` 14, `test_costmap` 27, `test_routing` 65, `test_budget` 11,
+`test_daylight` 9, `test_stops` 14, `test_planner` 7, `test_hazards` 11, `test_alternatives` 15,
+`test_benchmark` 5 + 2 lente).
+
+### Sesiunea din 14.11: cererile deschise, rezolvate (T1-T9, cu acordul utilizatorului)
+
+Toate intrările de mai jos erau la „Cereri”; sunt **rezolvate în această sesiune**.
+
+- **T1, panta maximă 20° (D1).** `types.Limits.max_slope_deg` = 20,0 (excepție aprobată pentru
+  `types.py`); `shared/contracts/meta.json` și `site.json` → 20; `make_synthetic_site.MAX_SLOPE_DEG`
+  era deja 20 (rolul 1, v8). `planner.PLANNER_LIMITS` = `Limits()`, deci harta de cost
+  (`meta.max_slope_deg`), validatorul din planner și cel din motorul live folosesc aceeași limită.
+  Testele din `test_costmap.py` care foloseau 25° trec acum pe 20°.
+- **T2, doza (D4).** Era deja corectată la sursă de rolul 1: situl sintetic v7 are fondul de 28 µSv/h
+  (doză echivalentă, RAD 0,67 mSv/zi), iar `scenario.DOSE_RATE_USV_H` = 28. Core-ul nu are factor.
+  Teste existente: `pipeline/tests/test_synthetic.py::test_radiation_is_rad_dose_equivalent`,
+  `tests/scenario/test_scenario.py` (28,0).
+- **T3, relief în situl sintetic (v9).** `pipeline/make_synthetic_site.py`: o creastă cu șa între
+  habitat și `carbonate_rim` (profil gaussian, flancuri ≈ 17°) și un front de deltă mai abrupt
+  (lățimea 12-102 m în loc de 12-172 m). Fără numere aleatoare noi, deci restul sitului e identic.
+  Rezultat: 1,26 % din celule au 12-18° (înainte 0,41 %); spre `carbonate_rim`, `fast` urcă direct
+  peste flancul de 17° (181 de celule), `safe` și `science` ocolesc (186 / 185 de celule; 3 % celule
+  comune cu `fast`); spre `olivine_floor` diferă și ele (60 % comune). Nicio celulă peste 20° pe
+  trasee. Teste: `test_relief_ridge_and_delta_front_have_12_to_18_degree_zones` (pipeline),
+  `test_synthetic_presets_give_different_routes_for_at_least_two_targets` (core).
+- **T4, start în interiorul unui pericol (D2).** `alternatives.generate`: un pericol care acoperă
+  deja celula de start (intensitate ≥ `BLOCK_THRESHOLD`) intră în căutări ca termen finit
+  (`costmap.hazard_cost`), nu ca zonă blocată; celelalte rămân blocate. Variantă nouă
+  **`exit_zone`** (kind `RETURN`): cea mai ieftină ieșire din pericol (`routing.nearest_exit`, nou:
+  Dijkstra cu oprire la prima celulă exterioară) + drumul spre casă care nu reintră în pericol.
+  Expunerea pe porțiunea de ieșire nu se numără la risc (e inevitabilă); cea de după, da. Furtuna
+  regională nu intră aici (nu are „ieșire”). Teste: `test_start_inside_hazard_gives_valid_exit_zone`,
+  `test_start_inside_hazard_is_deterministic`, `test_outside_hazard_stays_blocked_and_has_no_exit_zone`,
+  `test_nearest_exit_*` (2). În scena demo, la minutul 90 frontul a ajuns peste astronaut, iar regula
+  alege acum `exit_zone` (RETURN) după EMERGENCY-ul de la 80: testul Jezero are o decizie în plus,
+  iar testul nou `test_demo_scene_decisions_on_synthetic` reproduce scena cap-coadă pe situl sintetic.
+- **T5, ocoliri distincte (D3).** Generatorul nu le făcea așa: pe teren plat, cele 3 preset-uri dădeau
+  același traseu, deci o singură ocolire. Acum: câte un waypoint pe fiecare latură a pericolului care
+  atinge primul traseul (perpendicular pe poziție → țintă, prin centrul prezis la minutul contactului,
+  la semiaxa mare + 100 m), `astar` poziție → waypoint → țintă pe costul cu pericolul ca termen finit,
+  plus vechile ocoliri A* spațiu-timp. Se păstrează doar candidații cu < 50 % celule comune (până la
+  țintă), în ordinea riscului; eticheta vine din semnul produsului vectorial. Teste:
+  `test_two_detours_on_opposite_sides_are_distinct_and_stable` (grilă 30 × 30), `_side`, `_overlap`.
+- **T6, backend.** (a) `POST /api/route` folosea deja `plan_route`; `route_id` din stoc, PNR null
+  rămâne null (test nou). (b) `static_cost` read-only: niciun apelant din `api/`, `live/`, `llm/` nu
+  modifică tabloul; test. (c) `plan_route` verifică accesibilitatea din `cost_to_home` (startul și
+  fiecare țintă) înainte de orice `astar` și aruncă `ValueError` cu mesaj **în engleză** (ajunge în
+  `detail` la 422); startul în afara grilei e tot `ValueError`. Am reparat și codificarea lui
+  `planner.py` (era dublu codificat, mojibake în comentarii și în mesaje). (d) Motorul cheamă
+  `generate` doar pentru un contact în ≤ `REACT_WINDOW_MIN` = 30 min; după o decizie **RETURN** nu mai
+  replanifică (`committed_return`); o furtună „doar RETURN” apărută după aceea primește doar o
+  confirmare RETURN pe același drum, fără `generate`. EMERGENCY nu e RETURN: motorul continuă să caute
+  o variantă validă. (e) Lifespan: thread de încălzire (import OR-Tools, un `plan_route`, un `generate`).
+  (f) `GET /api/benchmark`: `run_benchmark(100, 42)` pornit o dată la startup (`api/bench_cache.py`),
+  503 + `Retry-After: 30` până e gata, apoi din cache; 500 dacă a eșuat. Calculul rulează într-un
+  proces separat, pornit dintr-un thread: un minut de Python pe un thread din server ar ține GIL-ul și
+  ar încetini bucla live. Variabile: `MARSWALK_WARMUP=0`, `MARSWALK_BENCHMARK_AT_STARTUP=0`.
+  `run_benchmark` întoarce acum și **`headline`** = `{copilot_safe_pct, plan_safe_pct, n_scenarios}`.
+  Definiția „acasă în siguranță”: ajuns în habitat, O₂ ≥ rezerva, doza ≤ limita, înainte de apus minus
+  marjă, fără expunere ≥ 0,3 pe mișcarea reală a furtunii.
+- **Performanța la furtuna regională** (cererea rolului 1, ~1,2 s): când toate pericolele sunt
+  „doar RETURN”, `generate` nu mai calculează ocoliri (nu sunt un răspuns permis). Test: < 0,5 s.
+- **T7, frontend.** `utils.js`: `hasSafeReturn`, `effectiveVerdict`, `pointOfNoReturnLabel`,
+  `pointOfNoReturnCell`, `splitAtLastStop`; `BudgetPanel` arată „Punct de neîntoarcere” (sau „fără
+  întoarcere sigură” și NO-GO, cu avertisment), `App` blochează pornirea pe verdictul efectiv,
+  `TerrainView` pune un inel la PNR (doar dacă există) și desenează fiecare alternativă complet, cu
+  întoarcerea de după ultima oprire mai estompată. Etichete noi: `exit_zone`, `detour_east/west`.
+  Verificat cu mock-urile din contracte (ambele cazuri, `node --test`, script în afara repo-ului:
+  `frontend/tests/` nu era în lista de fișiere permise). `npm run build` trece.
+- **T8.** `shared/contracts/README.md`: „Alternative.path = traseul rămas complet, de la poziția
+  curentă până la habitat; la wait, doar [position].”
+
+**Benchmark (situl v9, seed 42, 100 de scenarii, 65 s):** acasă în siguranță: copilot **82 %**, doar
+planul **51 %** (`headline`). Pe tipuri (plan → copilot): vârtejuri 51 → 62 din 67, fronturi 0 → 17 din
+27, regionale 0 → 3 din 6. O₂ la sosire min/mediu: plan 72,0/72,0 %, copilot 43,2/77,7 %; știință
+colectată 100 % / 53 %. Decizii: 41 CONTINUE, 18 REROUTE, 29 WAIT, 43 RETURN, 10 EMERGENCY.
+**Un scenariu e mai puțin sigur cu copilotul** (`storm_77`, vârtej): copilotul alege WAIT, iar
+mișcarea reală (cu zgomot) aduce vârtejul peste astronautul care așteaptă (expunere 0,87, față de 0,22
+pe plan). Nu vine din T5 (fără ocolirile prin waypoint rezultatul e identic); e efectul sitului v9 asupra
+furtunilor generate. Tabelul R2-11 de mai jos e pe situl vechi.
+
+**Timpi (situl v9, Python 3.14, mediana):**
+
+| Funcție | Măsurat | Țintă |
+|---|---|---|
+| `static_cost`, fără cache | 7,2 ms | < 0,2 s |
+| `astar` habitat → ținte | 35-58 ms | < 1 s |
+| `astar` colț la colț | 0,59 s | < 1 s (înainte depășit: 1,14 s) |
+| `reverse_dijkstra` safe / fast / science | 0,70 / 0,72 / 0,70 s | < 2 s |
+| `alternatives.generate`, furtună pe traseu, cache cald | 0,20 s | < 2 s |
+| `alternatives.generate`, start în pericol | 0,12 s | < 2 s |
+| `plan_route` 1 țintă, primul apel (fără importul OR-Tools) | 1,63 s | < 3 s |
+| `plan_route` 1 țintă, cache cald | 0,002 s | < 3 s |
+| `plan_route` 3 ținte, după cel de 1 țintă / cald | 0,33 / 0,28 s | < 3 s |
+| `run_benchmark(100, 42)` | 65 s | < 2 min |
+| importul OR-Tools | 0,87 s | mutat în încălzirea de la pornire |
 
 ### R2-11: benchmark, generatorul de furtuni și calibrarea conului
 
@@ -334,95 +427,66 @@ Pe situl sintetic: 1,34 % din celule sunt interzise. Costul finit e între 1,03 
 `safe`, 1,02 și 12,02 la `science`, 1,01 și 7,51 la `fast`. Termenul de radiație e între 0 și
 0,074 la `safe` (`rad_norm` între 0 și 0,037).
 
+### Cereri vechi, mutate aici: rezolvate în această sesiune
+
+Textul lor complet e în istoricul git al acestui fișier; aici, doar rezolvarea.
+
+- Rolul 3, `static_cost` doar pentru citire: **rezolvat în această sesiune** (T6b; niciun apelant nu
+  modifică tabloul, test în `tests/api/test_core_integration.py`).
+- Rolul 3, `astar` întoarce None / aruncă ValueError; verificarea ieftină prin `cost_to_home`:
+  **rezolvat în această sesiune** (T6c, în `plan_route`).
+- Rolul 3, conul relativ și fereastra de 30 min; fără replanificare după RETURN: **rezolvat în această
+  sesiune** (T6d, în motor).
+- Rolul 3, `GET /api/benchmark` calculat o dată, în cache: **rezolvat în această sesiune** (T6f).
+- Rolul 3, `alternatives.generate` e gata, semantica lui `path`: **rezolvat în această sesiune**
+  (T6d, T7, T8: scrisă și în `shared/contracts/README.md`).
+- Rolul 3, planner-ul e gata pentru `POST /api/route`: **rezolvat în această sesiune** (T6a).
+- Oameni, panta maximă (20° în planner, 25° în `Limits` și `meta.json`): **rezolvat în această
+  sesiune** (T1, 20° peste tot).
+- Rolul 3, importul OR-Tools la primul `POST /api/route`: **rezolvat în această sesiune** (T6e,
+  încălzirea din lifespan).
+- Rolul 1, doza ≈ 2,8× prea mică în stratul `radiation`: **rezolvat** (la sursă de rolul 1, situl v7
+  și `scenario` la 28 µSv/h; verificat în această sesiune, T2).
+- Oameni, start pe celulă interzisă în live: **rezolvat în această sesiune** (T4, pericolul care
+  conține startul devine cost finit, varianta `exit_zone`).
+- Oameni, preset-urile dau aproape același traseu; ocolirile nu pot veni doar din preset-uri:
+  **rezolvat în această sesiune** (T3 relieful v9, T5 ocolirile prin waypoint).
+- De știut, închise (informative, nu cereau nimic): `M_TOTAL` 196 kg și constantele de O₂ din
+  registru; `PARAMETRI_REFERINTA.md` e în `docs/roles/`; convenția costului unei mutări (media celor
+  două celule) rămâne cea aleasă; `.venv` creat local din `requirements.txt`.
+
 ## În lucru
 
-- Toate funcțiile din `ROL2_algoritmi.md` sunt implementate (P0, P1, P2). Rămân de făcut doar
-  dacă se cer: registrul `core/params.py` propus în `PARAMETRI_REFERINTA.md` și calibrarea
-  zgomotului din `storms.py` pe date MEDA reale.
-- De preluat din `docs/roles/PARAMETRI_REFERINTA.md`, la pașii care le ating (constantele
-  din `budget.py` sunt deja preluate la R2-4):
-  - registrul `core/params.py` (un singur loc pentru constante, cu nivel A/B/C și sursă);
-  - `hazards.py`: `SIGMA_V` calibrat pe variabilitatea vântului (R2-11).
-  Tabelul de la „Presupuneri” de mai jos rămâne până atunci cu valorile din cod.
-- `max_slope_deg` 25 → 20 (propus acolo, de aprobat de echipă): `static_cost` citește limita
-  din `site.meta`, deci nu cere schimbări în `costmap.py`; doar `Limits.max_slope_deg` e separat.
+- Nimic în lucru. Toate funcțiile din `ROL2_algoritmi.md` sunt implementate, iar cererile deschise
+  de la 14.11 sunt rezolvate (vezi „Sesiunea din 14.11” la „Gata”).
+- Rămân de făcut doar dacă se cer: registrul `core/params.py` propus în `PARAMETRI_REFERINTA.md`.
 
 ## Cereri
 
-- **Pentru rolul 3:** tabloul întors de `static_cost` e doar pentru citire (același obiect
-  ajunge la toți apelanții, din cache). `cost + altceva` merge; o modificare pe loc
-  (`cost[mask] = ...`, `cost += ...`) aruncă `ValueError`. Cine are nevoie face `cost.copy()`.
-  Dacă straturile unui `Site` se schimbă pe loc, trebuie apelat `costmap.clear_cost_cache()`.
-- **Pentru rolul 3:** `astar` întoarce `None` când nu există traseu (inclusiv când start sau
-  goal e pe o celulă interzisă) și aruncă `ValueError` pentru celule în afara grilei. Când ținta
-  e izolată, răspunsul vine abia după ~1,4 s, pentru că A* trebuie să epuizeze harta. Verificarea
-  ieftină, înainte de a chema `astar` de la habitat: `cost_to_home[celulă] == inf` din
-  `reverse_dijkstra` (calculat o dată per hartă). Pentru traseul de întoarcere nu e nevoie de
-  `astar` deloc: `path_home(parent_index, celulă)` durează sub 0,1 ms.
-- **Pentru rolul 3 (motorul live, după R2-11):** conul de predicție e acum relativ la viteză
-  (`hazards.SIGMA_REL = 0,35`). La orizonturi lungi conul acoperă tot traseul, deci chemați
-  `alternatives.generate` doar dacă `route_hit` dă un contact în următoarele 30 de minute
-  (`benchmark.REACT_WINDOW_MIN`); altfel continuați și verificați la tick-ul următor. După un
-  RETURN, benchmark-ul nu mai replanifică; recomandăm la fel în motor.
-  `GET /api/benchmark` → `benchmark.run_benchmark(n, seed)`: 100 de scenarii durează ≈ 1 min,
-  deci rezultatul trebuie pus în cache sau calculat la pornire, nu la fiecare cerere.
-- **Pentru rolul 1:** zgomotul mișcării furtunilor din `storms.py` (viteză ±15 %, direcție
-  1°/min) e o presupunere. Registrul trimite la variabilitatea vântului MEDA [S7]; cu cifre de
-  acolo, `calibrate_sigma_v` dă imediat un `SIGMA_REL` cu sursă.
-- **Pentru rolul 3: `alternatives.generate` e gata.** Semantica lui `path` în fiecare
-  `Alternative`: traseul rămas COMPLET, de la poziția curentă până la habitat (inclusiv opririle
-  rămase); la `wait`, doar `[position]`, ca în `live_messages.json`. Celulele sunt tupluri
-  `(row, col)` (în JSON devin liste). Variantele vin nevalidate: le trimiteți direct la
-  `decision.choose`. `remaining_path` trebuie să înceapă la `position` (altfel ValueError).
-  Un apel durează ≈ 0,16 s pe situl sintetic, cu cache-ul cald; primul apel pe un sit, ≈ 0,8 s.
-  Apelați-l doar la tick-urile în care `hazards.route_hit` pe traseul rămas dă True.
-- **Pentru rolul 3: planner-ul e gata.** `POST /api/route` poate trece de pe mock pe
-  `planner.plan_route(site, start, stops, preset, start_time_min, max_duration_min,
-  return_to_habitat)`. Întoarce exact forma din `route_response.json`; `route_id` e mereu
-  `"plan_0"` (îl suprascrieți din stocul vostru). `ValueError` → 422 (ținte necunoscute sau
-  inaccesibile). `point_of_no_return` poate fi `null` dacă nici startul nu respectă rezerva.
-  Primul apel pe un sit durează ≈ 1,3-1,6 s (două Dijkstra, puse apoi în cache); următoarele,
-  sub 0,3 s. Un `plan_route` de încălzire la pornire mută costul acolo.
-- **Pentru oameni (pantă maximă):** validatorul din planner folosește 20° (registru, A [S26]);
-  `Limits` și `meta.json` au încă 25°. Harta de cost permite deci 20-25°, iar un traseu prin
-  asemenea pante iese NO-GO cu `SLOPE`. Pe situl sintetic nu se întâmplă (panta maximă pe
-  traseele spre ținte: 7,3°). Rezolvarea curată e `max_slope_deg = 20` în `meta.json` și `Limits`.
-- **Pentru rolul 3:** primul apel la `stops.plan_stops` dintr-un proces plătește importul
-  OR-Tools (0,75 s). Dacă primul `POST /api/route` trebuie să fie rapid, un `import
-  ortools.sat.python.cp_model` la pornirea backendului mută costul acolo.
-- **Pentru oameni, de știut (R2-4):** pasul propunea `M_TOTAL` ≈ 170 kg și păstrarea
-  constantelor de O₂ existente (0,12 și 0,0006). Am luat valorile din registru, după regula
-  „constantele se iau din PARAMETRI_REFERINTA.md”: `M_TOTAL` 196 kg (B), 0,125 și 0,000711 (B).
-  Cu ele, 5 h pe plat consumă 58,2 % O₂ (cu cele vechi: ≈ 53 %); ambele sunt în 40-60 %.
-- **Pentru rolul 1 (doză):** `route_budget` folosește grila `radiation` așa cum vine, în µSv/h.
-  Registrul (§2) arată că ≈ 10 pe situl sintetic e de fapt doză absorbită (µGy/h), iar doza
-  echivalentă e ≈ 28 µSv/h. Dozele calculate sunt deci de ≈ 2,8 ori prea mici până se corectează
-  stratul.
-- **Pentru oameni, de știut:** pasul R2-3 cere să citesc `docs/PARAMETRI_REFERINTA.md`, dar
-  fișierul e la `docs/roles/PARAMETRI_REFERINTA.md`. L-am citit de acolo.
-- **Pentru oameni, de știut (convenția D2):** textul lui D2 nu e în repo. Costul unei mutări l-am
-  ales, cu acordul utilizatorului, ca media celor două celule (vezi R2-3 la „Gata”), și am
-  schimbat `astar` pe ea. Dacă D2 spune altceva, trebuie refăcute `astar` și `reverse_dijkstra`.
-- **Pentru oameni, de decis (start pe celulă interzisă, în live):** conform pasului R2-2, `astar`
-  întoarce `None` dacă celula de start are cost `inf`. În ieșirea live, dacă un pericol e pus
-  ca `inf` peste celula în care se află astronautul, din acea celulă nu mai iese niciun traseu.
-  De hotărât la `astar_spacetime` / `alternatives.generate`: fie pericolul intră doar ca cost
-  finit (`hazard_cost`), fie celula de start e exceptată acolo.
-- **Pentru oameni, de decis (preset-urile dau aproape același traseu pe situl sintetic):**
-  cu convenția D2 actuală, traseul habitat → `clay_delta` e **identic** la toate cele trei
-  preset-uri. Spre `carbonate_rim` și `olivine_floor`, `safe` diferă de `fast` (174, respectiv
-  126 de celule comune), iar `science` și `fast` coincid la toate cele 3 ținte. Cauza: situl
-  sintetic e aproape plat (pantă mediană 0,43°, percentila 90 la 1,5°), deci `f_slope` e ≈ 1
-  aproape peste tot, la orice `slope_k`.
-  Testul din R2-2 care cerea `safe ≠ fast` spre `clay_delta` a picat după schimbarea D2; l-am
-  înlocuit cu ce e garantat (fiecare preset își găsește traseul optim după propria hartă).
-  Urmare pentru `alternatives.generate`: preset-urile singure nu produc ocoliri distincte pe
-  acest sit. Ocolirile vor trebui să vină din termenul de pericol (`w_hazard × câmp`) sau din
-  blocarea pe rând a unei părți a pericolului (nord / sud).
-- **Pentru oameni, de știut:** `.venv` nu exista local. L-am creat cu `python -m venv .venv` și
-  `pip install -r backend/requirements.txt` (exact lista înghețată, fără pachete în plus, fără
-  `npm install`). Situl sintetic l-am generat cu `pipeline/make_synthetic_site.py`, nemodificat.
-  Ambele sunt în `.gitignore`.
+- **Pentru rolul 1 (deschis, presupunere C):** zgomotul mișcării furtunilor din `storms.py` (viteză
+  ±15 %, direcție 1°/min) nu e încă calibrat pe MEDA. Cifrele sunt acum în
+  `data/processed/jezero/wind_stats.json` (Weibull + turbulență, [S7]); de preluat în `storms.py`,
+  apoi `calibrate_sigma_v` dă un `SIGMA_REL` cu sursă. Răspuns la întrebarea rolului 1 despre mărimi:
+  `storms.py` folosește deja mărimile din registru (vârtejuri 100-135 m, front 30 × 5 km la 10-20 m/s,
+  regională cu rază ≈ 1000 km).
+- **Pentru rolul 1 (nou, prezentare):** scena demo are acum **4 decizii**: 30 REROUTE, 80 EMERGENCY,
+  **90 RETURN prin `exit_zone`** (frontul a ajuns peste astronaut; copilotul îl scoate pe drumul cel
+  mai scurt din furtună), 125 RETURN (confirmare, fără replanificare). `docs/demo.md` și
+  `docs/slides.md` descriu încă 3. Cifrele benchmark-ului s-au schimbat (situl v9, ocolirile noi):
+  82 % copilot față de 51 % plan, 100 de scenarii; slide-urile trebuie remăsurate.
+- **Pentru rolul 4 (nou):** `GET /api/benchmark` întoarce acum `headline`, dar abia după ~1 min de la
+  pornire: până atunci 503 cu `Retry-After` (secunde). UI-ul încă nu afișează cifra. Eticheta pentru
+  varianta nouă `exit_zone` e în `utils.js` (în română, ca restul panoului; regula echipei cere engleză).
+- **Pentru cine întreține `backend/tests/regression/` (nou):** AUDIT-009, AUDIT-010 (`run_benchmark`)
+  și AUDIT-011 sunt reparate; testele lor `xfail(strict=True)` trec acum și apar ca FAILED (XPASS).
+  Trebuie scos marcajul de pe `test_route_error_detail_is_english_without_mojibake`,
+  `test_run_benchmark_has_headline` și `test_max_slope_is_the_same_everywhere`. Testul
+  `test_api_benchmark_returns_headline` cere 200 imediat; semantica cerută acum e 503 până e gata,
+  apoi 200 (testul nou: `tests/api/test_core_integration.py`), deci acel test trebuie rescris.
+  Fișierul nu era în lista de fișiere permise a sesiunii, deci nu l-am atins.
+- **Pentru oameni (de știut):** benchmark-ul are un scenariu în care copilotul e mai puțin sigur
+  decât planul (`storm_77`, WAIT sub un vârtej care deviază). Merită decis dacă WAIT trebuie să ceară
+  o marjă mai mare față de vârtejuri (al căror singur răspuns permis e REROUTE).
 
 ## Presupuneri
 
@@ -432,7 +496,7 @@ Constante și alegeri fără sursă, pentru rolul 1 (de documentat sau de înloc
 |---|---|---|---|
 | `types.Limits` | `o2_reserve_pct` | 30 % | rezerva de O₂ la sosirea în habitat |
 | `types.Limits` | `sunset_margin_min` | 30 min | marja față de apusul efectiv |
-| `types.Limits` | `max_slope_deg` | 25° | panta maximă pe jos, în costum |
+| `types.Limits` | `max_slope_deg` | 20° | NU mai e presupunere: A [S26] (registrul §4.1), decizia D1; aceeași valoare în `meta.json`, `site.json` și situl sintetic |
 | `types.Limits` | `max_dose_msv` | 1,0 mSv | doza maximă pe ieșire |
 | `costmap.PRESETS` | `w_hazard` / `w_radiation` / `w_science` | safe 10 / 2 / 0,15; fast 4 / 0,5 / 0,2; science 6 / 1 / 0,4 | ponderile celor 3 preset-uri |
 | `costmap.PRESETS` | `slope_k` | safe 5,0; science 3,0; fast 1,5 | cât penalizează preset-ul panta: la limita de pantă, mersul costă de 1 + `slope_k` ori mai mult decât pe plat (6× / 4× / 2,5×). Valorile sunt alese ca preset-urile să dea trasee diferite, nu măsurate |
@@ -490,6 +554,14 @@ formula declinației (A, registru §5), `MARS_HOUR_S` 3698,98 s (A, registru §5
 | `alternatives` | `WAIT_OPTIONS_MIN` | 5, 10, …, 90 min | C: din textul pasului |
 | `alternatives` | orizontul ocolirilor | min(180, ieșirea pericolului din dreptunghiul traseului), pas de 10 min | C: dreptunghiul aproximează „zona traseului” |
 | `alternatives` | RETURN și pericolele „doar RETURN” | nu se numără la `crosses_hazard` | C: întoarcerea e chiar răspunsul cerut la furtuna regională |
+| `alternatives` | `DETOUR_MARGIN_M` | 100 m | C: cât de departe de semiaxa mare a pericolului prezis se pune waypoint-ul ocolirii (5 celule de 20 m) |
+| `alternatives` | `WAYPOINT_SCALES` | 1; 1,25; 1,5; 2 | C: de câte ori se îndepărtează waypoint-ul dacă celula e interzisă sau încă în pericol |
+| `alternatives` | `MAX_DETOUR_OVERLAP` | 50 % | C: de la 50 % celule comune (din traseul mai scurt, până la țintă) două ocoliri sunt „aceeași variantă” |
+| `alternatives` | pericol care conține startul | intensitate ≥ `BLOCK_THRESHOLD` (0,1) acum | C: același prag ca pentru blocare; un astfel de pericol devine `hazard_cost` (w_hazard × câmp), nu inf |
+| `alternatives` | ieșirea din pericol (`exit_zone`) | prima celulă cu intensitate < 0,1 în câmpul de la t_min | C: câmpul e luat fix (ieșirea durează puțin față de mișcarea pericolului); expunerea până la ieșire nu se numără la risc |
+| `alternatives` | pericole doar „doar RETURN” | fără ocoliri | C: REROUTE nu e un răspuns permis (HAZARD_RESPONSES), deci nu se calculează |
+| `benchmark` | „acasă în siguranță” (`headline`) | în habitat, O₂ ≥ 30 %, doză ≤ 1 mSv, sosire ≤ apus − 30 min, expunere reală < 0,3 | definiția cerută de ROL2 (sarcina 11); pragurile sunt cele din `Limits` |
+| motor (`live/engine.py`) | după RETURN | fără replanificare; furtuna „doar RETURN” primește doar confirmare | C: ca în benchmark (RETURN definitiv); EMERGENCY nu blochează replanificarea |
 | `planner` | `SOL_START_UTC` | 2026-11-14 14:22 UTC | C: începutul fix al ieșirii, ≈ 08:00 ora locală la Jezero (Ls ≈ 22°); apusul la ≈ 633 min. Fix, ca planul să fie determinist |
 | `planner` | `max_duration_min` | termen-limită raportat ca `DAYLIGHT` | C: validatorul nu are o regulă de durată; sosirea după start + durata maximă devine încălcare `DAYLIGHT` (termenul efectiv = minimul dintre apus − marjă și start + durată) |
 | `planner` | `return_to_habitat=False` | validat ca și cum traseul s-ar termina acolo | C: O₂-ul și sosirea se iau la ultimul punct; staționarea la ultima țintă nu intră în buget |

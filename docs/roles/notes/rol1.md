@@ -253,23 +253,42 @@ Verificată rulând motorul cu alternativele reale ale rolului 2: test `test_dem
 - Situl sintetic e regenerat, Jezero e reconstruit: habitatul și țintele **nu s-au mutat** (pantă ≤ 7,4°). Terenul interzis pe Jezero e 2,05% (era 0,86%). Doar `meta.json` și `grid.json` (amprenta) s-au schimbat.
 - Scena demo dă aceleași trei decizii (testul pe Jezero trece). `how-we-calculate.md`: rândul pantei e 20°, `source` [S26].
 
-## În lucru
+### Cereri rezolvate de rolul 2 (sesiunea din 14.11, cu acordul utilizatorului)
 
-## Cereri
+Mutate aici din „Cereri”: **rezolvate în această sesiune** (detaliile în `docs/roles/notes/rol2.md`,
+„Sesiunea din 14.11”).
 
-- **Pentru rolurile 2 + 3 (panta 20°, AUDIT-011):** datele au acum 20°. Mai trebuie schimbat în fișierele voastre: `backend/app/core/types.py` → `Limits.max_slope_deg = 20.0` (rolul 2) și `shared/contracts/meta.json` + `shared/contracts/site.json` → `"max_slope_deg": 20` (contract comun; mock-ul pe care îl vede frontendul fără sit). După asta, testul `test_max_slope_is_the_same_everywhere` trece și i se poate scoate `xfail`.
+- Panta 20° (AUDIT-011): `Limits.max_slope_deg` = 20,0, `shared/contracts/meta.json` și `site.json`
+  → 20. Testul `test_max_slope_is_the_same_everywhere` trece acum; marcajul lui `xfail` e încă pus
+  (fișierul `tests/regression/` nu era în lista sesiunii), vezi cererea din notele rolului 2.
+- Testele de audit AUDIT-001, AUDIT-002, AUDIT-036: marcajul `xfail` era deja scos (au rămas ca gărzi
+  de regresie, cu comentariul „reparat în timpul auditului”); trec.
+- Benchmark: `run_benchmark` întoarce `headline`, iar `GET /api/benchmark` îl calculează o dată la
+  pornire (în fundal, ~1 min) și îl ține în cache; până atunci 503 cu `Retry-After`. Afișarea în UI
+  rămâne la rolul 4 (cerere în notele rolului 2). Cifrele noi (situl v9, 100 de scenarii): copilot
+  82 %, plan 51 %; slide-urile trebuie remăsurate. Varianta propusă între timp de rolul 1
+  (`data/processed/jezero/benchmark.json`, generat de `pipeline/run_benchmark.py`, verificat de
+  `test_benchmark_file.py`) rămâne utilă ca fișier static, dar trebuie regenerat după schimbările de
+  algoritm din această sesiune (ocolirile prin waypoint, `exit_zone`).
+- Mărimile furtunilor din `storms.py`: verificate, sunt cele din registru (vârtejuri 100-135 m, front
+  30 × 5 km la 10-20 m/s, regională cu rază ≈ 1000 km). Calibrarea zgomotului pe `wind_stats.json`
+  rămâne deschisă (cererea de mai jos).
+- Decizia la furtuna regională (~1,2 s): când toate pericolele cer doar RETURN, `generate` nu mai
+  calculează ocoliri (< 0,5 s, test); după un RETURN, motorul nu mai replanifică deloc.
 
-- **Pentru rolul 2 (testele de audit, `backend/tests/regression/test_reg_live.py`):** AUDIT-001, AUDIT-002 și AUDIT-036 sunt reparate de rolul 1 în `bf5f062` (capitolul 8, vezi „Registrul aplicat”). Testele lor trec acum și, fiind `xfail(strict=True)`, apar ca FAILED (XPASS). Scoateți marcajul `xfail` de pe `test_engine_real_core_hazard_on_route_produces_decision`, `test_engine_default_schedules_demo_events` și `test_injected_local_storm_raises_sensor_dust`. CI-ul nu e afectat, pentru că nu rulează `tests/regression`.
-- **Pentru rolul 4 (AUDIT-026):** cea mai simplă rezolvare e să folosiți `data/processed/jezero/elevation.npy`. E deja în grila backendului (500 × 500, 20 m reali pe teren, HiRISE + CTX, calibrat pe rover). Alternativ, păstrați decupajul vostru și treceți punctele prin formula din `grid.json`.
+### Situl sintetic v9 (făcut de rolul 2 în `pipeline/make_synthetic_site.py`, cu acordul utilizatorului)
 
-- **Pentru rolurile 2 + 3 (benchmark în UI):** `GET /api/benchmark` întoarce încă 501. Cea mai simplă rezolvare: serviți `data/processed/jezero/benchmark.json` (are deja `headline` în forma din README, plus rezumatele), generat de `pipeline/run_benchmark.py`. Fișierul se regenerează în ~30 s după orice schimbare de algoritm (rolul 2 îl poate rula); testul `test_benchmark_file.py` arată când e vechi.
-- **Pentru rolul 2:** cifrele cerute pentru zgomotul din `storms.py` sunt acum în `data/processed/jezero/wind_stats.json` (vezi mai sus). După ce le preluați, `calibrate_sigma_v` dă un `SIGMA_REL` cu sursă.
-- **Pentru rolul 4:** folosiți `data/processed/jezero/grid.json` ca să puneți traseul și punctele pe relieful 3D (grilele diferă pe est-vest cu factorul 1 / cos 18,44°).
-- **Pentru rolul 2 (de discutat):** furtunile din benchmark (`storms.py`) au propriul model, separat de scenariul demo. Registrul (§3) cere mărimi reale: front de zeci de km, vârtejuri ≤ 135 m. Merită verificat dacă `storms.py` le respectă.
-- **Pentru rolul 4:** interfața are încă texte în română (`utils.js`: „Furtună locală”…, butoanele „Trimite”, „Ceas”, „Apus”…). Regula echipei cere engleză pentru tot ce vede juriul.
+- Creastă cu șa între habitat și `carbonate_rim` (`ridge_elevation`, constantele `RIDGE_*`) și front de
+  deltă mai abrupt (`DELTA_FRONT_MIN_WIDTH_M` 12 m + `DELTA_FRONT_WIDTH_RANGE_M` 90 m, în loc de 12 +
+  160). Fără numere aleatoare noi: craterele, zgomotul și restul sitului sunt identice cu v8.
+  `GENERATOR_VERSION` = 9; fiecare își regenerează situl (`python pipeline/make_synthetic_site.py`).
+- Efect: zone de 12-18° (1,26 % din celule); preset-urile aleg trasee diferite spre `carbonate_rim` și
+  `olivine_floor`. Habitatul și țintele rămân pe teren aproape plat. Test nou:
+  `pipeline/tests/test_synthetic.py::test_relief_ridge_and_delta_front_have_12_to_18_degree_zones`.
 
-- **Pentru rolul 2 (performanță, de văzut):** decizia pentru furtuna regională (`alternatives.generate` cu pericol pe toată grila) durează **~1,2 s**. La 10 minute simulate pe secundă, demo-ul are o pauză de ~1 s în acel moment. Celelalte decizii durează 0,1-0,3 s.
-- ~~Echipa: `max_slope_deg` 25 → 20~~: **decis 20°**; datele sunt actualizate, restul e cererea de mai sus pentru rolurile 2 + 3.
+### Cereri rezolvate anterior (mutate din „Cereri”, 14.11)
+
+- ~~Echipa: `max_slope_deg` 25 → 20~~: **decis 20°**; datele sunt actualizate, restul (`Limits`, contractele) **rezolvat în sesiunea din 14.11** (vezi mai sus).
 - ~~Rolul 3: `sensors_at` / `with_event` / `demo_events`~~: **rezolvat** (de rolul 1, cu acordul oamenilor; vezi mai sus).
 - ~~Rolul 2: normalizarea radiației~~: **rezolvat de rolul 2**. `static_cost` folosește excesul relativ `(rad − min) / min`, care nu depinde de scară.
 - ~~Mock-ul `live_messages.json` cu doza 9,8~~: **rezolvat**. Acum doza la minutul 72 e 25,3 µSv/h.
@@ -277,6 +296,17 @@ Verificată rulând motorul cu alternativele reale ale rolului 2: test `test_dem
 - ~~Rolul 3: `DEFAULT_SUNSET_MIN = 420`~~: **rezolvat** (apusul se calculează ca în planner).
 - ~~Rolul 4: fallback `?? 9` în `MissionSheet.jsx`~~: **rezolvat** (8).
 - ~~Oameni: recomandările registrului pentru `scenario.py`~~: **aplicate**.
+
+## În lucru
+
+## Cereri
+
+- **Pentru rolul 4 (AUDIT-026):** cea mai simplă rezolvare e să folosiți `data/processed/jezero/elevation.npy`. E deja în grila backendului (500 × 500, 20 m reali pe teren, HiRISE + CTX, calibrat pe rover). Alternativ, păstrați decupajul vostru și treceți punctele prin formula din `grid.json`.
+
+- **Pentru rolul 2:** cifrele cerute pentru zgomotul din `storms.py` sunt acum în `data/processed/jezero/wind_stats.json` (vezi mai sus). După ce le preluați, `calibrate_sigma_v` dă un `SIGMA_REL` cu sursă.
+- **Pentru rolul 4:** folosiți `data/processed/jezero/grid.json` ca să puneți traseul și punctele pe relieful 3D (grilele diferă pe est-vest cu factorul 1 / cos 18,44°).
+- **Pentru rolul 4:** interfața are încă texte în română (`utils.js`: „Furtună locală”…, butoanele „Trimite”, „Ceas”, „Apus”…). Regula echipei cere engleză pentru tot ce vede juriul.
+
 - **Pentru oameni (de verificat, P2):** legenda culorilor FOM HiRISE (produsele `DTFEC_*`) nu e pe paginile USGS sau UA. Se poate căuta în arhiva PDS `MRO-M-HIRISE-5-DTM-V1.0`. Până atunci, `unsafe` = pantă > 35°.
 - **Pentru oameni / rolul 4 (amânat, de reamintit):** `npm install` avertizează că scriptul `postinstall` al `esbuild@0.21.5` nu e aprobat (`npm install-scripts approve esbuild`). Dacă `npm run build` pică, de acolo e.
 
@@ -285,4 +315,5 @@ Verificată rulând motorul cu alternativele reale ale rolului 2: test `test_dem
 - Doza: RAD a măsurat la Gale (~-4,5 km); Jezero e mai sus (~-2,6 km), deci are puțină atmosferă în minus deasupra și probabil o doză puțin mai mare. Folosim valoarea Gale.
 - Jezero: coordonatele țintelor sunt aproximative, după traversa Perseverance și harta USGS SIM 3464 (de verificat pe Mars Trek). Tranziția HiRISE -> CTX are 100 m. Radiația e modelul după altitudine (scala 11 km).
 - Fetch: HiRISE citit la 4 m (nu 1 m), din motive de timp și volum. Panta „la rezoluție completă” se face deci la 4 m: prinde obstacolele de peste ~8 m, nu bolovanii de 1-2 m.
-- Situl sintetic: geometria e inventată (înălțimea frontului ~55-75 m, lățimea între 12 și 172 m). Pe situl real, frontul vine din DTM.
+- Situl sintetic: geometria e inventată (înălțimea frontului ~55-75 m, lățimea între 12 și 102 m din v9). Pe situl real, frontul vine din DTM.
+- Situl sintetic v9, creasta (presupuneri, alese pentru demo): între celulele (195, 185) și (230, 330), înălțime 80 m, profil transversal gaussian cu σ = 160 m (flanc maxim ≈ 17°), șa la 75 % din lungime coborâtă cu 70 % pe 300 m, capetele coborâte lin pe 400 m.

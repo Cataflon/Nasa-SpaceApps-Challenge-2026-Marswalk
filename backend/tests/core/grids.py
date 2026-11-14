@@ -13,7 +13,7 @@ import pytest
 from app.config import CONTRACTS_DIR, site_dir
 from app.core.site_data import Site, load_site
 
-# Panta peretelui din grilele de test: peste limita de 25° din contract, deci celulă interzisă.
+# Panta peretelui din grilele de test: peste limita de 20° din contract, deci celulă interzisă.
 WALL_SLOPE_DEG = 40.0
 
 

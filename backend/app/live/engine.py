@@ -27,12 +27,14 @@ from collections.abc import AsyncIterator, Awaitable, Callable
 from app.config import CONTRACTS_DIR
 from app.core import alternatives as core_alternatives
 from app.core import hazards as core_hazards
+from app.core.benchmark import REACT_WINDOW_MIN
 from app.core.budget import O2_PCT_PER_MIN_PER_WATT, O2_PCT_PER_MIN_REST, tobler_speed_ms
 from app.core.daylight import sunrise_sunset_min
 from app.core.planner import SOL_START_UTC
 from app.core.decision import choose
 from app.core.site_data import get_site
 from app.core.types import Alternative, Decision, Limits
+from app.core.validator import validate
 from app.live import scenario as scenario_mod
 from app.live.store import RouteStore
 from app.live.store import routes as default_routes
@@ -126,7 +128,8 @@ class LiveEngine:
         self.remaining: list[Cell] = []
         self.traveled: list[Cell] = []
         self.stops_left: list[dict] = []  # {"id", "cell", "dwell_min"}
-        self.returning = False
+        self.returning = False  # pe drumul spre casă (după RETURN sau EMERGENCY)
+        self.committed_return = False  # după o decizie RETURN: traseul nu se mai replanifică
         self.o2_pct = 100.0
         self.dose_msv = 0.0
         self.fatigue = 1.0
@@ -504,15 +507,51 @@ class LiveEngine:
                 hits.append((eta, h))
         if not hits:
             return None
+        # Alternativele se calculează doar pentru un contact în următoarele REACT_WINDOW_MIN minute
+        # (ca în benchmark): la orizonturi lungi conul de predicție acoperă oricum tot traseul.
+        hits = [(eta, h) for eta, h in hits if eta - t <= REACT_WINDOW_MIN]
+        if not hits:
+            return None
+        if self.committed_return:
+            # După RETURN traseul e definitiv: fără alternatives.generate. Un pericol nou al cărui
+            # singur răspuns e RETURN (furtuna regională) primește doar confirmarea, pe același drum.
+            fresh = [(eta, h) for eta, h in hits
+                     if core_hazards.HAZARD_RESPONSES.get(h["kind"]) == {"RETURN"} and h["id"] not in self._last_eval_t]
+            if not fresh:
+                return None
+            eta, h = min(fresh, key=lambda x: (x[0], x[1]["id"]))
+            self._last_eval_t[h["id"]] = t
+            return self._decide(t, h, eta, self._confirm_return(t))
         eta, h = min(hits, key=lambda x: (x[0], x[1]["id"]))
         if t - self._last_eval_t.get(h["id"], -10**9) < REEVAL_MIN:
             return None
         self._last_eval_t[h["id"]] = t
         return self._decide(t, h, eta)
 
-    def _decide(self, t: int, h: dict, eta: float) -> dict | None:
-        alts = self._alternatives(t, h)
-        decision = choose(alts, self.preset, self.limits)
+    def _confirm_return(self, t: int) -> Decision:
+        """Decizia RETURN pe drumul spre casă deja ales (fără replanificare), validată ca orice variantă.
+
+        Riscul e 0 pentru pericolul „doar RETURN” care a declanșat-o (aceeași excepție ca în core:
+        întoarcerea e chiar răspunsul cerut). Dacă drumul nu mai respectă limitele (O₂, apus,
+        doză), decizia devine EMERGENCY, pe același drum.
+        """
+        here = _cell(self.pos)
+        walk, dwell = self._remaining_minutes()
+        rate = self._sensors(t)["dose_rate_usv_h"]
+        alt = Alternative(
+            id="return", kind="RETURN", path=[here] + [c for i, c in enumerate(self.remaining) if i or c != here],
+            extra_min=0.0,
+            o2_end_pct=self._o2_after(walk, dwell), dose_msv=self.dose_msv + rate * (walk + dwell) / 60.0 / 1000.0,
+            risk=0.0, arrival_habitat_min=t + walk + dwell, sunset_min=self.sunset_min,
+        )
+        validate([alt], self.limits)
+        if alt.valid:
+            return Decision("RETURN", alt.id, "HAZARD_ON_ROUTE", [alt])
+        return Decision("EMERGENCY", alt.id, "NO_VALID_OPTION", [alt])
+
+    def _decide(self, t: int, h: dict, eta: float, decision: Decision | None = None) -> dict | None:
+        if decision is None:
+            decision = choose(self._alternatives(t, h), self.preset, self.limits)
         key = (decision.decision, decision.alternative_id, h["id"])
         if key == self._last_decision_key:
             return None
@@ -599,6 +638,8 @@ class LiveEngine:
         here = _cell(self.pos)
         path = [_cell(p) for p in alt.path]
         self.remaining = path[1:] if path and path[0] == here else path
+        if decision.decision == "RETURN":
+            self.committed_return = True
         if decision.decision in ("RETURN", "EMERGENCY"):
             self.returning = True
             self.stops_left = []

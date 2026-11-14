@@ -236,3 +236,90 @@ def test_uses_core_alternatives_when_available(monkeypatch):
     south = next(a for a in d["alternatives"] if a["id"] == "detour_south")
     assert south["violations"] == ["O2_RESERVE"]
     assert e.remaining[-2:] == [(100, 200), (300, 200)]
+
+
+# ---------------------------------------------------------------- T6d: când se cheamă alternatives.generate
+
+
+def _counting_generate(monkeypatch, chosen="detour_north"):
+    """Un generate fals care ține minte minutele apelurilor; `chosen` decide varianta câștigătoare."""
+    calls = []
+
+    def fake(site, pos, remaining, stops, hazards, t, o2, dose, sunset, preset):
+        calls.append(t)
+        base = dict(dose_msv=0.1, arrival_habitat_min=200, sunset_min=420)
+        alts = [Alternative("current", "CONTINUE", [pos] + remaining, 0, 50, risk=0.8, crosses_hazard=True, **base)]
+        if chosen == "detour_north":
+            alts.append(Alternative("detour_north", "REROUTE", [pos] + remaining, 5, 45, risk=0.1, **base))
+        home = [(r, pos[1]) for r in range(pos[0], 301)]  # celulă cu celulă, spre habitat (300, 200)
+        alts.append(Alternative("return", "RETURN", home, 0, 60, risk=0.0, **base))
+        return alts
+
+    monkeypatch.setattr(engine_mod.core_alternatives, "generate", fake)
+    return calls
+
+
+FAKE_SITE = SimpleNamespace(meta={"cell_size_m": 20, "shape": [500, 500], "targets": []}, layers={})
+
+
+def dense_route(length=200):
+    """Ca straight_route, dar celulă cu celulă (ca traseele din planner): route_hit verifică punctele."""
+    out = [[300 - i, 200] for i in range(length + 1)]
+    return {"path": out + out[-2::-1], "stops": [], "budget": {"sunset_min": 420, "return_by_min": 390}}
+
+
+def test_generate_only_for_contact_within_react_window(monkeypatch):
+    """Pericol fix la ~60 min în față: niciun generate până când contactul e la ≤ 30 min."""
+    calls = _counting_generate(monkeypatch)
+    e = started(dense_route(), site_provider=lambda: FAKE_SITE)
+    e.inject("local_storm", {"center": {"row": 150, "col": 200}, "velocity_ms": [0.0, 0.0], "axes_m": [200, 200]})
+    run(e, 1)
+    eta = e._hits(e.hazards[0], [e.pos] + e.remaining, e.t_min)
+    assert eta is not None and eta - e.t_min > engine_mod.REACT_WINDOW_MIN  # contact prezis, dar departe
+    run(e, 15)
+    assert calls == []  # încă în afara ferestrei: fără generate
+    run(e, 40)
+    assert calls, "contactul a intrat în fereastră: generate trebuie chemat"
+    assert eta - calls[0] <= engine_mod.REACT_WINDOW_MIN + 1  # chemat abia când contactul e la ≤ 30 min
+
+
+def test_no_replanning_after_return_but_regional_is_confirmed(monkeypatch):
+    calls = _counting_generate(monkeypatch, chosen="return")
+    e = started(dense_route(), site_provider=lambda: FAKE_SITE)
+    run(e, 60)  # departe de habitat (~150 de celule), ca drumul înapoi să dureze
+    e.inject("local_storm", {})
+    ds = decisions(run(e, 15))
+    assert ds and ds[0]["decision"] == "RETURN" and e.committed_return
+    n_calls = len(calls)
+
+    # Un pericol nou pe drumul spre casă: după RETURN nu se mai replanifică.
+    e.inject("marsquake", {})
+    assert decisions(run(e, 10)) == [] and len(calls) == n_calls
+
+    # Furtuna regională (singurul răspuns: RETURN): confirmare pe același drum, fără generate.
+    remaining_before = list(e.remaining)
+    e.inject("regional_storm", {})
+    ds = decisions(run(e, 2))
+    assert [d["decision"] for d in ds] == ["RETURN"] and len(calls) == n_calls
+    assert [a["id"] for a in ds[0]["alternatives"]] == ["return"] and ds[0]["alternatives"][0]["valid"]
+    assert e.remaining == remaining_before[len(remaining_before) - len(e.remaining):]
+    assert e.remaining[-1] == (300, 200)
+
+
+def test_emergency_keeps_reevaluating(monkeypatch):
+    """EMERGENCY nu e RETURN: motorul continuă să caute o variantă validă (ex. exit_zone, D2)."""
+    calls = []
+
+    def nothing_valid(site, pos, remaining, stops, hazards, t, o2, dose, sunset, preset):
+        calls.append(t)
+        base = dict(dose_msv=0.1, arrival_habitat_min=200, sunset_min=420)
+        return [Alternative("current", "CONTINUE", [pos] + remaining, 0, 50, risk=0.8, crosses_hazard=True, **base),
+                Alternative("return", "RETURN", [pos, (300, 200)], 0, 60, risk=0.8, crosses_hazard=True, **base)]
+
+    monkeypatch.setattr(engine_mod.core_alternatives, "generate", nothing_valid)
+    e = started(dense_route(), site_provider=lambda: FAKE_SITE)
+    run(e, 20)  # ~50 de celule de habitat: drumul înapoi durează ~20 min
+    e.inject("marsquake", {"center": {"row": round(e.pos[0]), "col": 200}, "axes_m": [400, 400]})
+    ds = decisions(run(e, 12))
+    assert ds[0]["decision"] == "EMERGENCY" and not e.committed_return
+    assert len(calls) >= 2  # reevaluat după REEVAL_MIN

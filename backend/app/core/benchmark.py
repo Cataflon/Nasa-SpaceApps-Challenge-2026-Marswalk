@@ -132,8 +132,10 @@ def _simulate(site: Site, plan: dict, path, storm: Storm, sunset: float, copilot
         if finished:
             break
 
+    # „Acasă în siguranță” (definiția din `headline`): ajuns în habitat, cu O₂ ≥ rezerva, doza ≤
+    # limita, înainte de apus minus marjă, fără expunere ≥ HIT_THRESHOLD pe mișcarea REALĂ a furtunii.
     safe = (finished and exposure < HIT_THRESHOLD and o2 >= limits.o2_reserve_pct
-            and arrival <= sunset - limits.sunset_margin_min)
+            and dose <= limits.max_dose_msv and arrival <= sunset - limits.sunset_margin_min)
     return {"safe": bool(safe), "finished": finished, "o2_end": float(o2), "dose_msv": float(dose),
             "science": collected / total_value if total_value else 0.0, "exposure": exposure,
             "arrival_min": arrival, "decisions": decisions}
@@ -164,8 +166,12 @@ def run_benchmark(n_scenarios: int = 100, seed: int = 42, site: Site | None = No
         copilot_runs.append(c)
         per_scenario.append({"id": storm.id, "kind": storm.kind, "t_cross_min": round(storm.t_cross_min),
                              "plan_safe": p["safe"], "copilot_safe": c["safe"], "decisions": c["decisions"]})
-    return {"n": n_scenarios, "seed": seed, "plan_only": _summary(plan_runs),
-            "copilot": _summary(copilot_runs), "per_scenario": per_scenario}
+    plan_only, copilot = _summary(plan_runs), _summary(copilot_runs)
+    return {"n": n_scenarios, "seed": seed, "plan_only": plan_only, "copilot": copilot,
+            "per_scenario": per_scenario,
+            # Numărul de titlu (slide, video, UI): procentele de ieșiri încheiate „acasă în siguranță”.
+            "headline": {"copilot_safe_pct": copilot["safe_pct"], "plan_safe_pct": plan_only["safe_pct"],
+                         "n_scenarios": n_scenarios}}
 
 
 def calibrate_sigma_v(n: int = 100, seed: int = 42, coverage: float = 0.95, site: Site | None = None) -> float:

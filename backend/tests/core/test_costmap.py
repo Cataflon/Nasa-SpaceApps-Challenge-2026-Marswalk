@@ -24,8 +24,8 @@ def test_flat_bedrock_no_radiation_costs_exactly_one():
 
 def test_slope_above_limit_is_forbidden():
     slope = flat_slope()
-    slope[0, 0] = 26.0
-    slope[0, 1] = 25.0  # exact la limită: încă permis
+    slope[0, 0] = 21.0
+    slope[0, 1] = 20.0  # exact la limită (20°, decizia D1): încă permis
     cost = static_cost(make_site(slope))
 
     assert np.isinf(cost[0, 0])
@@ -61,7 +61,7 @@ def test_wall_with_gap_blocks_everything_but_the_gap():
 
 def test_cost_grows_strictly_with_slope():
     slope = flat_slope()
-    slope[0, :] = np.linspace(0.0, 25.0, N)
+    slope[0, :] = np.linspace(0.0, 20.0, N)
     row = static_cost(make_site(slope))[0, :]
 
     assert np.all(np.isfinite(row))
@@ -71,19 +71,19 @@ def test_cost_grows_strictly_with_slope():
 
 def test_same_slope_costs_more_on_safe_than_science_than_fast():
     slope = flat_slope()
-    slope[0, 0] = 20.0
+    slope[0, 0] = 15.0
     site = make_site(slope)
 
     safe, science, fast = (static_cost(site, p)[0, 0] for p in ("safe", "science", "fast"))
     assert safe > science > fast
     for preset, value in (("safe", safe), ("science", science), ("fast", fast)):
-        assert value == pytest.approx(1.0 + PRESETS[preset]["slope_k"] * (20.0 / 25.0) ** 2)
+        assert value == pytest.approx(1.0 + PRESETS[preset]["slope_k"] * (15.0 / 20.0) ** 2)
 
 
 def test_preset_without_slope_k_falls_back_to_default(monkeypatch):
     monkeypatch.setitem(PRESETS, "legacy", {"w_hazard": 1.0, "w_radiation": 0.0, "w_science": 0.0})
     slope = flat_slope()
-    slope[0, 0] = 25.0
+    slope[0, 0] = 20.0
 
     assert static_cost(make_site(slope), "legacy")[0, 0] == 1.0 + SLOPE_K
 

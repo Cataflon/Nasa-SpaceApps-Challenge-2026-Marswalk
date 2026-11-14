@@ -22,11 +22,31 @@
 - WebSocket-ul nu mai trimite nimic până la `POST /api/live/control {"action": "start"}`. Butonul „Pornește ieșirea” trebuie să apeleze întâi ruta de control, apoi să deschidă WebSocket-ul (sau invers: la conectare primești imediat ultimul `tick`, dacă există).
 - `speed` = minute simulate pe secundă reală (implicit 10). Pentru demo merge bine 10-20.
 
+### Sesiunea din 14.11: cererile rolului 2 aplicate în API și în motor (făcut de rolul 2, cu acordul utilizatorului)
+
+- Cererea „Rolul 1: când `scenario.generate` e gata”: **rezolvat** (verificat în această sesiune):
+  `engine.load` folosește `scenario.generate(seed, 720, demo_events(site_id))`, iar senzorii vin din
+  scenariu.
+- `POST /api/route`: `plan_route` aruncă acum `ValueError` cu mesaje în engleză (start în afara grilei,
+  start sau țintă din care nu se ajunge la habitat), verificate din `cost_to_home` înainte de `astar`;
+  ruta le dă mai departe ca 422. `point_of_no_return` null rămâne null (test).
+- Motorul (`live/engine.py`): `alternatives.generate` se cheamă doar pentru un contact în ≤ 30 min
+  (`benchmark.REACT_WINDOW_MIN`). După o decizie RETURN traseul e definitiv (`committed_return`): fără
+  `generate`; o furtună „doar RETURN” apărută după aceea primește o decizie de confirmare RETURN pe
+  același drum (`_confirm_return`, validată; EMERGENCY dacă drumul nu mai respectă limitele).
+  EMERGENCY nu blochează replanificarea. Teste noi în `tests/live/test_engine.py` (3).
+- Lifespan: thread daemon de încălzire (`warm_up_core`: import OR-Tools, un `plan_route`, un
+  `generate`) și pornirea benchmark-ului. `GET /api/benchmark`: `api/bench_cache.py`, calculat o dată
+  într-un proces separat (pornit dintr-un thread), 503 + `Retry-After` până e gata, apoi din cache,
+  500 la eroare. `MARSWALK_WARMUP=0` / `MARSWALK_BENCHMARK_AT_STARTUP=0` le opresc. Teste:
+  `tests/api/test_core_integration.py`.
+- Scena demo are acum 4 decizii (30 REROUTE, 80 EMERGENCY, 90 RETURN `exit_zone`, 125 RETURN);
+  testul Jezero din `tests/scenario` e actualizat, plus unul nou pe situl sintetic.
+
 ## În lucru
 
 ## Cereri
 
-- **Rolul 1:** când `scenario.generate` e gata, motorul îl folosește automat (`generate(seed, 720, None)`; `Scenario.events` înlocuiesc `DEMO_SCENARIO_EVENTS`).
 
 ## Presupuneri
 

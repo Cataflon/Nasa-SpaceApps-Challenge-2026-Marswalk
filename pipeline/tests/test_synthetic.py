@@ -106,3 +106,30 @@ def test_deterministic():
     a, b = mss.build(seed=7), mss.build(seed=7)
     for name in a:
         assert np.array_equal(a[name], b[name]), name
+
+
+def test_relief_ridge_and_delta_front_have_12_to_18_degree_zones(layers):
+    """v9: creasta și frontul deltei au zone de 12-18°, iar creasta singură nu trece de 20°."""
+    slope, elev = layers["slope"], layers["elevation"]
+    assert slope.dtype == np.float32 and elev.dtype == np.float32
+    assert slope.shape == elev.shape == (mss.N, mss.N)
+    assert np.isfinite(slope).all() and float(slope.min()) >= 0.0 and float(slope.max()) < 90.0
+
+    y, x = np.mgrid[0:mss.N, 0:mss.N].astype(np.float64) * mss.CELL_M
+    ridge = mss.ridge_elevation(y, x)
+    assert 0.0 <= float(ridge.min()) and float(ridge.max()) <= mss.RIDGE_HEIGHT_M
+    gy, gx = np.gradient(ridge, mss.CELL_M)
+    ridge_slope = np.degrees(np.arctan(np.hypot(gx, gy)))
+    assert 15.0 < float(ridge_slope.max()) < 18.0  # flancul crestei singure: 12-18°, sub limită
+
+    on_ridge = ridge > 5.0
+    zone = (slope >= 12.0) & (slope <= 18.0)
+    assert zone[on_ridge].sum() >= 100  # ≥ 100 de celule (4 ha) de 12-18° pe creastă
+
+    r = np.hypot(y - mss.DELTA_APEX_M[0], x - mss.DELTA_APEX_M[1])
+    front = np.abs(r - mss.DELTA_RADIUS_M) < 200
+    assert zone[front].sum() >= 100  # și pe frontul deltei
+
+    # Habitatul și țintele rămân departe de creastă (pe teren aproape plat).
+    for rr, cc in [mss.HABITAT] + [(t["row"], t["col"]) for t in mss.TARGETS]:
+        assert ridge[rr, cc] < 1.0 and slope[rr, cc] < 5.0, (rr, cc)

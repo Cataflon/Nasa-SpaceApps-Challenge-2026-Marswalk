@@ -133,6 +133,62 @@ def astar(cost: np.ndarray, start: Cell, goal: Cell) -> list[Cell] | None:
     return path
 
 
+def nearest_exit(cost: np.ndarray, start: Cell, outside: np.ndarray) -> list[Cell] | None:
+    """Cel mai ieftin traseu de la `start` până la prima celulă cu `outside` True (Dijkstra).
+
+    Folosit când astronautul e deja în interiorul unui pericol: `cost` include atunci pericolul ca
+    termen finit (costmap.hazard_cost), iar `outside` marchează celulele din afara lui. Aceleași
+    reguli de mutare ca `astar`; căutarea se oprește la prima celulă exterioară scoasă din coadă,
+    deci explorează doar interiorul pericolului. La costuri egale câștigă indexul mai mic
+    (row, col), ca rezultatul să fie determinist.
+
+    Întoarce celulele de la start la ieșire (inclusiv); `[start]` dacă startul e deja afară.
+    None: startul e interzis sau nu există nicio celulă exterioară accesibilă.
+    ValueError: start în afara grilei, forme diferite sau costuri negative.
+    """
+    start = (int(start[0]), int(start[1]))
+    _check_inside("start", start, cost.shape)
+    outside = np.asarray(outside, dtype=bool)
+    if outside.shape != cost.shape:
+        raise ValueError(f"Masca `outside` are forma {outside.shape}, harta are {cost.shape}.")
+    _check_no_negative(cost)
+
+    flat, Wp = pad_and_flatten(cost)
+    goal = np.pad(outside, 1).ravel().tolist()  # bordura e False: nu e o ieșire
+    inf = math.inf
+    s_idx = to_flat(start, Wp)
+    if flat[s_idx] == inf:
+        return None
+
+    dist = {s_idx: 0.0}
+    parent = {s_idx: -1}
+    heap = [(0.0, s_idx)]
+    push, pop = heapq.heappush, heapq.heappop
+    moves = _half_step_moves(Wp)
+    while heap:
+        d_current, current = pop(heap)
+        if d_current > dist[current]:
+            continue
+        if goal[current]:
+            path = []
+            while current != -1:
+                path.append(to_cell(current, Wp))
+                current = parent[current]
+            return path[::-1]
+        current_cost = flat[current]
+        for delta, half_step, side_a, side_b in moves:
+            neighbor = current + delta
+            cell_cost = flat[neighbor]
+            if cell_cost == inf or flat[current + side_a] == inf or flat[current + side_b] == inf:
+                continue
+            d_new = d_current + half_step * (current_cost + cell_cost)
+            if d_new < dist.get(neighbor, inf):
+                dist[neighbor] = d_new
+                parent[neighbor] = current
+                push(heap, (d_new, neighbor))
+    return None
+
+
 def astar_spacetime(
     cost: np.ndarray,
     start: Cell,

@@ -655,3 +655,72 @@ def test_synthetic_each_preset_route_is_optimal_for_its_own_cost():
             for other in presets:
                 own_cost = path_cost(costs[own], paths[own])
                 assert own_cost <= path_cost(costs[own], paths[other]) + 1e-9, (target["id"], own, other)
+
+
+def test_synthetic_presets_give_different_routes_for_at_least_two_targets():
+    """Situl v9 are relief (creastă cu flancuri de 12-18°): preset-urile aleg trasee diferite.
+
+    Condiții (T3): traseele habitat → țintă diferă între safe/fast/science pentru ≥ 2 din 3
+    ținte; nicio celulă de pe ele nu trece de panta maximă (20°); `fast` urcă pe undeva un flanc
+    de ≥ 12°, pe care `safe` îl ocolește (panta e penalizată de 6× la `safe`, de 2,5× la `fast`).
+    """
+    site = synthetic_site_or_skip()
+    if site.meta.get("generator_version", 1) < 9:
+        pytest.skip("Situl sintetic e mai vechi de v9 (fără creastă): rulează pipeline/make_synthetic_site.py.")
+    slope = site.layers["slope"]
+    limit = float(site.meta["max_slope_deg"])
+    assert limit == 20.0
+    presets = ("safe", "fast", "science")
+
+    differing, steepest = [], {p: 0.0 for p in presets}
+    for target in site.meta["targets"]:
+        goal = (target["row"], target["col"])
+        paths = {p: astar(static_cost(site, p), site.habitat, goal) for p in presets}
+        for p, path in paths.items():
+            worst = max(float(slope[c]) for c in path)
+            assert worst <= limit, (target["id"], p, worst)
+            steepest[p] = max(steepest[p], worst)
+        if len({tuple(path) for path in paths.values()}) >= 2:
+            differing.append(target["id"])
+
+    assert len(differing) >= 2, differing
+    assert steepest["fast"] >= 12.0 > steepest["safe"], steepest
+
+
+# --- nearest_exit (T4: start în interiorul unui pericol) ---
+
+
+def test_nearest_exit_leaves_the_zone_by_the_cheapest_way():
+    from app.core.routing import nearest_exit
+
+    cost = np.ones((15, 15))
+    outside = np.ones((15, 15), dtype=bool)
+    outside[4:11, 4:11] = False  # zona 7×7 din mijloc
+    cost[4:11, 4:11] += 10.0  # pericolul ca termen finit
+    cost[4:11, 10] += 50.0  # latura de est e mai scumpă: ieșirea nu e pe acolo
+    path = nearest_exit(cost, (7, 7), outside)
+
+    assert path[0] == (7, 7) and outside[path[-1]]
+    assert not any(outside[c] for c in path[:-1])  # se oprește la prima celulă exterioară
+    assert path[-1][1] < 10  # a ieșit prin vest, nord sau sud
+    assert len(path) == 5  # 4 pași până la prima celulă din afara zonei (cel mai scurt)
+    assert nearest_exit(cost, (7, 7), outside) == path  # determinist
+
+
+def test_nearest_exit_edge_cases():
+    from app.core.routing import nearest_exit
+
+    cost = np.ones((6, 6))
+    outside = np.zeros((6, 6), dtype=bool)
+    assert nearest_exit(cost, (2, 2), outside) is None  # nicio celulă exterioară
+    outside[0, 0] = True
+    assert nearest_exit(cost, (0, 0), outside) == [(0, 0)]  # deja afară
+    walled = cost.copy()
+    walled[1, :] = np.inf
+    assert nearest_exit(walled, (4, 4), outside) is None  # ieșirea e după un perete
+    walled[4, 4] = np.inf
+    assert nearest_exit(walled, (4, 4), outside) is None  # start interzis
+    with pytest.raises(ValueError):
+        nearest_exit(cost, (6, 0), outside)
+    with pytest.raises(ValueError):
+        nearest_exit(cost, (0, 0), outside[:5])

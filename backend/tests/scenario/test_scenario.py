@@ -296,6 +296,8 @@ def test_demo_scene_decisions_on_jezero():
     """Motorul live, cu alternativele reale ale rolului 2, pe traseul demo habitat -> clay_delta.
 
     Vârtejul se ocolește (REROUTE), frontul nu se poate evita (întoarcere imediată), regionala -> RETURN.
+    D2 (start în pericol): la minutul 90 frontul a ajuns peste astronaut; din interiorul lui singura
+    variantă validă e „exit_zone” (ieșirea pe drumul cel mai ieftin, apoi acasă) -> RETURN.
     """
     from app.core.planner import plan_route
     from app.core.site_data import get_site
@@ -312,8 +314,36 @@ def test_demo_scene_decisions_on_jezero():
     msgs = []
     while e.state == "running" and e.t_min < 300:
         msgs += e.step()
-    got = [(m["t_min"], m["decision"]) for m in msgs if m["type"] == "decision"]
-    assert got == [(30, "REROUTE"), (80, "EMERGENCY"), (125, "RETURN")]
+    got = [(m["t_min"], m["decision"], m["alternative_id"]) for m in msgs if m["type"] == "decision"]
+    assert [g[:2] for g in got] == [(30, "REROUTE"), (80, "EMERGENCY"), (90, "RETURN"), (125, "RETURN")]
+    assert got[1][2] == "return" and got[2][2] == "exit_zone" and got[3][2] == "return"
+    assert got[0][2].startswith("detour_")
+
+
+def test_demo_scene_decisions_on_synthetic():
+    """Aceeași scenă demo pe situl sintetic (v9), cu core-ul real: aceeași succesiune de decizii."""
+    from app.core.planner import plan_route
+    from app.core.site_data import get_site
+    from app.live.engine import LiveEngine
+    from app.live.store import RouteStore
+
+    site = get_site("synthetic")
+    if site is None or site.meta.get("generator_version", 1) < 9:
+        pytest.skip("situl sintetic v9 nu e generat: rulează pipeline/make_synthetic_site.py")
+    store = RouteStore()
+    store.add(plan_route(site, site.habitat, ["clay_delta"], "safe", 0, 300))
+    e = LiveEngine(site_provider=lambda: site, store=store)
+    e.start()
+    msgs = []
+    while e.state == "running" and e.t_min < 300:
+        msgs += e.step()
+    got = [(m["t_min"], m["decision"], m["alternative_id"]) for m in msgs if m["type"] == "decision"]
+    assert [g[:2] for g in got] == [(30, "REROUTE"), (80, "EMERGENCY"), (90, "RETURN"), (125, "RETURN")]
+    assert got[0][2].startswith("detour_") and got[2][2] == "exit_zone"
+    reroute = next(m for m in msgs if m["type"] == "decision")
+    valid_detours = [a for a in reroute["alternatives"] if a["kind"] == "REROUTE" and a["valid"]]
+    assert valid_detours  # ocolirea aleasă e validă
+    assert e.state == "finished" and e.pos == tuple(float(v) for v in site.habitat)
     assert e.state == "finished" and e.pos == tuple(float(v) for v in site.habitat)
 
 
