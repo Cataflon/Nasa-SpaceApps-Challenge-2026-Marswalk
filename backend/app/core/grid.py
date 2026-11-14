@@ -63,6 +63,26 @@ def NEIGHBORS(Wp: int) -> tuple[tuple[int, float], ...]:
     )
 
 
+def neighbor_moves(Wp: int) -> tuple[tuple[int, float, int, int], ...]:
+    """Cei 8 vecini ca (deplasare, lungimea pasului, latură_a, latură_b), pentru regula
+    „fără tăierea colțurilor”.
+
+    Pentru o mutare pe diagonală, `latură_a` și `latură_b` sunt deplasările către cele două
+    celule ortogonale pe lângă care trece (cea de pe rând și cea de pe coloană). Mutarea e
+    permisă doar dacă ambele sunt finite: un obstacol de 20 m nu se traversează pe colț.
+    Pentru o mutare dreaptă, laturile sunt 0 (adică celula curentă, mereu finită), ca bucla de
+    căutare să aplice același test la toți vecinii. Aceeași ordine ca la NEIGHBORS.
+    """
+    moves = []
+    for delta, step in NEIGHBORS(Wp):
+        if step == 1.0:
+            moves.append((delta, step, 0, 0))
+        else:
+            row_part = -Wp if delta < 0 else Wp
+            moves.append((delta, step, row_part, delta - row_part))
+    return tuple(moves)
+
+
 def octile(a: Cell, b: Cell) -> float:
     """Distanța octilă între două celule, în celule: cel mai scurt drum cu 8 vecini pe grilă liberă.
 

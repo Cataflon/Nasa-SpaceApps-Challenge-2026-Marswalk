@@ -2,8 +2,8 @@
 
 ## Gata
 
-Teste: `python -m pytest tests/core` → 72 trecute în 0,8 s
-(`test_decision` 6, `test_grid` 13, `test_costmap` 27, `test_routing` 26).
+Teste: `python -m pytest tests/core` → 77 trecute în 0,7 s
+(`test_decision` 6, `test_grid` 14, `test_costmap` 27, `test_routing` 30).
 
 ### R2-0: pornire, utilitare de grilă și de test
 
@@ -11,6 +11,9 @@ Teste: `python -m pytest tests/core` → 72 trecute în 0,8 s
   Grila de cost devine o listă plată cu bordură de `inf`, ca buclele cu `heapq` din `routing.py`
   să nu verifice marginile la fiecare vecin. Celulele rămân `(row, col)` din grila originală;
   doar indexul plat ține cont de bordură (`Wp = W + 2`). `NaN` (nodata) devine `inf`.
+- Adăugat la R2-2: `neighbor_moves(Wp)`, cei 8 vecini împreună cu cele două celule ortogonale
+  pe lângă care trece fiecare diagonală. E locul unic al regulii „fără tăierea colțurilor”;
+  `reverse_dijkstra` și `astar_spacetime` îl vor folosi tot pe el.
 - `backend/tests/core/grids.py` (nou, helperi): `make_site`, `wall_with_gap`, `synthetic_site_or_skip`.
   `make_site` citește `shared/contracts/meta.json` și construiește fiecare strat cu `dtype`-ul de acolo.
 - `backend/tests/core/test_grid.py` (nou): 13 teste.
@@ -37,13 +40,15 @@ Teste: `python -m pytest tests/core` → 72 trecute în 0,8 s
 
 - `backend/app/core/routing.py`: `astar(cost, start, goal)` implementat peste `grid.py`.
   8 vecini, costul unui pas = lungimea pasului × costul celulei în care intri, euristică
-  octilă × costul minim (admisibilă, deci traseul e optim), coadă ordonată `(f, g, row, col)`.
-- `None` dacă ținta e pe o celulă interzisă sau e izolată; `ValueError` dacă start sau goal e în
-  afara grilei ori harta are costuri negative. Celulele din traseu sunt `int` simplu (merg în JSON).
-- Celula de start poate fi interzisă: costul se plătește la intrare, deci astronautul poate
-  pleca dintr-o celulă acoperită între timp de un pericol.
-- `backend/tests/core/test_routing.py` (nou): 26 de teste. Optimalitatea e verificată față de un
-  Dijkstra scris independent în test, pe 8 grile aleatoare cu seed fix.
+  octilă × costul minim finit (admisibilă, deci traseul e optim), coadă `(f, g, idx)`, adică
+  `(f, g, row, col)`, cu eliminare leneșă după `g`.
+- **Fără tăierea colțurilor:** o diagonală e permisă doar dacă ambele celule ortogonale pe
+  lângă care trece sunt finite. Un perete de celule care se ating doar în colțuri e deci închis.
+- `None` dacă start sau goal e pe o celulă interzisă, ori sunt izolate una de alta; `[start]`
+  dacă start == goal. `ValueError` dacă start sau goal e în afara grilei ori harta are costuri
+  negative. Celulele din traseu sunt `int` simplu (merg în JSON).
+- `backend/tests/core/test_routing.py` (nou): 30 de teste. Optimalitatea e verificată față de un
+  Dijkstra scris independent în test (cu aceeași regulă de colț), pe 8 grile aleatoare cu seed fix.
 - `reverse_dijkstra`, `path_home` și `astar_spacetime` sunt încă neimplementate.
 
 ### Timpi măsurați pe situl sintetic 500×500
@@ -55,11 +60,13 @@ Python 3.14.6, numpy 2.5.4; mediana din mai multe rulări.
 | `grid.pad_and_flatten(cost)` | 5,4 ms (max 7,1 ms) | fără țintă proprie; inclus în timpul lui `astar` |
 | `costmap.static_cost(site, "safe")`, fără cache | 7,1 ms (max 10,4 ms) | < 0,2 s |
 | `costmap.static_cost(site, "safe")`, din cache | 0,0003 ms | < 0,2 s |
-| `routing.astar`, habitat → `clay_delta` (121 celule, 2,9 km) | 27–29 ms, după preset | < 1 s |
-| `routing.astar`, habitat → `carbonate_rim` (181 celule, 4,1 km) | 39–43 ms | < 1 s |
-| `routing.astar`, habitat → `olivine_floor` (131 celule, 2,9 km) | 27–30 ms | < 1 s |
-| `routing.astar`, colț la colț, (0,0) → (499,499) | 0,53 s (max 0,90 s) | < 1 s |
-| `routing.astar`, țintă izolată (fără traseu, explorează toată harta) | **1,34 s (max 1,53 s)** | < 1 s, **depășit** |
+| `routing.astar`, habitat → `clay_delta` (121 celule, 2,9 km) | 28–31 ms, după preset | < 1 s |
+| `routing.astar`, habitat → `carbonate_rim` (181 celule, 4,1 km) | 45–51 ms | < 1 s |
+| `routing.astar`, habitat → `olivine_floor` (131 celule, 2,9 km) | 30–32 ms | < 1 s |
+| `routing.astar`, colț la colț, (0,0) → (499,499), 537 celule | 0,64 s (o rulare din 3: **1,38 s**) | < 1 s, la limită |
+| `routing.astar`, țintă izolată (fără traseu, explorează toată harta) | **1,56 s (max 1,68 s)** | < 1 s, **depășit** |
+
+Timpii lui `astar` sunt cu regula „fără tăierea colțurilor” (cu ≈ 10–20 % mai lent decât fără ea).
 
 Pe situl sintetic: 1,34 % din celule sunt interzise. Costul finit e între 1,03 și 18,04 la
 `safe`, 1,02 și 12,02 la `science`, 1,01 și 7,51 la `fast`. Termenul de radiație e între 0 și
@@ -68,6 +75,15 @@ Pe situl sintetic: 1,34 % din celule sunt interzise. Costul finit e între 1,03 
 ## În lucru
 
 - Urmează `routing.reverse_dijkstra` + `path_home`.
+- De preluat din `docs/roles/PARAMETRI_REFERINTA.md` (apărut în timpul R2-2, citit, încă
+  neaplicat), la pașii care le ating:
+  - `budget.py`: constantele cu sursă din §4.2 (`P_REST` 176 W, `M_TOTAL` 196 kg, `C_LEVEL` 0,59,
+    `ETA_UP` 0,22, rezervor 418 L, 0,000711 %/min/W) și justificarea pentru `SUIT_FACTOR` 0,6;
+  - registrul `core/params.py` (un singur loc pentru constante, cu nivel A/B/C și sursă);
+  - `hazards.py`: `SIGMA_V` calibrat pe variabilitatea vântului (R2-11).
+  Tabelul de la „Presupuneri” de mai jos rămâne până atunci cu valorile din cod.
+- `max_slope_deg` 25 → 20 (propus acolo, de aprobat de echipă): `static_cost` citește limita
+  din `site.meta`, deci nu cere schimbări în `costmap.py`; doar `Limits.max_slope_deg` e separat.
 
 ## Cereri
 
@@ -75,10 +91,16 @@ Pe situl sintetic: 1,34 % din celule sunt interzise. Costul finit e între 1,03 
   ajunge la toți apelanții, din cache). `cost + altceva` merge; o modificare pe loc
   (`cost[mask] = ...`, `cost += ...`) aruncă `ValueError`. Cine are nevoie face `cost.copy()`.
   Dacă straturile unui `Site` se schimbă pe loc, trebuie apelat `costmap.clear_cost_cache()`.
-- **Pentru rolul 3:** `astar` întoarce `None` când nu există traseu și aruncă `ValueError`
-  pentru celule în afara grilei. Când ținta e izolată, răspunsul vine abia după ~1,3 s, pentru
-  că A* trebuie să epuizeze harta. După ce există `reverse_dijkstra`, verificarea ieftină va fi
-  `cost_to_home[celulă] == inf`, înainte de a chema `astar`.
+- **Pentru rolul 3:** `astar` întoarce `None` când nu există traseu (inclusiv când start sau
+  goal e pe o celulă interzisă) și aruncă `ValueError` pentru celule în afara grilei. Când ținta
+  e izolată, răspunsul vine abia după ~1,6 s, pentru că A* trebuie să epuizeze harta. După ce
+  există `reverse_dijkstra`, verificarea ieftină va fi `cost_to_home[celulă] == inf`, înainte de
+  a chema `astar`.
+- **Pentru oameni, de decis (start pe celulă interzisă, în live):** conform pasului R2-2, `astar`
+  întoarce `None` dacă celula de start are cost `inf`. În ieșirea live, dacă un pericol e pus
+  ca `inf` peste celula în care se află astronautul, din acea celulă nu mai iese niciun traseu.
+  De hotărât la `astar_spacetime` / `alternatives.generate`: fie pericolul intră doar ca cost
+  finit (`hazard_cost`), fie celula de start e exceptată acolo.
 - **Pentru oameni, de decis (preset-urile dau aproape același traseu pe situl sintetic):**
   cu `slope_k` pe preset, traseele habitat → `clay_delta` diferă între `safe` și `fast`, dar
   numai prin 3 celule din 121; au aceeași lungime (2897 m) și aceeași pantă maximă (7,3°).
@@ -88,9 +110,6 @@ Pe situl sintetic: 1,34 % din celule sunt interzise. Costul finit e între 1,03 
   Urmare pentru `alternatives.generate`: preset-urile singure nu vor produce ocoliri distincte
   pe acest sit. Ocolirile vor trebui să vină din termenul de pericol (`w_hazard × câmp`) sau din
   blocarea pe rând a unei părți a pericolului (nord / sud).
-- **Pentru oameni:** documentul de pași (R2-0, R2-1, R2-2, …) nu e în repo. R2-2 l-am
-  implementat după `ROL2_algoritmi.md` (sarcina 2) și după docstring-ul din `routing.py`. Dacă
-  pasul are cerințe în plus, trebuie să le primesc.
 - **Pentru oameni, de știut:** `.venv` nu exista local. L-am creat cu `python -m venv .venv` și
   `pip install -r backend/requirements.txt` (exact lista înghețată, fără pachete în plus, fără
   `npm install`). Situl sintetic l-am generat cu `pipeline/make_synthetic_site.py`, nemodificat.
@@ -113,7 +132,7 @@ Constante și alegeri fără sursă, pentru rolul 1 (de documentat sau de înloc
 | `costmap` | normalizarea radiației | `(rad − rad.min()) / rad.min()` | excesul relativ față de minimul sitului; vezi mai jos |
 | `costmap` | `RADIATION_EPS` | 1e-9 | protecție tehnică la împărțire când minimul radiației e zero, nu fizică |
 | `routing.astar` | costul unui pas | lungimea pasului × costul celulei în care intri | convenție; alternativa ar fi media celor două celule |
-| `routing.astar` | tăierea colțurilor | permisă | un pas pe diagonală e permis și când una sau ambele celule alăturate pe laturi sunt interzise; vezi mai jos |
+| `routing.astar` | tăierea colțurilor | interzisă | o diagonală cere ambele celule ortogonale libere; regulă de siguranță (un obstacol de 20 m nu se traversează pe colț), nu o valoare măsurată |
 | `budget` | `SUIT_FACTOR` | 0,6 | costumul reduce viteza la 60 % |
 | `budget` | `MARS_G_FACTOR` | 1,0 | ajustarea pentru 0,38 g încă nu e aplicată |
 | `budget` | `O2_PCT_PER_MIN_REST` | 0,12 %/min | consumul de O₂ în repaus |
@@ -137,12 +156,6 @@ minimul sitului: un strat uniform nu costă nimic, iar o zonă cu 10 % mai mult�
 Limita dură pe doză rămâne în validator. De știut: dacă minimul stratului e 0 (de exemplu nodata
 codat ca 0) și restul e pozitiv, împărțirea se face la `RADIATION_EPS` și costul iese uriaș; un
 astfel de strat trebuie curățat de rolul 1 înainte.
-
-**Tăierea colțurilor în `astar`.** Am păstrat cei 8 vecini simpli din `ROL2_algoritmi.md`. Un
-traseu poate deci trece pe diagonală printre două celule interzise care se ating doar în colț.
-Validatorul nu vede asta, pentru că toate celulele din traseu sunt permise. Dacă echipa vrea
-varianta strictă (diagonala permisă doar când ambele celule alăturate sunt libere), se schimbă
-în `astar` și trebuie păstrată la fel în `reverse_dijkstra` și `astar_spacetime`.
 
 Doar în teste (nu afectează produsul):
 

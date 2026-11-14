@@ -27,10 +27,15 @@ def assert_valid_path(cost: np.ndarray, path, start, goal) -> None:
     for (r0, c0), (r1, c1) in zip(path, path[1:]):
         assert max(abs(r1 - r0), abs(c1 - c0)) == 1, "pas între celule care nu sunt vecine"
         assert np.isfinite(cost[r1, c1]), "traseul intră într-o celulă interzisă"
+        # Pe diagonală, cele două celule ortogonale pe lângă care trece pasul trebuie să fie libere.
+        assert np.isfinite(cost[r0, c1]) and np.isfinite(cost[r1, c0]), "traseul taie un colț"
 
 
 def reference_cost(cost: np.ndarray, start, goal) -> float:
-    """Dijkstra simplu, scris independent de routing.py: costul optim sau inf."""
+    """Dijkstra simplu, scris independent de routing.py: costul optim sau inf.
+
+    Aceleași reguli: 8 vecini, pas × costul celulei în care intri, fără tăierea colțurilor.
+    """
     rows, cols = cost.shape
     best = {start: 0.0}
     heap = [(0.0, start)]
@@ -46,6 +51,8 @@ def reference_cost(cost: np.ndarray, start, goal) -> float:
                 if (dr, dc) == (0, 0) or not (0 <= nr < rows and 0 <= nc < cols):
                     continue
                 if not np.isfinite(cost[nr, nc]):
+                    continue
+                if dr and dc and not (np.isfinite(cost[r, nc]) and np.isfinite(cost[nr, c])):
                     continue
                 new = dist + (SQRT2 if dr and dc else 1.0) * float(cost[nr, nc])
                 if new < best.get((nr, nc), math.inf):
@@ -79,7 +86,9 @@ def test_path_goes_through_the_only_gap():
     path = astar(cost, start, goal)
 
     assert_valid_path(cost, path, start, goal)
-    assert (5, 15) in path
+    # Prin trecere se intră și se iese drept: diagonalele de lângă perete ar tăia colțul.
+    gap = path.index((5, 15))
+    assert path[gap - 1 : gap + 2] == [(5, 14), (5, 15), (5, 16)]
     assert path_cost(cost, path) == pytest.approx(reference_cost(cost, start, goal))
 
 
@@ -98,12 +107,46 @@ def test_goal_on_forbidden_cell_has_no_path():
     assert astar(cost, (0, 0), (3, 3)) is None
 
 
-def test_start_on_forbidden_cell_can_still_leave():
-    # Costul se plătește la intrarea într-o celulă, deci celula de start nu contează.
+def test_start_on_forbidden_cell_has_no_path():
     cost = np.ones((6, 6))
     cost[0, 0] = np.inf
 
-    assert astar(cost, (0, 0), (0, 3)) == [(0, 0), (0, 1), (0, 2), (0, 3)]
+    assert astar(cost, (0, 0), (0, 3)) is None
+    assert astar(cost, (0, 0), (0, 0)) is None
+
+
+def test_does_not_squeeze_between_diagonal_obstacles():
+    # Două obstacole lipite pe diagonală, exact pe drumul drept (3,3) -> (6,6).
+    cost = np.ones((10, 10))
+    cost[4, 5] = cost[5, 4] = np.inf
+    start, goal = (3, 3), (6, 6)
+
+    path = astar(cost, start, goal)
+
+    assert_valid_path(cost, path, start, goal)
+    assert not ((4, 4) in path and (5, 5) in path), "traseul s-a strecurat printre obstacole"
+    assert len(path) > 4  # diagonala directă ar avea 4 celule
+    assert path_cost(cost, path) == pytest.approx(reference_cost(cost, start, goal))
+
+
+def test_diagonal_wall_is_closed():
+    # Un perete pe anti-diagonală: celulele lui se ating doar în colțuri. Cu tăierea colțurilor
+    # ar fi „găurit” peste tot; fără ea, desparte complet harta.
+    n = 8
+    cost = np.ones((n, n))
+    for i in range(n):
+        cost[i, n - 1 - i] = np.inf
+
+    assert astar(cost, (0, 0), (n - 1, n - 1)) is None
+    assert astar(cost, (0, 0), (n - 2, 0)) is not None  # pe aceeași parte a peretelui
+
+
+def test_diagonal_needs_both_side_cells_free():
+    # O singură celulă interzisă lângă diagonală e de ajuns ca să o blocheze.
+    cost = np.ones((3, 3))
+    cost[0, 1] = np.inf
+
+    assert astar(cost, (0, 0), (1, 1)) == [(0, 0), (1, 0), (1, 1)]
 
 
 def test_detour_around_expensive_band():
@@ -147,9 +190,19 @@ def test_deterministic_with_many_equal_paths():
     first = astar(cost, start, goal)
 
     assert path_cost(cost, first) == pytest.approx(5 * SQRT2 + 11)
+    for _ in range(20):
+        assert astar(cost, start, goal) == first
     for variant in (cost.copy(), cost.astype(np.float32), np.asfortranarray(cost)):
-        for _ in range(3):
-            assert astar(variant, start, goal) == first
+        assert astar(variant, start, goal) == first
+
+
+def test_deterministic_on_wall_with_gap():
+    site = make_site(wall_with_gap(30, gap_row=5))
+    cost = static_cost(site)
+
+    first = astar(cost, site.habitat, (15, 27))
+
+    assert all(astar(cost, site.habitat, (15, 27)) == first for _ in range(20))
 
 
 def test_cost_grid_is_not_modified():

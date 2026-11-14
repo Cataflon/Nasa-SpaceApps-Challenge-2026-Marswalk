@@ -5,7 +5,7 @@ import numpy as np
 import pytest
 
 from app.config import CONTRACTS_DIR
-from app.core.grid import NEIGHBORS, SQRT2, octile, pad_and_flatten, to_cell, to_flat
+from app.core.grid import NEIGHBORS, SQRT2, neighbor_moves, octile, pad_and_flatten, to_cell, to_flat
 from grids import WALL_SLOPE_DEG, make_site, wall_with_gap
 
 
@@ -78,6 +78,26 @@ def test_center_neighbors_are_the_eight_around():
 def test_neighbors_order_is_fixed():
     assert NEIGHBORS(32) == NEIGHBORS(32)
     assert [delta for delta, _ in NEIGHBORS(32)] == [-32, 32, -1, 1, -33, -31, 31, 33]
+
+
+def test_neighbor_moves_name_the_two_side_cells_of_each_diagonal():
+    rows, cols = 9, 6
+    flat, Wp = pad_and_flatten(numbered(rows, cols))
+    center = (4, 3)
+    idx = to_flat(center, Wp)
+
+    moves = neighbor_moves(Wp)
+
+    # Aceiași vecini, în aceeași ordine ca NEIGHBORS.
+    assert [(delta, step) for delta, step, _, _ in moves] == list(NEIGHBORS(Wp))
+    for delta, step, side_a, side_b in moves:
+        target = to_cell(idx + delta, Wp)
+        if step == 1.0:
+            assert (side_a, side_b) == (0, 0)
+        else:
+            # Laturile sunt celula de pe același rând și cea de pe aceeași coloană cu ținta.
+            sides = {to_cell(idx + side_a, Wp), to_cell(idx + side_b, Wp)}
+            assert sides == {(target[0], center[1]), (center[0], target[1])}
 
 
 def test_octile():
