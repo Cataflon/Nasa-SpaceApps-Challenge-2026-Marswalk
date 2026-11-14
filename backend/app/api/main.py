@@ -61,11 +61,17 @@ def site(response: Response):
         "max_slope_deg": meta["max_slope_deg"],
         "targets": meta["targets"],
         "layers": [
-            {"id": name, "label": name, "png": f"/static/layers/{name}.png", "unit": spec["unit"]}
+            {"id": name, "label": name, "png": f"/static/layers/{name}.png", "unit": spec["unit"],
+             # Etichetele de proveniență scrise de pipeline (rolul 1), dacă există.
+             **{k: spec[k] for k in LAYER_LABEL_KEYS if k in spec}}
             for name, spec in meta["layers"].items()
             if name != "unsafe"
         ],
     }
+
+
+# Chei opționale din meta.json -> layers.<strat>, transmise frontendului (rolul 1 le completează).
+LAYER_LABEL_KEYS = ("data_type", "mission", "instrument", "source", "analog_of", "product_id")
 
 
 @app.get("/api/layers")
