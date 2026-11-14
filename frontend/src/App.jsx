@@ -19,7 +19,7 @@ export default function App() {
   useEffect(() => { window.scrollTo({ top: 0, behavior: 'instant' }); }, [page]);
   const site = siteResult.data, route = planner.result?.data, mock = siteResult.mock || planner.result?.mock;
   const offline = ['offline', 'reconnecting', 'invalid'].includes(live.status);
-  if (!site) return <div className="loading-screen"><Icon name="compass" size={42}/><h1>Marswalk</h1><p>{siteResult.error ?? 'Loading expedition area...'}</p></div>;
+  if (!site) return <div className="loading-screen"><img className="loading-brand-logo" src="/images/marswalk_logo_transparent.png" alt="Marswalk"/><p>{siteResult.error ?? 'Loading expedition area...'}</p></div>;
   return <div className={`app expedition-shell view-${page}`}>
     <WorkspaceNavigation page={page} onNavigate={setPage} mock={mock} offline={offline} site={site}/>
     {offline && <div className="connection-banner" role="status">Live link interrupted. Last received data retained; position is held.</div>}

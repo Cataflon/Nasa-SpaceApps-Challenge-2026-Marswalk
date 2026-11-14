@@ -27,3 +27,19 @@ terrain/tools/blender-4.5.9-windows-x64/blender.exe --background --python terrai
 Rezultate: `terrain/jezero.blend`, `public/terrain/jezero.glb`, `public/terrain/jezero.json`, `public/terrain/jezero-preview.png`.
 
 Pozițiile și traseele din mock nu devin rute validate pe relieful real. Integrarea cu situl real din pipeline/core și verificarea habitatului/țintelor sunt necesare înaintea folosirii operaționale. Portul HTTP intern se deschide doar pe loopback; Electron nu expune Node în interfață și blochează navigarea externă.
+
+## Colegii primesc sursele, nu folderul release
+
+`frontend/.gitignore` exclude intenționat `release/`. Folderul conține runtime-ul Electron și fișiere generate; `git push` trimite doar fișierele urmărite de Git.
+
+După clonare/pull, fiecare coleg pe Windows poate genera aplicația local:
+
+```powershell
+cd frontend
+npm.cmd ci
+npm.cmd run desktop:package
+```
+
+Executabilul apare în `frontend/release/Marswalk-win32-x64/Marswalk.exe`. Pentru distribuire fără compilare, arhivați întregul folder `Marswalk-win32-x64` și distribuiți ZIP-ul separat (de exemplu ca asset într-un GitHub Release). Nu mutați doar `.exe` și nu includeți runtime-ul generat în istoricul surselor.
+
+Ghidul complet pentru colegi, de la clonare la lansarea backendului și aplicației desktop: [PORNIRE.md](../PORNIRE.md).

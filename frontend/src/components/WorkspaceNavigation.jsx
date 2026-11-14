@@ -3,7 +3,7 @@ const pages=[['mission','map','Mission'],['navigation','compass','Navigation'],[
 export default function WorkspaceNavigation({page,onNavigate,mock,offline,site}) {
   return <>
     <header className="field-masthead">
-      <a className="field-wordmark" href="#mission" onClick={e=>{e.preventDefault();onNavigate('mission');}}><span className="field-insignia"><Icon name="compass" size={25}/></span><span>Marswalk<small>Jezero exploration</small></span></a>
+      <a className="field-wordmark" href="#mission" onClick={e=>{e.preventDefault();onNavigate('mission');}}><img className="app-brand-logo" src="/images/marswalk_logo_512.png" alt="Marswalk" width="512" height="262"/></a>
       <nav aria-label="Application views">{pages.map(([id,icon,label])=><button key={id} className={`field-tab ${page===id?'current':''}`} onClick={()=>onNavigate(id)} aria-current={page===id?'page':undefined}><Icon name={icon} size={18}/><span>{label}</span></button>)}</nav>
       <div className="field-link-status"><i className={offline?'offline':''}/><span>{offline?'Connection interrupted':mock?'Demo data':'Connected'}</span></div>
     </header>
