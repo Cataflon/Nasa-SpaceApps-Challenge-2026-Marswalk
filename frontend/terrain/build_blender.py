@@ -1,5 +1,7 @@
 ﻿"""Relief USGS neschimbat; exagerarea verticala este exclusiv de prezentare."""
-import bpy, json, os, math
+import bpy, json, os, math, sys
+sys.path.insert(0, os.path.join(os.getcwd(), 'terrain'))
+from materials import terrain_material
 from mathutils import Vector
 root = os.getcwd()
 with open(os.path.join(root, 'public/terrain/jezero.json')) as f:
@@ -61,6 +63,7 @@ node = surface_material.node_tree.nodes.new('ShaderNodeVertexColor')
 node.layer_name = 'TerrainColor'
 surface_material.node_tree.links.new(node.outputs['Color'], surface_material.node_tree.nodes['Principled BSDF'].inputs['Base Color'])
 terrain.data.materials.append(surface_material)
+terrain.data.materials[0] = terrain_material(root, terrain.data)
 for p in terrain.data.polygons:
     p.use_smooth = True
 # Pereti de la muchia reala a suprafetei pana la planul bazei, fara schimbarea reliefului.
@@ -117,7 +120,7 @@ bpy.context.scene.render.filepath = os.path.join(root,'public/terrain/jezero-pre
 # Verifica matematic ca transformarea de prezentare pastreaza datele sursa.
 assert max(abs((vertices[i][2]-BASE_THICKNESS)/VERTICAL_SCALE+reference-z) for i,z in enumerate(elevations)) < 1e-8
 assert abs((high_x-low_x)-(high_y-low_y)) < 1e-6
-bpy.ops.wm.save_as_mainfile(filepath=os.path.join(root,'terrain/jezero.blend'))
+bpy.ops.wm.save_as_mainfile(filepath=os.path.join(root,'terrain/jezero.blend'), compress=True)
 bpy.ops.render.render(write_still=True)
 print('Verified: original USGS elevations retained; display vertical factor', VERTICAL_SCALE)
 

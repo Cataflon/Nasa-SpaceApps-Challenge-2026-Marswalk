@@ -1,17 +1,5 @@
-import Icon from './Icon';
-import { number } from '../utils';
-
-export default function MissionMetrics({ live }) {
-  const readings = [
-    ['O₂ disponibil', live.tick?.sensors?.o2_pct, '%', 'shield', 'Rezervă curentă'],
-    ['Până la apus', live.tick ? live.tick.budget?.sunset_min - live.tick.t_min : null, 'min', 'compass', 'Fereastră de lumină'],
-    ['Doză acumulată', live.tick?.sensors?.dose_total_msv, 'mSv', 'activity', 'Expunere în misiune'],
-    ['Vânt', live.tick?.sensors?.wind_ms, 'm/s', 'wind', 'Mediul exterior'],
-  ];
-  return <section className="mission-metrics" aria-label="Senzori principali">
-    {readings.map(([label, value, unit, icon, description]) => <div className="metric-card" key={label}>
-      <div><span className="metric-label">{label}</span><strong>{number(value, 2)}<small>{unit}</small></strong><span className="metric-description">{Number.isFinite(value) ? description : 'În așteptarea datelor'}</span></div>
-      <span className="metric-icon"><Icon name={icon} size={21}/></span>
-    </div>)}
-  </section>;
+﻿import { number } from '../utils';
+export default function MissionMetrics({live}){
+  const readings=[['O₂',live.tick?.sensors?.o2_pct,'%', 'Oxygen reserve'],['DAYLIGHT',live.tick?live.tick.budget?.sunset_min-live.tick.t_min:null,'min','Until sunset'],['DOSE',live.tick?.sensors?.dose_total_msv,'mSv','Accumulated exposure'],['WIND',live.tick?.sensors?.wind_ms,'m/s','Surface wind']];
+  return <section className="instrument-strip" aria-label="Mission instruments">{readings.map(([label,value,unit,title])=><div className="instrument" key={label}><span>{label}</span><strong aria-label={title}>{number(value,2)}<small>{unit}</small></strong><i className={Number.isFinite(value)?'receiving':''}/></div>)}</section>;
 }

@@ -2,6 +2,14 @@
 
 ## Gata
 
+- Pagina Navigare: dispozitiv tracker robust (ramă groasă, colțuri protejate, șuruburi, grip, taste laterale/frontale) și vizor first-person. Camera urmărește traseul ales, la 1,75 m în coordonatele sursă cu factorul vizual 6×; fără orbitare sau panoramă de sus în vizor.
+- Traseul ales în Misiune (inclusiv varianta distanță/pantă) se păstrează în starea App și este transmis navigatorului. În simulare se prioritizează traseul rămas și poziția live; în preview se pot folosi sliderul, pașii de 50/100 m și redarea locală, fără modificarea simulării/O₂.
+- Verificat în aplicația Windows: selectare carbonați în Misiune → Navigare păstrează traseul de 4,1 km; preview în mișcare afișează progres, direcție și distanță rămasă coerente. Verificate și funcțiile de interpolare pe traseu, proiecție a poziției și orientare la sosire. Build și ambalare desktop reușite.
+
+- Relief texturat cu albedo/normal/roughness PBR 2048² procedurale, incluse în GLB; geometria sursă de 250000 de puncte și SHA-256 al grilei USGS sunt neschimbate. Umbre PCF, lumină principală caldă, fill discret și tone mapping în aplicația desktop.
+- Habitat nou Blender/GLB inspirat de Mars Dune Alpha (NASA CHAPEA / ICON / BIG): pereți cu straturi de imprimare, cinci bolți joase, sas, ferestre, iluminat de acces, zonă EVA și echipamente. Model conceptual, mărit 12× ca marcaj în hartă; camera se apropie la selectarea habitatului. Nu este o reconstrucție arhitecturală certificată.
+- Randările pentru relief și habitat inspectate; exportul PBR verificat (3 texturi incluse), build-ul și ambalarea Windows reușite. Încărcarea materialelor/umbrelor verificată vizual în desktop; inspecția camerei apropiate a fost limitată de minimizarea ferestrei de către utilizator.
+
 - Reparat build-ul CI după ce un merge a fost comis cu marcaje de conflict în App.jsx, client.js, BudgetPanel.jsx și DecisionPanel.jsx. Păstrată arhitectura desktop/3D; adăugată compatibilitatea API liveControl, injectEvent cu params și subscribeLive fără callback de status. Reluarea backendului nu mai retrimite route_id (care ar reseta misiunea). `npm run build` trece local; nu s-au rulat comenzi Git care modifică repository-ul.
 
 - Eliminată complet harta 2D din componentă. Vizualizare 3D unică pe desktop și mod compact, cu 250000 de vârfuri CTX native și triangulație comună cu traseele.
@@ -52,3 +60,8 @@
 - Navigarea reală cere localizare și heading; mock-urile furnizează poziție simulată, nu orientarea corpului.
 - Prevenție MVP = alerte bazate pe reguli și date actuale; mentenanță = stare/jurnal/date de service când backendul le furnizează, fără predicții inventate.
 - Nu s-au descărcat GeoTIFF-uri și nu s-a generat relief Blender în etapa de planificare.
+
+- 2026-11-14: redesign Field Operations, inspired by the archive's mission sheet, connected departure/destination rail and prominent return time. Horizontal desktop masthead, compact instrument strip and a map-dominant workbench replace the large dashboard cards. Added expedition.css and MissionSheet; kept the terrain, FPV renderer, route algorithms and data unchanged. Responsive stacking retains the map first on narrow screens. No new dependencies.
+- Validation: npm.cmd run build passes (existing Three.js chunk size warning only); portable Electron package refreshed. Native desktop visual QA checked the mission workbench, point selection and animated route perspective, planning panel, tracker page and telemetry. Narrow layout is implemented in CSS but was not visually tested at phone width in this pass.
+
+- Design refinement requested by user: restored the earlier layout with left application navigation, large central terrain and mission panel on the right. Combined the compact telemetry and return clock with rounded surfaces, softer orange accents and regular typography. Removed console registration strips, artificial session labels and ruler decorations. Terrain and route behavior unchanged.
