@@ -4,6 +4,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.api import main
+from app.live import planning
 from app.live.store import routes
 
 client = TestClient(main.app)
@@ -25,7 +26,7 @@ def clean_store():
 @pytest.fixture
 def fake_site(monkeypatch):
     site = SimpleNamespace(meta=FAKE_META, shape=(500, 500))
-    monkeypatch.setattr(main, "get_site", lambda: site)
+    monkeypatch.setattr(planning, "get_site", lambda: site)
     return site
 
 
@@ -33,7 +34,7 @@ def test_mock_when_planner_not_implemented(fake_site, monkeypatch):
     def not_ready(*a, **kw):
         raise NotImplementedError
 
-    monkeypatch.setattr(main.planner, "plan_route", not_ready)
+    monkeypatch.setattr(planning.planner, "plan_route", not_ready)
     r = client.post("/api/route", json=REQ)
     assert r.status_code == 200 and r.headers["X-Mock"] == "1"
     body = r.json()
@@ -42,7 +43,7 @@ def test_mock_when_planner_not_implemented(fake_site, monkeypatch):
 
 
 def test_mock_when_site_missing(monkeypatch):
-    monkeypatch.setattr(main, "get_site", lambda: None)
+    monkeypatch.setattr(planning, "get_site", lambda: None)
     r = client.post("/api/route", json=REQ)  # validează pe site.json din contracte
     assert r.status_code == 200 and r.headers["X-Mock"] == "1"
 
@@ -54,7 +55,7 @@ def test_uses_planner_and_passes_arguments(fake_site, monkeypatch):
         calls.append((site, start, stops, kw))
         return {"route_id": "ignored", "path": [[300, 200], [180, 140]], "verdict": "GO"}
 
-    monkeypatch.setattr(main.planner, "plan_route", fake_plan)
+    monkeypatch.setattr(planning.planner, "plan_route", fake_plan)
     r = client.post("/api/route", json={**REQ, "max_duration_min": 200})
     assert r.status_code == 200 and "X-Mock" not in r.headers
     site, start, stops, kw = calls[0]
@@ -64,7 +65,7 @@ def test_uses_planner_and_passes_arguments(fake_site, monkeypatch):
 
 
 def test_route_ids_increase(fake_site, monkeypatch):
-    monkeypatch.setattr(main.planner, "plan_route", lambda *a, **kw: {"path": []})
+    monkeypatch.setattr(planning.planner, "plan_route", lambda *a, **kw: {"path": []})
     ids = [client.post("/api/route", json=REQ).json()["route_id"] for _ in range(3)]
     assert ids == ["plan_0", "plan_1", "plan_2"]
     assert routes.latest()["route_id"] == "plan_2"
@@ -88,7 +89,7 @@ def test_planner_value_error_is_422(fake_site, monkeypatch):
     def unreachable(*a, **kw):
         raise ValueError("Target clay_delta is unreachable.")
 
-    monkeypatch.setattr(main.planner, "plan_route", unreachable)
+    monkeypatch.setattr(planning.planner, "plan_route", unreachable)
     r = client.post("/api/route", json=REQ)
     assert r.status_code == 422 and "unreachable" in r.json()["detail"]
     assert routes.latest() is None

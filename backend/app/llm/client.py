@@ -27,19 +27,20 @@ async def explain(summary: dict) -> dict:
     if not LLM_ENABLED:
         return fallback
 
-    if (hit := cache.get(summary)) is not None:
+    # Cheia de cache include versiunea promptului și modelul: o schimbare la oricare
+    # dintre ele nu mai refolosește explicațiile vechi.
+    cache_key = {**summary, "_prompt": prompts.PROMPT_VERSION, "_model": OLLAMA_MODEL}
+    if (hit := cache.get(cache_key)) is not None:
         return {**hit, "source": "cache"}
 
     body = {
         "model": OLLAMA_MODEL,
         "stream": False,
         "keep_alive": -1,
+        "think": False,  # garantează că un model Qwen3 nu „gândește” înainte (ar depăși 3 s)
         "format": prompts.response_schema(summary.get("alternative_ids", [])),
         "options": OPTIONS,
-        "messages": [
-            {"role": "system", "content": prompts.SYSTEM},
-            {"role": "user", "content": prompts.user_prompt(summary)},
-        ],
+        "messages": prompts.messages(summary),
     }
     try:
         async with httpx.AsyncClient(timeout=LLM_TIMEOUT_S) as client:
@@ -59,7 +60,7 @@ async def explain(summary: dict) -> dict:
         return fallback
 
     result = {"text": out["reason"].strip(), "source": "llm"}
-    cache.put(summary, result)
+    cache.put(cache_key, result)
     return result
 
 
@@ -71,7 +72,7 @@ async def warm_up() -> None:
         async with httpx.AsyncClient(timeout=60) as client:
             await client.post(
                 f"{OLLAMA_URL}/api/generate",
-                json={"model": OLLAMA_MODEL, "prompt": "ok", "keep_alive": -1, "options": {"num_predict": 1}},
+                json={"model": OLLAMA_MODEL, "prompt": "ok", "keep_alive": -1, "think": False, "options": {"num_predict": 1}},
             )
         log.info("Modelul %s e încălzit.", OLLAMA_MODEL)
     except Exception as exc:

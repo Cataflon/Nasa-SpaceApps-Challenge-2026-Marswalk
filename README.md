@@ -273,7 +273,7 @@ cost = distanță × f(pantă) × f(teren) + w_pericol × pericol(x, y, t) + w_r
 ### 5.7 LLM-ul (Ollama)
 
 - **Hardware de dezvoltare/demo:** Ryzen 7 7840HS, 24 GB RAM, RTX 4050 cu 6 GB VRAM.
-- **Model decizie (live):** `qwen2.5:7b-instruct` (Q4, ~4,7 GB, intră complet în VRAM, rapid). Alternativă de testat: `qwen3:8b` cu thinking oprit. Rezervă: `qwen2.5:3b` sau `llama3.2:3b`.
+- **Model ales:** `qwen3:4b-instruct` (Qwen3-4B-Instruct-2507, ~2,9 GB în VRAM, 100% GPU, fără mod de gândire, tool calling). Măsurat pe laptop: încărcare 7,9 s, apoi p50 1,3 s · p95 1,5 s pe explicație. **Atenție:** tag-ul `qwen3:4b` simplu e varianta „Thinking”, care gândește mereu și e prea lentă. Rezervă: `qwen2.5:7b-instruct-q4_K_S` (~4,5 GB). Comparația: `scripts/llm_bench.py --model <tag>`.
 - **Model chat/explicații (opțional):** un 14B (ex. `qwen2.5:14b`) nu încape în 6 GB și se împarte între GPU și CPU, deci e mai lent (câțiva tokeni/s). Se folosește doar unde latența nu contează, nu pentru decizia live.
 - **Setări:** `temperature: 0`, `seed: 42`, format cu schemă JSON, context mic (2-4k) ca să rămână în VRAM.
 - **Rol:** doar explică. Decizia e deja luată de regulă și afișată în UI înainte ca LLM-ul să înceapă.

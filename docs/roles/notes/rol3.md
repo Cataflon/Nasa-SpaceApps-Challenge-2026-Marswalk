@@ -22,6 +22,18 @@
 - WebSocket-ul nu mai trimite nimic până la `POST /api/live/control {"action": "start"}`. Butonul „Pornește ieșirea” trebuie să apeleze întâi ruta de control, apoi să deschidă WebSocket-ul (sau invers: la conectare primești imediat ultimul `tick`, dacă există).
 - `speed` = minute simulate pe secundă reală (implicit 10). Pentru demo merge bine 10-20.
 
+- **Ollama real, legat:** modelul implicit e `qwen3:4b-instruct` (`config.py`), cererile au `think: false`, promptul cere text simplu, fără emoji. Măsurat pe laptopul cu RTX 4050 (`scripts/llm_bench.py --repeat 2`, 20 de situații din `app/llm/samples.py`): încărcare 7,9 s; p50 1,31 s · p95 1,46 s · max 1,50 s; 40/40 de la LLM; 0 emoji; medie 16 cuvinte. Determinism: 15/20 situații dau același text la repetare (variația vine de pe GPU; cache-ul face demo-ul reproductibil).
+- **Promptul de explicații, v2** (`app/llm/prompts.py`, `PROMPT_VERSION = 2`): modelul primește fapte formulate (acțiunea pe primul rând, unități, coduri traduse în cuvinte), nu JSON brut, plus 4 exemple de răspuns bun (REROUTE, RETURN, WAIT, EMERGENCY). Cache-ul de explicații depinde de versiunea promptului și de model. Măsurat pe `qwen3:4b-instruct`, 20 de situații: toate încep cu acțiunea corectă și au cifrele corecte; p50 1,85 s · p95 2,17 s · max 2,24 s (exemplele lungesc promptul; v1 era ~1,3 s); medie 21 de cuvinte, max 25.
+- Teste pe Ollama real: `tests/llm/test_ollama_live.py`, marcate `ollama` (`pytest -m ollama`), sărite automat dacă Ollama nu rulează.
+- **Chatul** (`POST /api/chat`, NDJSON după `chat_stream.json`; `app/llm/chat.py` + `app/llm/tools.py`):
+  - Unelte: `plan_route`, `oxygen_budget`, `layer_value`, `science_stops`, `daylight`, `eva_status`. Toate cifrele vin din cod; planificarea folosește același serviciu ca `POST /api/route` (`app/live/planning.py`), deci un traseu planificat din chat poate fi pornit direct cu `/api/live/control start`.
+  - Cu Ollama: tool calling real, în streaming, cel mult 3 runde de unelte, timeout 30 s. Fără Ollama: fallback pe cuvinte-cheie, cu aceleași unelte și răspunsuri din șabloane.
+  - Linia `done` are în plus `source`: `"llm"` sau `"fallback"`.
+  - Măsurat pe `qwen3:4b-instruct`, 8 întrebări: unealta corectă la toate (după ajustarea descrierilor), 1-3 s total, întrebările vagi primesc o întrebare de clarificare.
+  - Teste: `tests/llm/test_chat.py` (Ollama simulat), `tests/api/test_chat_api.py`.
+
+**Pentru rolul 4 (chat):** citește răspunsul linie cu linie (`fetch` + `ReadableStream`). `tool_call` → etichetă „Planning route…”, `route` → desenezi traseul pe hartă (are `route_id`, deci „Start EVA” îl poate porni), `token` → text adăugat, `done` → final.
+
 ## În lucru
 
 ## Cereri

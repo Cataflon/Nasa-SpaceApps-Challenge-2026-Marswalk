@@ -133,6 +133,7 @@ class LiveEngine:
         self.sensors_series: list[dict] | None = None
         self.sunset_min = DEFAULT_SUNSET_MIN
         self.last_tick: dict | None = None
+        self.last_decision: dict | None = None
         self._last_eval_t: dict[str, int] = {}
         self._last_decision_key: tuple | None = None
         self._explain_queue: list[dict] = []
@@ -481,6 +482,8 @@ class LiveEngine:
         eta_min = max(0, int(round(eta - t)))
         summary = build_summary(decision, t_min=t, hazard_kind=h["kind"], eta_hazard_min=eta_min, limits=self.limits)
         self._explain_queue.append({"decision_id": decision_id, "t_min": t, "summary": summary})
+        self.last_decision = {"t_min": t, "decision": decision.decision, "alternative_id": decision.alternative_id,
+                              "hazard": h["kind"], "eta_hazard_min": eta_min}
         return {
             "type": "decision",
             "decision_id": decision_id,

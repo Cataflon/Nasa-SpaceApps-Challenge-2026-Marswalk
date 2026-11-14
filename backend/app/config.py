@@ -11,7 +11,9 @@ CONTRACTS_DIR = ROOT / "shared" / "contracts"
 SITE_ID = os.getenv("MARSWALK_SITE", "synthetic")
 
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen2.5:7b-instruct")
+# qwen3:4b-instruct (Qwen3-4B-Instruct-2507): ~2,9 GB în VRAM, fără mod de gândire, tool calling.
+# Atenție: tag-ul `qwen3:4b` simplu e varianta „Thinking”, care gândește mereu și e prea lentă.
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen3:4b-instruct")
 LLM_TIMEOUT_S = float(os.getenv("LLM_TIMEOUT_S", "3"))
 LLM_ENABLED = os.getenv("LLM_ENABLED", "1") == "1"
 

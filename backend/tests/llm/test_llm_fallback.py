@@ -68,6 +68,7 @@ def test_llm_answer_is_used(fake_ollama):
     assert body["format"]["required"] == ["decision", "alternative_id", "reason"]
     assert body["format"]["properties"]["alternative_id"]["enum"] == SUMMARY["alternative_ids"]
     assert body["options"]["temperature"] == 0 and body["options"]["seed"] == 42
+    assert body["think"] is False and body["model"] == client.OLLAMA_MODEL
     assert "in English" in body["messages"][0]["content"]
 
 

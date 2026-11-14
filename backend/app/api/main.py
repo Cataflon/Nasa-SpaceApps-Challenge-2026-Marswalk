@@ -12,14 +12,15 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Response, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.config import CONTRACTS_DIR, FRONTEND_ORIGINS, LIVE_MOCK, SITE_ID, site_dir
-from app.core import planner
 from app.core.site_data import get_site
+from app.live import planning
 from app.live.engine import engine, mock_stream
-from app.live.store import routes
 from app.llm import warm_up
+from app.llm.chat import chat_stream
 from app.schemas import ChatRequest, LiveControl, LiveEvent, RouteRequest
 
 
@@ -104,12 +105,6 @@ def point(row: int, col: int):
     return {"row": row, "col": col, "values": s.value_at(row, col)}
 
 
-def _site_meta() -> dict:
-    """Meta-ul sitului activ, sau site.json din contracte dacă situl nu e generat."""
-    s = get_site()
-    return s.meta if s is not None else contract("site.json")
-
-
 @app.post("/api/route")
 def route(req: RouteRequest, response: Response):
     """Traseu + buget + verdict. Rulează în threadpool (funcție sincronă), deci nu blochează live-ul.
@@ -118,47 +113,31 @@ def route(req: RouteRequest, response: Response):
     din contract cu `X-Mock: 1`. Traseul primește mereu un `route_id` nou și e salvat
     pentru motorul live.
     """
-    meta = _site_meta()
-    rows, cols = meta["shape"]
-    if not (0 <= req.start.row < rows and 0 <= req.start.col < cols):
-        raise HTTPException(422, f"Start cell ({req.start.row}, {req.start.col}) is outside the {rows}×{cols} grid.")
-    if not req.stops:
-        raise HTTPException(422, "Choose at least one target.")
-    known = {t["id"] for t in meta["targets"]}
-    unknown = [s for s in req.stops if s not in known]
-    if unknown:
-        raise HTTPException(422, f"Unknown targets: {', '.join(unknown)}. Available: {', '.join(sorted(known))}.")
-
-    s = get_site()
-    result: dict | None = None
-    if s is not None:
-        try:
-            result = planner.plan_route(
-                s,
-                (req.start.row, req.start.col),
-                list(req.stops),
-                preset=req.preset,
-                start_time_min=req.start_time_min,
-                max_duration_min=req.max_duration_min,
-                return_to_habitat=req.return_to_habitat,
-            )
-        except NotImplementedError:
-            result = None
-        except ValueError as exc:  # ex. țintă inaccesibilă; mesajul planner-ului e în engleză
-            raise HTTPException(422, str(exc)) from exc
-
-    if result is None:
+    try:
+        result, mock = planning.plan(
+            list(req.stops),
+            start=(req.start.row, req.start.col),
+            preset=req.preset,
+            start_time_min=req.start_time_min,
+            max_duration_min=req.max_duration_min,
+            return_to_habitat=req.return_to_habitat,
+        )
+    except planning.PlanningError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    if mock:
         response.headers["X-Mock"] = "1"
-        result = {**contract("route_response.json"), "preset": req.preset}
-
-    routes.add(result)
     return result
 
 
 @app.post("/api/chat")
 async def chat(req: ChatRequest):
-    # TODO (rolul 3): chat cu unelte (plan_route, oxygen_budget, layer_value, science_stops, daylight)
-    raise HTTPException(501, "Chat is not implemented yet.")
+    """Chat cu unelte, în streaming NDJSON (vezi shared/contracts/chat_stream.json)."""
+
+    async def lines():
+        async for item in chat_stream(req.message, req.history):
+            yield json.dumps(item, ensure_ascii=False) + "\n"
+
+    return StreamingResponse(lines(), media_type="application/x-ndjson")
 
 
 # Rutele live sunt `async def`: rulează pe aceeași buclă ca motorul, deci fără curse între thread-uri.
