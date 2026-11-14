@@ -30,7 +30,8 @@ UNSAFE_SLOPE_DEG = 35.0  # înlocuitor pentru FOM-ul HiRISE
 # v3: radiația în doză echivalentă RAD (~26,7 µSv/h în loc de ~10).
 # v4: textele vizibile în engleză (numele țintelor și sitului, etichetele straturilor).
 # v5: `artifacts` (hardware NASA ca POI) și `rover_traverse` (None pe situl sintetic).
-GENERATOR_VERSION = 5
+# v6: Ingenuity = Wright Brothers Field (primul zbor); epava e în afara hărții Jezero.
+GENERATOR_VERSION = 6
 # Doza echivalentă la suprafață: RAD 0,64 mSv/zi = 26,7 µSv/h (Hassler et al. 2014, Science).
 # Aceeași valoare ca scenario.DOSE_RATE_USV_H (backend/app/live/scenario.py).
 DOSE_RATE_USV_H = 26.7
@@ -65,8 +66,9 @@ ARTIFACTS = [
      "row": 228, "col": 205, "caution_radius_m": 100, "note": "Risk of snagging on cables and fabric." + SYNTH_NOTE},
     {"id": "heat_shield", "name": "Mars 2020 heat shield", "type": "historical_hardware",
      "row": 345, "col": 255, "caution_radius_m": 50, "note": "Carbon-composite heat shield with ablative cork." + SYNTH_NOTE},
-    {"id": "ingenuity_final", "name": "Ingenuity Mars Helicopter (final location)", "type": "historical_hardware",
-     "row": 150, "col": 100, "caution_radius_m": 30, "note": "First aircraft to fly on another planet: 72 flights." + SYNTH_NOTE},
+    {"id": "ingenuity_first_flight", "name": "Wright Brothers Field (Ingenuity's first flight)", "type": "historical_hardware",
+     "row": 289, "col": 214, "caution_radius_m": 0,
+     "note": "First powered, controlled flight on another planet (19 April 2021)." + SYNTH_NOTE},
 ]
 for _a in ARTIFACTS:
     _a.update(source="synthetic", status="synthetic")

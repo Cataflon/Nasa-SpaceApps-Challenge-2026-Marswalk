@@ -109,6 +109,20 @@
 - `how-we-calculate.md`: rânduri noi pentru elevație, pantă, `unsafe`, teren, minerale și pozițiile țintelor și artefactelor (în engleză, cu status).
 - Teste: 4 noi + validarea pe Jezero (clase valide, proporții plauzibile, mineralul fiecărei ținte).
 
+### Corecții după capitolul 5
+- **Ingenuity:** din jurnalul oficial de zbor (`m20_heli_waypoints.json`, descărcat acum de `fetch_stac.py`), epava (zborul 72, **Airfield Chi**, nu „Sigma”) e la 18,4973°N / 77,3225°E, adică **~2 km în afara hărții**. Pe hartă e acum `ingenuity_first_flight` (Wright Brothers Field, zborul 1, **verificat**), iar nota spune unde e epava. Situl sintetic e **v6**; contractele sunt actualizate.
+- **Delta (argile):** pragul a crescut de la 50 la 90 m peste fundul craterului; doar corpul principal al deltei din NV (14,7% din sit), fără terenul înalt din SV.
+- **Séítah:** buffer de 700 m în loc de 400 (1,9% din sit).
+- **Sky crane, parașuta și scutul termic** rămân „to verify”: paginile JPL cu pozițiile întorc 404.
+
+### 6. `docs/sources.md` (în engleză)
+- Toate sursele din README §3, plus tot ce folosim efectiv: STAC, HiRISE, CTX, THEMIS, waypoint-urile roverului și ale Ingenuity, 12 articole și harta SIM 3464.
+- **Link-urile au fost deschise automat** (HTTP 200). **DOI-urile au fost verificate în Crossref** (autor, an, titlu, revistă).
+- Citarea Zeitlin 2018 avea DOI greșit; e corectat în `scenario.py`: 10.1029/2018GL077760.
+- Nu se deschid din rețeaua noastră: PDS Atmospheres (eroare de certificat TLS) și NASA NTRS (timeout). Sunt marcate „to verify”.
+- Totaluri oneste: 7 tipuri de date, 4 misiuni folosite efectiv (MRO, Mars Odyssey, Mars 2020, MSL); MGS și MAVEN doar context.
+- Test nou `pipeline/tests/test_sources.py`: fiecare DOI din cod, fiecare URL de date și fiecare colecție STAC folosită trebuie să apară în `sources.md`, cu status.
+
 ## În lucru
 
 ## Cereri

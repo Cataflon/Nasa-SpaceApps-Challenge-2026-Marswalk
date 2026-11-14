@@ -52,6 +52,9 @@ GRID_N = 500
 # sol, lat, lon (planetocentric, est) și elev_geoid (altitudinea față de areoid, în m).
 WAYPOINTS_URL = "https://mars.nasa.gov/mmgis-maps/M20/Layers/json/M20_waypoints.json"
 WAYPOINTS_FILE = "m20_waypoints.json"
+# Zborurile Ingenuity (aceeași hartă oficială): aeroporturile, poziția finală după zborul 72.
+HELI_URL = "https://mars.nasa.gov/mmgis-maps/M20/Layers/json/m20_heli_waypoints.json"
+HELI_FILE = "m20_heli_waypoints.json"
 
 # Ce aducem din fiecare colecție și cum îl etichetăm.
 COLLECTIONS = {
@@ -299,8 +302,8 @@ def fetch_all(out: Path, hirise_step_m: float = 4.0, dry_run: bool = False, kind
     return products
 
 
-def fetch_waypoints(out: Path, url: str = WAYPOINTS_URL) -> Path:
-    """Descarcă pozițiile roverului Perseverance (GeoJSON, ~600 KB) în `out/WAYPOINTS_FILE`.
+def fetch_waypoints(out: Path, url: str = WAYPOINTS_URL, filename: str = WAYPOINTS_FILE) -> Path:
+    """Descarcă un strat GeoJSON al hărții NASA (implicit pozițiile roverului, ~600 KB) în `out/filename`.
 
     Sursa e fișierul de date din spatele hărții oficiale NASA de localizare a roverului.
     User-Agent generic: nu trimitem nimic despre echipă sau utilizator.
@@ -314,10 +317,9 @@ def fetch_waypoints(out: Path, url: str = WAYPOINTS_URL) -> Path:
     if data.get("type") != "FeatureCollection" or not data.get("features"):
         raise ValueError(f"Răspuns neașteptat de la {url}")
     out.mkdir(parents=True, exist_ok=True)
-    path = out / WAYPOINTS_FILE
+    path = out / filename
     atomic_write_text(path, text)
-    sols = [f["properties"]["sol"] for f in data["features"]]
-    print(f"\n== waypoints Perseverance: {len(sols)} puncte, solurile {min(sols)}-{max(sols)} -> {path}")
+    print(f"\n== {data.get('name', filename)}: {len(data['features'])} puncte -> {path}")
     return path
 
 
@@ -383,6 +385,7 @@ def main() -> None:
                 print("\nmanifest:", write_manifest(args.out, products, args.hirise_step))
         if not args.dry_run and (not args.only or "waypoints" in args.only):
             fetch_waypoints(args.out)
+            fetch_waypoints(args.out, HELI_URL, HELI_FILE)
 
 
 if __name__ == "__main__":

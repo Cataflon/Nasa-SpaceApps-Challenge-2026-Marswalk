@@ -103,7 +103,8 @@ LOCAL_STORM = {"intensity": 0.7, "peak_after_min": 16.0, "duration_min": 30.0, "
 REGIONAL_STORM = {"intensity": 0.9, "ramp_min": 120.0, "tau_peak": 3.0, "wind_add_ms": 10.0}
 # Furtună solară (SEP): multiplicatorul dozei. Contractul (live_messages.json) folosește
 # `dose_rate_multiplier` și `duration_min`. RAD a înregistrat creșteri de câteva ori până la zeci
-# de ori față de fond (sept. 2017: Zeitlin et al. 2018, GRL; mai 2024: ~8 mGy cumulat, NASA).
+# de ori față de fond (sept. 2017: Zeitlin et al. 2018, GRL, doi:10.1029/2018GL077760; mai 2024:
+# ~8 mGy cumulat, NASA). DOI-urile tuturor articolelor sunt verificate în docs/sources.md.
 # de verificat
 SOLAR_PARTICLE_EVENT = {"dose_rate_multiplier": 20.0, "duration_min": 60.0, "rise_min": 10.0,
                         "decay_min": 30.0}

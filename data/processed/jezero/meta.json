@@ -63,9 +63,9 @@
         {
           "id": "delta_deposits",
           "class": 1,
-          "name": "Western delta deposits (Fe/Mg smectite clays)",
+          "name": "Main body of the western delta (Fe/Mg smectite clays)",
           "source": "HiRISE/CTX DTM (delta outline) + CRISM literature (Goudge et al. 2015)",
-          "cells_pct": 27.2
+          "cells_pct": 14.67
         },
         {
           "id": "delta_front_mudstones",
@@ -79,7 +79,7 @@
           "class": 3,
           "name": "Séítah olivine cumulate",
           "source": "Perseverance Séítah campaign (M20 waypoints, sols 200-340); Liu et al. 2022",
-          "cells_pct": 0.74
+          "cells_pct": 1.95
         },
         {
           "id": "margin_unit",
@@ -237,17 +237,17 @@
       "status": "to verify"
     },
     {
-      "id": "ingenuity_final",
-      "name": "Ingenuity Mars Helicopter (final location)",
+      "id": "ingenuity_first_flight",
+      "name": "Wright Brothers Field (Ingenuity's first flight)",
       "type": "historical_hardware",
-      "row": 116,
-      "col": 58,
-      "lat": 18.485,
-      "lon": 77.382,
-      "caution_radius_m": 30,
-      "note": "First aircraft to fly on another planet: 72 flights, last flight on 18 January 2024.",
-      "source": "approximate, to verify on the NASA location map",
-      "status": "to verify"
+      "row": 235,
+      "col": 252,
+      "lat": 18.44486,
+      "lon": 77.45102,
+      "caution_radius_m": 0,
+      "note": "First powered, controlled flight on another planet (19 April 2021). After 72 flights, Ingenuity rests at Airfield Chi, about 2 km west of this map (last flight 18 January 2024).",
+      "source": "NASA/JPL Ingenuity flight log (m20_heli_waypoints.json), flight 1",
+      "status": "verified"
     }
   ],
   "rover_traverse": {

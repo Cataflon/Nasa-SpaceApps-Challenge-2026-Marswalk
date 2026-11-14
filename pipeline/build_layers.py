@@ -90,11 +90,15 @@ ARTIFACTS = [
     {"id": "heat_shield", "name": "Mars 2020 heat shield", "type": "historical_hardware",
      "lat": 18.4267, "lon": 77.4697, "caution_radius_m": 50,
      "note": "Carbon-composite heat shield with ablative cork, ~1.5 km southeast of the landing site."},
-    {"id": "ingenuity_final", "name": "Ingenuity Mars Helicopter (final location)", "type": "historical_hardware",
-     "lat": 18.4850, "lon": 77.3820, "caution_radius_m": 30,
-     "note": "First aircraft to fly on another planet: 72 flights, last flight on 18 January 2024."},
+    # Epava Ingenuity (zborul 72, Airfield Chi, 18,4973°N 77,3225°E) e la ~2 km VEST de pătrat, deci
+    # pe hartă punem locul primului zbor (Wright Brothers Field), care e lângă locul de aterizare.
+    {"id": "ingenuity_first_flight", "name": "Wright Brothers Field (Ingenuity's first flight)", "type": "historical_hardware",
+     "lat": 18.44486, "lon": 77.45102, "heli_flight": 1, "caution_radius_m": 0,
+     "note": "First powered, controlled flight on another planet (19 April 2021). After 72 flights, Ingenuity rests at "
+             "Airfield Chi, about 2 km west of this map (last flight 18 January 2024)."},
 ]
 ROVER_SOURCE = "NASA/JPL Perseverance localization waypoints (M20_waypoints.json)"
+HELI_SOURCE = "NASA/JPL Ingenuity flight log (m20_heli_waypoints.json)"
 APPROX_SOURCE = "approximate, to verify on the NASA location map"
 
 
@@ -470,8 +474,20 @@ def load_waypoints(raw: Path = RAW) -> list[dict]:
     return sorted(pts, key=lambda w: (w["sol"], w["i"]))
 
 
-def locate(item: dict, waypoints: list[dict]) -> tuple[float, float, str]:
-    """(lat, lon, sursa): din pozițiile roverului dacă `rover_sols` există și avem date, altfel fallback."""
+def load_heli(raw: Path = RAW) -> dict[int, tuple[float, float]]:
+    """Zborurile Ingenuity: număr zbor -> (lat, lon) al aterizării; {} dacă fișierul lipsește."""
+    path = raw / fs.HELI_FILE
+    if not path.exists():
+        return {}
+    feats = json.loads(path.read_text(encoding="utf-8"))["features"]
+    return {int(f["properties"]["Flight"]): (float(f["properties"]["Lat"]), float(f["properties"]["Lon"])) for f in feats}
+
+
+def locate(item: dict, waypoints: list[dict], heli: dict | None = None) -> tuple[float, float, str]:
+    """(lat, lon, sursa): din jurnalul Ingenuity sau din pozițiile roverului, altfel fallback."""
+    if item.get("heli_flight") is not None and heli and item["heli_flight"] in heli:
+        lat, lon = heli[item["heli_flight"]]
+        return lat, lon, f"{HELI_SOURCE}, flight {item['heli_flight']}"
     pos = rover_position(waypoints, item.get("rover_sols"))
     if pos:
         a, b = item["rover_sols"]
@@ -479,11 +495,11 @@ def locate(item: dict, waypoints: list[dict]) -> tuple[float, float, str]:
     return item["lat"], item["lon"], APPROX_SOURCE
 
 
-def place_artifacts(waypoints: list[dict], log=print) -> list[dict]:
+def place_artifacts(waypoints: list[dict], log=print, heli: dict | None = None) -> list[dict]:
     """Hardware-ul NASA din pătrat, ca POI (row/col + lat/lon + sursă). Cele din afara pătratului se sar."""
     out = []
     for a in ARTIFACTS:
-        lat, lon, source = locate(a, waypoints)
+        lat, lon, source = locate(a, waypoints, heli)
         r, c = latlon_to_cell(lat, lon)
         if not (0 <= r < N and 0 <= c < N):
             log(f"Artefact {a['id']}: în afara pătratului, sărit")
@@ -491,7 +507,7 @@ def place_artifacts(waypoints: list[dict], log=print) -> list[dict]:
         out.append({"id": a["id"], "name": a["name"], "type": a["type"], "row": r, "col": c,
                     "lat": round(lat, 5), "lon": round(lon, 5), "caution_radius_m": a["caution_radius_m"],
                     "note": a["note"], "source": source,
-                    "status": "verified" if source.startswith(ROVER_SOURCE) else "to verify"})
+                    "status": "verified" if source.startswith((ROVER_SOURCE, HELI_SOURCE)) else "to verify"})
         log(f"Artefact {a['id']:<20} ({r}, {c}) {out[-1]['status']}")
     return out
 
@@ -595,7 +611,7 @@ def build(raw: Path = RAW, log=print) -> tuple[dict[str, np.ndarray], dict]:
     layers["minerals"], units = minerals_from_units(layers["elevation"], waypoints, habitat, targets, log)
     for k, name in enumerate(("bedrock", "regolith", "sand", "boulders")):
         log(f"Teren {name:<9} {np.mean(layers['terrain'] == k):.1%}")
-    artifacts = place_artifacts(waypoints, log)
+    artifacts = place_artifacts(waypoints, log, load_heli(raw))
     traverse = rover_traverse(waypoints)
     hirise_cells = block_nanmean(info["hirise_fine"].astype(np.float32), FINE)
 

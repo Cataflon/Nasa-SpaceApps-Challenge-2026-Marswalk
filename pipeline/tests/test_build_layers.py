@@ -155,6 +155,15 @@ def test_locate_prefers_rover_and_falls_back():
     assert (lat, lon, src) == (depot["lat"], depot["lon"], bl.APPROX_SOURCE)
 
 
+def test_locate_uses_ingenuity_flight_log():
+    first = next(a for a in bl.ARTIFACTS if a["id"] == "ingenuity_first_flight")
+    lat, lon, src = bl.locate(first, [], {1: (18.44486, 77.45102), 72: (18.49727, 77.32253)})
+    assert (lat, lon) == (18.44486, 77.45102) and "flight 1" in src
+    # epava (zborul 72) e în afara pătratului de 10×10 km, de aceea nu e pe hartă
+    r, c = bl.latlon_to_cell(18.49727, 77.32253)
+    assert not (0 <= c < bl.N)
+
+
 def test_artifact_definitions():
     ids = [a["id"] for a in bl.ARTIFACTS]
     assert len(ids) == len(set(ids)) and "three_forks_depot" in ids

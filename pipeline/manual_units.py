@@ -22,14 +22,17 @@ import numpy as np
 
 # Textele (`name`, `note`) apar în UI, deci sunt în engleză.
 UNITS = [
-    {"class": 1, "id": "delta_deposits", "name": "Western delta deposits (Fe/Mg smectite clays)", "method": "dem_delta",
-     "seed_latlon": (18.497, 77.390), "min_rise_m": 50.0,
+    # Prag 90 m: păstrează doar corpul principal al deltei (NV). La 50 m se lipea și terenul înalt
+    # din SV, despre care nu știm sigur că e deltă (verificat: la 90 m, SV are 0% din unitate).
+    {"class": 1, "id": "delta_deposits", "name": "Main body of the western delta (Fe/Mg smectite clays)", "method": "dem_delta",
+     "seed_latlon": (18.497, 77.390), "min_rise_m": 90.0,
      "source": "HiRISE/CTX DTM (delta outline) + CRISM literature (Goudge et al. 2015)"},
     {"class": 1, "id": "delta_front_mudstones", "name": "Delta front mudstones (rover-confirmed clays)", "method": "rover_buffer",
      "rover_sols": (400, 699), "buffer_m": 250.0,
      "source": "Perseverance delta-front campaign (M20 waypoints, sols 400-699)"},
     {"class": 3, "id": "seitah", "name": "Séítah olivine cumulate", "method": "rover_buffer",
-     "rover_sols": (200, 340), "buffer_m": 400.0,
+     # 700 m: roverul a mers doar pe marginea Séítah (~2×3 km); 400 m acoperea doar 0,7% din sit.
+     "rover_sols": (200, 340), "buffer_m": 700.0,
      "source": "Perseverance Séítah campaign (M20 waypoints, sols 200-340); Liu et al. 2022"},
     {"class": 2, "id": "margin_unit", "name": "Margin unit carbonates", "method": "rover_buffer",
      "rover_sols": (750, 899), "buffer_m": 500.0,
