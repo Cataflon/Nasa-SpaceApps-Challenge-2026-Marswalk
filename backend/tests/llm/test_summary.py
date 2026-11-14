@@ -64,7 +64,7 @@ def test_emergency_with_invalid_return_is_in_enum():
     s = build_summary(d, t_min=100)
     assert s["decision"] == "EMERGENCY" and s["alternative_id"] == "return"
     assert "return" in s["alternative_ids"]
-    enum = prompts.response_schema(s["alternative_ids"])["properties"]["alternativa_id"]["enum"]
+    enum = prompts.response_schema(s["alternative_ids"])["properties"]["alternative_id"]["enum"]
     assert s["alternative_id"] in enum
 
 
@@ -75,7 +75,7 @@ def test_emergency_without_any_route_uses_none():
     assert s["alternative_id"] == NO_ALTERNATIVE
     assert s["alternative_ids"] == [NO_ALTERNATIVE]
     assert "o2_end_pct" not in s
-    assert templates.render(s["decision"], **s).startswith("Nicio variantă")
+    assert templates.render(s["decision"], **s).startswith("No option")
 
 
 def test_summary_is_compact():

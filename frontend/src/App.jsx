@@ -1,10 +1,17 @@
 import { useEffect, useState } from "react";
-import { getSite, injectEvent, planRoute, subscribeLive } from "./api/client.js";
+import { getSite, injectEvent, liveControl, planRoute, subscribeLive } from "./api/client.js";
 import BudgetPanel from "./components/BudgetPanel.jsx";
 import DecisionPanel from "./components/DecisionPanel.jsx";
 import MapView from "./components/MapView.jsx";
 
-const EVENTS = ["dust_devil", "local_storm", "regional_storm", "solar_particle_event", "suit_leak", "fatigue"];
+const EVENTS = [
+  ["dust_devil", "Dust devil"],
+  ["local_storm", "Local storm"],
+  ["regional_storm", "Regional storm"],
+  ["solar_particle_event", "Solar storm"],
+  ["suit_leak", "Suit leak"],
+  ["fatigue", "Fatigue"],
+];
 
 export default function App() {
   const [site, setSite] = useState(null);
@@ -35,17 +42,22 @@ export default function App() {
     setRoute(data);
   };
 
+  const toggleLive = () => {
+    liveControl(live ? "pause" : "start", live ? {} : { speed: 10 });
+    setLive((v) => !v);
+  };
+
   const toggleLayer = (id) =>
     setActiveLayers((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]));
 
-  if (!site) return <p className="muted pad">Se încarcă situl…</p>;
+  if (!site) return <p className="muted pad">Loading site…</p>;
 
   return (
     <div className="app">
       <header>
         <h1>Marswalk Copilot</h1>
         <span className="muted">{site.name}</span>
-        {mock && <span className="badge">date mock</span>}
+        {mock && <span className="badge">mock data</span>}
       </header>
 
       <main>
@@ -53,7 +65,7 @@ export default function App() {
 
         <aside>
           <section className="panel">
-            <h2>Straturi</h2>
+            <h2>Layers</h2>
             {site.layers.map((l) => (
               <label key={l.id} className="check">
                 <input type="checkbox" checked={activeLayers.includes(l.id)} onChange={() => toggleLayer(l.id)} />
@@ -63,14 +75,14 @@ export default function App() {
           </section>
 
           <section className="panel">
-            <h2>Simulare</h2>
+            <h2>Simulation</h2>
             <div className="row">
-              <button onClick={plan}>Planifică traseu</button>
-              <button onClick={() => setLive((v) => !v)}>{live ? "Pauză" : "Pornește ieșirea"}</button>
+              <button onClick={plan}>Plan route</button>
+              <button onClick={toggleLive}>{live ? "Pause" : "Start EVA"}</button>
             </div>
             <div className="row wrap">
-              {EVENTS.map((e) => (
-                <button key={e} className="small" onClick={() => injectEvent(e)}>{e}</button>
+              {EVENTS.map(([id, label]) => (
+                <button key={id} className="small" onClick={() => injectEvent(id)}>{label}</button>
               ))}
             </div>
           </section>

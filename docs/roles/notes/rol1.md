@@ -69,6 +69,11 @@
 - **Demo Jezero:** `scenario.demo_events("jezero")`. Furtuna locală pornește la 3 km sud de traseul habitat -> `clay_delta` și urcă spre nord cu 2,5 m/s, tăind traseul în ~18 min.
 - Teste: `pipeline/tests/test_build_layers.py`, 18 teste. Situl generat e validat și în CI: contract, etichete, valori plauzibile, habitat plat, ținte accesibile.
 
+### După merge-ul cu engleza (regula echipei: tot ce vede utilizatorul sau juriul e în engleză)
+- Situl sintetic e **v4** (doar textele: numele țintelor și ale sitului, etichetele straturilor). `dev.ps1` îl regenerează automat; manual: `python pipeline/make_synthetic_site.py`.
+- Jezero: numele sitului și al țintelor, `note`, `source` și etichetele straturilor sunt în engleză. Straturile `.npy` sunt neschimbate.
+- `scenario.py`: mesajele `ValueError` (care pot ajunge în `detail` la API) sunt în engleză.
+
 ## În lucru
 
 ## Cereri

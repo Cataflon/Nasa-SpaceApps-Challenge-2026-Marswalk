@@ -21,6 +21,9 @@ def test_route_returns_contract_shape():
     assert {"path", "budget", "verdict", "point_of_no_return"} <= body.keys()
 
 
-def test_live_streams_messages():
+def test_live_mock_mode_streams_contract(monkeypatch):
+    from app.api import main
+
+    monkeypatch.setattr(main, "LIVE_MOCK", True)
     with client.websocket_connect("/api/live") as ws:
         assert ws.receive_json()["type"] == "tick"

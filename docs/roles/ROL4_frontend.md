@@ -7,7 +7,7 @@
 > 3. **Click pe orice punct de pe hartă** (P0): popup cu valoarea fiecărui strat **și** misiunea / instrumentul lui („pantă 12° · HiRISE · MRO”).
 > 4. **Survival Guide printabil, mutat din bonus în P1:** o pagină per ieșire.
 > 5. **Numărul de titlu din benchmark** (P1): „acasă în siguranță: copilot X% · plan fix Y%”.
-> 6. **„Cum calculăm”** (P1): badge-uri pe coloana „Status” (`sursă`, `presupunere`, `de verificat`).
+> 6. **„How we calculate”** (P1): badge-uri pe coloana „Status” (`source`, `assumption`, `to verify`).
 
 Ești unul dintre 4 agenți care implementează **simultan** Marswalk Copilot în același repo. Ceilalți trei lucrează la date (`pipeline/`, `docs/`), algoritmi (`backend/app/core/`) și backend + LLM (`backend/app/api/`, `live/`, `llm/`). Tu ai tot `frontend/`: ce vede juriul la demo.
 
@@ -56,8 +56,8 @@ Dependențele sunt doar `react` și `vite`. Graficele (profilul de altitudine, b
 
 **P1, ziua 2:**
 7. **Chatul:** citește streamul NDJSON (`chat_stream.json`). Apelurile de unelte apar ca etichete, iar un mesaj `route` desenează traseul pe hartă.
-8. **Ecranul „Cum calculăm”:** importă `docs/how-we-calculate.md?raw` și randează-l cu un mini-renderer propriu de markdown (titluri, tabele, liste), fără dependențe noi. 🆕 Valorile din coloana „Status” (`sursă`, `presupunere`, `de verificat`) apar ca badge-uri colorate, ca juriul să vadă imediat ce e măsurat și ce e presupus.
-9. 🆕 **Survival Guide printabil (mutat din bonus):** o pagină A4 per ieșire, cu buton „Printează” și CSS `@media print`:
+8. **Ecranul „How we calculate”:** importă `docs/how-we-calculate.md?raw` și randează-l cu un mini-renderer propriu de markdown (titluri, tabele, liste), fără dependențe noi. 🆕 Valorile din coloana „Status” (`source`, `assumption`, `to verify`) apar ca badge-uri colorate, ca juriul să vadă imediat ce e măsurat și ce e presupus.
+9. 🆕 **Survival Guide printabil (mutat din bonus):** o pagină A4 per ieșire, cu buton „Print” și CSS `@media print`:
    - harta mică a traseului cu opririle și punctul de neîntoarcere;
    - **ora-limită de întoarcere**, mare, și punctul de neîntoarcere (ora și locul);
    - bugetul pe scurt (O₂ final, doză, apus);
@@ -97,7 +97,7 @@ Durează ~1 s și prinde erorile de import și de sintaxă. Nu adăuga framework
 - Rulezi doar `npm run build`, nu altceva, la fiecare schimbare.
 
 ### Cod
-- React 18 cu componente funcționale și hook-uri, JavaScript (JSX), fără TypeScript. Textele din UI sunt în română; numele de variabile în engleză.
+- React 18 cu componente funcționale și hook-uri, JavaScript (JSX), fără TypeScript. **Toate textele din UI sunt în engleză** (juriul e internațional); numele de variabile în engleză, comentariile pot rămâne în română.
 - Coordonatele pe hartă: `x = col`, `y = row`, iar `viewBox` e în celule de grilă. Mărimile în metri se împart la `cell_size_m`.
 
 ### Note de predare: `docs/roles/notes/rol4.md`

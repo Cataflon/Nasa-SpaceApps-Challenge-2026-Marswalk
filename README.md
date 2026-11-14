@@ -28,6 +28,8 @@ Teste: `cd backend && ../.venv/Scripts/python -m pytest`.
 
 ---
 
+> **Limba:** toată aplicația e în engleză (interfața, mesajele din API, explicațiile LLM-ului, slide-urile), pentru că juriul e internațional. Documentația internă a echipei (acest README, fișierele de rol) rămâne în română.
+
 ## 🆕 Noutăți (14.11.2026): 7 adăugări ieftine, cu impact mare
 
 > **Fiecare rol citește aici ce are nou de implementat.** Detaliile sunt și în fișierul rolului (`docs/roles/ROLn_*.md`), în caseta „🆕 NOU” de la început.
@@ -37,11 +39,11 @@ Challenge-ul se numește chiar **„Interplanetary Survival Guide”**. Adăugă
 | # | Ce | De ce | Rol 1 (date) | Rol 2 (algoritmi) | Rol 3 (backend) | Rol 4 (frontend) |
 |---|---|---|---|---|---|---|
 | 1 | **Survival Guide printabil**, mutat din bonus în **prioritate (P1)**: o fișă de o pagină per ieșire cu traseul, ora-limită de întoarcere, punctul de neîntoarcere și ce faci la furtună locală / regională / solară | Cea mai bună potrivire cu tema, pentru câteva ore de lucru | Textul regulilor: `docs/survival-guide.md` | — (datele există deja în `plan_route`) | — | Pagina printabilă (CSS de print) |
-| 2 | **Contorul „Pământul vs. copilotul”**: „ajutorul de la Houston ar ajunge în 14 min · copilotul a decis în 0,05 s” | O idee pe care juriul o reține imediat | Întârzierea Pământ-Marte, cu sursă: `scenario.EARTH_ONE_WAY_DELAY_MIN` | — | `compute_ms` în mesajul `decision` + întârzierea în `/api/site` | Contorul în panoul copilotului |
-| 3 | **Ceasul de întoarcere ca cifră principală**: „Te întorci până la 14:20” | E prima informație pe care o vrea un astronaut | Ora de start a ieșirii (LTST): `scenario.EVA_START_LTST_H` | `return_by_min` corect în buget | `eva_start_ltst_h` în `/api/site` | Cifra mare, mereu vizibilă |
-| 4 | **Click pe orice punct de pe hartă**, cu valorile din fiecare misiune și sursa lor: „pantă 12° · HiRISE · MRO” | Face vizibile cele „5 misiuni” și întărește partea de hartă | `mission` / `instrument` / `product_id` pe fiecare strat din `meta.json` | — | `sources` în `GET /api/point` | Popup la click |
-| 5 | **Un singur număr de titlu din benchmark**: „Copilotul a adus astronautul acasă în siguranță în X% din furtuni; planul fix, în Y%” | Pe primul slide și în video | Pe slide și în video | `headline` în `run_benchmark` | `headline` în `GET /api/benchmark` | Afișat în UI |
-| 6 | **Ecranul „Cum calculăm”**, cu fiecare constantă marcată **sursă** sau **presupunere** | Onestitatea despre limite crește încrederea (Validity) | `docs/how-we-calculate.md` complet, mutat la **P1** | Toate constantele la nivel de modul, cu comentariul `sursă:` sau `presupunere` | — | Badge-uri pe coloana „Status” |
+| 2 | **Contorul „Pământul vs. copilotul”**: „Houston's help would arrive in 14 min · copilot decided in 0.05 s” | O idee pe care juriul o reține imediat | Întârzierea Pământ-Marte, cu sursă: `scenario.EARTH_ONE_WAY_DELAY_MIN` | — | `compute_ms` în mesajul `decision` + întârzierea în `/api/site` | Contorul în panoul copilotului |
+| 3 | **Ceasul de întoarcere ca cifră principală**: „Return by 14:20” | E prima informație pe care o vrea un astronaut | Ora de start a ieșirii (LTST): `scenario.EVA_START_LTST_H` | `return_by_min` corect în buget | `eva_start_ltst_h` în `/api/site` | Cifra mare, mereu vizibilă |
+| 4 | **Click pe orice punct de pe hartă**, cu valorile din fiecare misiune și sursa lor: „slope 12° · HiRISE · MRO” | Face vizibile cele „5 misiuni” și întărește partea de hartă | `mission` / `instrument` / `product_id` pe fiecare strat din `meta.json` | — | `sources` în `GET /api/point` | Popup la click |
+| 5 | **Un singur număr de titlu din benchmark**: „The copilot brought the astronaut home safely in X% of storms; the fixed plan, in Y%” | Pe primul slide și în video | Pe slide și în video | `headline` în `run_benchmark` | `headline` în `GET /api/benchmark` | Afișat în UI |
+| 6 | **Ecranul „How we calculate”**, cu fiecare constantă marcată **source** sau **assumption** | Onestitatea despre limite crește încrederea (Validity) | `docs/how-we-calculate.md` complet, mutat la **P1** | Toate constantele la nivel de modul, cu comentariul `sursă:` sau `presupunere` | — | Badge-uri pe coloana „Status” |
 | 7 | **Un slide despre Pământ (Influence):** același motor, cu un model de teren din munții noștri, pentru salvamont | Doar pe slide, **nu în cod** | `docs/slides.md` | — | — | — |
 
 **Câmpuri noi în contracte, toate opționale** (se adaugă cu acordul echipei; până atunci frontendul are fallback):
@@ -196,7 +198,7 @@ Un **tick = 1 minut simulat**. La fiecare tick:
 - **Alternativele:** ocolire nord (+25 min, O₂ final 31%), ocolire sud (+40 min, O₂ final 22%), WAIT, RETURN.
 - **Validatorul:** elimină ocolirea sud, pentru că 22% e sub rezerva de 30%.
 - **Regula:** alege ocolirea nord, care are cel mai mic risc. Pe hartă, traseul se redesenează instant.
-- **LLM-ul**, 2 secunde mai târziu: *„Furtuna ajunge pe traseu în 16 min. Ocolirea nord adaugă 25 min și lasă 31% O₂, peste rezerva de 30%."*
+- **LLM-ul**, 2 secunde mai târziu: *„Storm reaches your route in 16 min. The north detour adds 25 min and leaves 31% O₂, above the 30% reserve."*
 
 Dacă furtuna e regională, nicio ocolire nu trece validatorul și regula alege RETURN pe ruta din Dijkstra invers.
 
@@ -280,15 +282,15 @@ cost = distanță × f(pantă) × f(teren) + w_pericol × pericol(x, y, t) + w_r
 - **Ieșire** (schemă JSON, ~60 de tokeni):
 
 ```json
-{"decizie": "REROUTE",
- "alternativa_id": "ocolire_nord",
- "motiv": "Furtuna ajunge pe traseu în 16 min. Ocolirea nord adaugă 25 min și lasă 31% O₂, peste rezerva de 30%."}
+{"decision": "REROUTE",
+ "alternative_id": "detour_north",
+ "reason": "Storm reaches your route in 16 min. The north detour adds 25 min and leaves 31% O₂, above the 30% reserve."}
 ```
 
-  `decizie` și `alternativa_id` sunt copiate din decizia regulii (servesc ca verificare de consistență), iar `motiv` are maxim 25 de cuvinte.
+  `decision` și `alternative_id` sunt copiate din decizia regulii (servesc ca verificare de consistență), iar `reason` are maxim 25 de cuvinte, în engleză.
 - **Viteză:** `keep_alive: -1` și un request de încălzire la pornirea backendului, ca prima explicație să nu plătească încărcarea modelului.
 - **Chat cu unelte** pentru planificare: `plan_route`, `oxygen_budget`, `layer_value`, `science_stops`, `daylight`. Puține unelte, cu parametri simpli, pentru că un 7B le apelează nesigur.
-- **Fallback:** dacă nu răspunde în ~3 s, JSON-ul e invalid sau `alternativa_id` nu se potrivește cu decizia, se afișează un text din șablon (ex. „Furtună pe traseu în {t} min. Ocolire {nume}: O₂ final {o2}%.").
+- **Fallback:** dacă nu răspunde în ~3 s, JSON-ul e invalid sau `alternative_id` nu se potrivește cu decizia, se afișează un text din șablon (ex. „Hazard on route in {t} min. Detour {name}: +{extra} min, O₂ on arrival {o2}%.").
 - **Reproductibilitate:** `temperature: 0` și `seed` reduc variația, dar nu o garantează la bit. De aceea explicațiile se pun în cache după hash-ul stării, iar demo-ul și benchmark-ul se repetă identic.
 
 ### 5.8 Backendul (FastAPI, Python 3.11)
@@ -306,16 +308,16 @@ cost = distanță × f(pantă) × f(teren) + w_pericol × pericol(x, y, t) + w_r
 
 ### 5.9 Frontendul (React + Vite, pornit din machetă)
 
-- **Ceasul de întoarcere, cifra principală de pe ecran:** „Te întorci până la 14:20” (ora locală pe Marte, LTST), mereu vizibil, nu ascuns într-un panou.
+- **Ceasul de întoarcere, cifra principală de pe ecran:** „Return by 14:20” (ora locală pe Marte, LTST), mereu vizibil, nu ascuns într-un panou.
 - **Harta:** straturi activabile, habitat, astronaut în mișcare, furtuna cu conul de predicție, traseul curent, alternativele colorate, punctul de neîntoarcere.
-- **Click pe orice punct:** valorile din fiecare strat cu misiunea și instrumentul lor („pantă 12° · HiRISE · MRO”).
-- **Panoul copilotului:** decizia curentă, explicația, chatul și uneltele chemate, plus contorul **„Pământul vs. copilotul”** („ajutorul de la Houston ar ajunge în 14 min · copilotul a decis în 0,05 s”).
+- **Click pe orice punct:** valorile din fiecare strat cu misiunea și instrumentul lor („slope 12° · HiRISE · MRO”).
+- **Panoul copilotului:** decizia curentă, explicația, chatul și uneltele chemate, plus contorul **„Pământul vs. copilotul”** („Houston's help would arrive in 14 min · copilot decided in 0.05 s”).
 - **Bugetul:** O₂, timp, lumină, doză și profilul de altitudine.
 - **Controale de simulare:** start/pauză, viteza ceasului, butoane de evenimente.
 - **Imagini Perseverance** la opriri.
 - **Survival Guide printabil (prioritate, nu bonus):** o pagină per ieșire, cu traseul, ora-limită de întoarcere, punctul de neîntoarcere și ce faci la furtună locală / regională / solară.
-- **Numărul de titlu din benchmark:** „acasă în siguranță: copilot X% · plan fix Y%”.
-- **Ecranul „Cum calculăm":** formulele, pragurile și sursele; fiecare constantă e marcată **sursă** sau **presupunere**.
+- **Numărul de titlu din benchmark:** „home safe: copilot X% · fixed plan Y%”.
+- **Ecranul „How we calculate":** formulele, pragurile și sursele; fiecare constantă e marcată **source** sau **assumption**.
 - **Bonus:** vedere HUD (ce vede astronautul în cască).
 
 ---
@@ -421,9 +423,9 @@ Instrucțiunile complete pentru fiecare rol (pentru 4 agenți care lucrează în
 
 ## 8. Demo-ul (≈2 min)
 
-0. Deschidere cu numărul de titlu: „Copilotul a adus astronautul acasă în siguranță în X% din furtuni; planul fix, în Y%” (5 s).
-1. Harta Jezero cu straturile: „date din 5 misiuni NASA”. Click pe un punct: „pantă 12° · HiRISE · MRO” (15 s).
-2. Planificare: „Vreau o probă de argilă de la deltă, am 5 ore" → traseu, buget, punct de neîntoarcere, imaginea Perseverance de la țintă și ceasul mare „Te întorci până la 14:20” (25 s).
+0. Deschidere cu numărul de titlu: „The copilot brought the astronaut home safely in X% of storms; the fixed plan, in Y%” (5 s).
+1. Harta Jezero cu straturile: „date din 5 misiuni NASA”. Click pe un punct: „slope 12° · HiRISE · MRO” (15 s).
+2. Planificare: „Vreau o probă de argilă de la deltă, am 5 ore" → traseu, buget, punct de neîntoarcere, imaginea Perseverance de la țintă și ceasul mare „Return by 14:20” (25 s).
 3. Pornim ieșirea, iar astronautul merge pe hartă (10 s).
 4. Furtună locală la jumătatea drumului: apare conul de predicție, apar alternativele, validatorul elimină una, regula alege ocolirea instant, iar LLM-ul explică de ce. Contorul: „Houston ar răspunde în 28 min · copilotul a decis în 0,05 s” (35 s).
 5. Furtună regională: sistemul decide RETURN, pentru că nu poate fi ocolită; ceasul de întoarcere se actualizează (15 s).

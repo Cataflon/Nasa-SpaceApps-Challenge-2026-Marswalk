@@ -1,6 +1,6 @@
 {
   "site_id": "synthetic",
-  "name": "Sit sintetic (crater cu deltă)",
+  "name": "Synthetic site (crater with delta)",
   "source": "synthetic",
   "cell_size_m": 20,
   "shape": [500, 500],
@@ -29,8 +29,8 @@
     "3": "olivine"
   },
   "targets": [
-    { "id": "clay_delta", "name": "Argilă, frontul deltei", "kind": "clay", "row": 180, "col": 140, "science_value": 10, "dwell_min": 30, "image": null },
-    { "id": "carbonate_rim", "name": "Carbonați, marginea", "kind": "carbonate", "row": 120, "col": 260, "science_value": 7, "dwell_min": 20, "image": null },
-    { "id": "olivine_floor", "name": "Olivină, fundul craterului", "kind": "olivine", "row": 340, "col": 330, "science_value": 4, "dwell_min": 15, "image": null }
+    { "id": "clay_delta", "name": "Clay, delta front", "kind": "clay", "row": 180, "col": 140, "science_value": 10, "dwell_min": 30, "image": null },
+    { "id": "carbonate_rim", "name": "Carbonates, delta margin", "kind": "carbonate", "row": 120, "col": 260, "science_value": 7, "dwell_min": 20, "image": null },
+    { "id": "olivine_floor", "name": "Olivine, crater floor", "kind": "olivine", "row": 340, "col": 330, "science_value": 4, "dwell_min": 15, "image": null }
   ]
 }

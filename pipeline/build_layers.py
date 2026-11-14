@@ -54,17 +54,19 @@ TARGET_SNAP_CELLS = 25  # o țintă se poate muta cel mult 500 m până la o cel
 
 # Ținte reale (coordonate planetocentrice, longitudine est). Pozițiile sunt aproximative, după
 # traversa Perseverance și harta geologică USGS SIM 3464. de verificat pe Mars Trek
+# `name` și `note` apar în UI și pe Survival Guide, deci sunt în engleză (regula echipei).
 TARGETS = [
-    {"id": "clay_delta", "name": "Argilă, frontul deltei (zona Hawksbill Gap / Three Forks)", "kind": "clay",
+    {"id": "clay_delta", "name": "Clay, delta front (Hawksbill Gap / Three Forks area)", "kind": "clay",
      "lat": 18.453, "lon": 77.402, "science_value": 10, "dwell_min": 30, "image": None,
-     "note": "mudstone cu argile la baza frontului deltei; probe Perseverance din campania deltei"},
-    {"id": "carbonate_rim", "name": "Carbonați, unitatea de margine", "kind": "carbonate",
+     "note": "Clay-bearing mudstone at the base of the delta front; sampled by Perseverance during the delta campaign"},
+    {"id": "carbonate_rim", "name": "Carbonates, crater margin unit", "kind": "carbonate",
      "lat": 18.505, "lon": 77.378, "science_value": 7, "dwell_min": 20, "image": None,
-     "note": "carbonați detectați de CRISM în unitatea de margine a craterului"},
-    {"id": "olivine_floor", "name": "Olivină, Séítah (fundul craterului)", "kind": "olivine",
+     "note": "Carbonates detected by CRISM in the crater margin unit"},
+    {"id": "olivine_floor", "name": "Olivine, Séítah (crater floor)", "kind": "olivine",
      "lat": 18.432, "lon": 77.437, "science_value": 4, "dwell_min": 15, "image": None,
-     "note": "cumulat bogat în olivină (formațiunea Séítah), eșantionat de Perseverance"},
+     "note": "Olivine-rich cumulate (Séítah formation), sampled by Perseverance"},
 ]
+TARGET_SOURCE = "to verify (Perseverance traverse, USGS SIM 3464)"
 
 
 # ---------------------------------------------------------------------------------------------
@@ -353,7 +355,7 @@ def place_sites(slope: np.ndarray, unsafe: np.ndarray, log=print) -> tuple[tuple
         targets.append({"id": t["id"], "name": t["name"], "kind": t["kind"], "row": int(got[0]), "col": int(got[1]),
                         "science_value": t["science_value"], "dwell_min": t["dwell_min"], "image": t["image"],
                         "lat": round(lat, 5), "lon": round(lon, 5), "snapped_m": round(moved),
-                        "note": t["note"], "source": "de verificat (traversa Perseverance, USGS SIM 3464)"})
+                        "note": t["note"], "source": TARGET_SOURCE})
     return habitat, targets
 
 
@@ -362,16 +364,17 @@ def layer_labels(manifest: dict, elev_info: dict) -> dict:
     dtm_ids = elev_info["hirise_ids"] + elev_info["ctx_ids"]
     topo = {"data_type": "topographic", "mission": "MRO", "instrument": "HiRISE + CTX", "source": "nasa",
             "product_id": ", ".join(dtm_ids)}
+    # Textele apar în UI (popup-ul de la click pe hartă), deci sunt în engleză.
     return {
         "elevation": {**topo, "analog_of": None},
-        "slope": {**topo, "derived": f"pantă maximă din pixeli de {FINE_M:.0f} m"},
-        "terrain": {"data_type": "thermal", "mission": "—", "instrument": "provizoriu: din pantă (capitolul 5: THEMIS)",
+        "slope": {**topo, "derived": f"max slope of {FINE_M:.0f} m pixels"},
+        "terrain": {"data_type": "thermal", "mission": "—", "instrument": "provisional: from slope (THEMIS pending)",
                     "source": "assumption"},
-        "minerals": {"data_type": "spectral", "mission": "—", "instrument": "provizoriu: fără minerale (capitolul 5: CRISM / SIM 3464)",
+        "minerals": {"data_type": "spectral", "mission": "—", "instrument": "provisional: none (CRISM / USGS SIM 3464 pending)",
                      "source": "assumption"},
-        "radiation": {"data_type": "radiation", "mission": "MSL Curiosity", "instrument": "RAD (model după altitudine)",
+        "radiation": {"data_type": "radiation", "mission": "MSL Curiosity", "instrument": "RAD (altitude model)",
                       "source": "assumption"},
-        "unsafe": {**topo, "derived": f"pantă > {UNSAFE_SLOPE_DEG:.0f}° la {FINE_M:.0f} m (legenda FOM nu e publicată)"},
+        "unsafe": {**topo, "derived": f"slope > {UNSAFE_SLOPE_DEG:.0f}° at {FINE_M:.0f} m (FOM legend not published)"},
     }
 
 
@@ -406,7 +409,7 @@ def build(raw: Path = RAW, log=print) -> tuple[dict[str, np.ndarray], dict]:
     meta = {
         **contract,
         "site_id": "jezero",
-        "name": "Jezero, frontul deltei (locul de aterizare Perseverance)",
+        "name": "Jezero crater, delta front (Perseverance landing site)",
         "source": "nasa",
         "crs": fs.local_proj4(),
         "center": {"lat": fs.CENTER_LAT, "lon": fs.CENTER_LON},
@@ -421,7 +424,7 @@ def build(raw: Path = RAW, log=print) -> tuple[dict[str, np.ndarray], dict]:
             "ctx_dtms": info["ctx_ids"],
             "themis": [p["item_id"] for p in manifest["products"] if p["kind"] == "themis_ir"],
             "vertical_bias_m": info["biases_m"],
-            "vertical_datum": f"areoid (HiRISE DTEEC); CTX deplasat cu {info['datum_shift_m']:+.2f} m",
+            "vertical_datum": f"areoid (HiRISE DTEEC); CTX shifted by {info['datum_shift_m']:+.2f} m",
             "hirise_coverage_pct": round(float(hirise_cells.mean() * 100), 1),
             "fine_resolution_m": FINE_M,
             "license": "CC0-1.0 (USGS Astrogeology ARD)",

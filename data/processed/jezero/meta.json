@@ -1,6 +1,6 @@
 {
   "site_id": "jezero",
-  "name": "Jezero, frontul deltei (locul de aterizare Perseverance)",
+  "name": "Jezero crater, delta front (Perseverance landing site)",
   "source": "nasa",
   "cell_size_m": 20,
   "shape": [
@@ -37,7 +37,7 @@
       "instrument": "HiRISE + CTX",
       "source": "nasa",
       "product_id": "DTEEC_023524_1985_023379_1985_U01, DTEEC_045994_1985_046060_1985_U01, DTEEC_048842_1985_048908_1985_U01, DTEEC_022680_1985_022746_1985_A01, DTEEC_002387_1985_003798_1985_A01, J03_045994_1986_XN_18N282W__J03_046060_1986_XN_18N282W, J10_048842_1986_XN_18N282W__J11_048908_1986_XN_18N282W, K13_058574_1983_XN_18N282W__K13_058640_1983_XN_18N282W",
-      "derived": "pantă maximă din pixeli de 4 m"
+      "derived": "max slope of 4 m pixels"
     },
     "terrain": {
       "file": "terrain.npy",
@@ -45,7 +45,7 @@
       "unit": "class",
       "data_type": "thermal",
       "mission": "—",
-      "instrument": "provizoriu: din pantă (capitolul 5: THEMIS)",
+      "instrument": "provisional: from slope (THEMIS pending)",
       "source": "assumption"
     },
     "minerals": {
@@ -54,7 +54,7 @@
       "unit": "class",
       "data_type": "spectral",
       "mission": "—",
-      "instrument": "provizoriu: fără minerale (capitolul 5: CRISM / SIM 3464)",
+      "instrument": "provisional: none (CRISM / USGS SIM 3464 pending)",
       "source": "assumption"
     },
     "radiation": {
@@ -63,7 +63,7 @@
       "unit": "uSv/h",
       "data_type": "radiation",
       "mission": "MSL Curiosity",
-      "instrument": "RAD (model după altitudine)",
+      "instrument": "RAD (altitude model)",
       "source": "assumption"
     },
     "unsafe": {
@@ -75,7 +75,7 @@
       "instrument": "HiRISE + CTX",
       "source": "nasa",
       "product_id": "DTEEC_023524_1985_023379_1985_U01, DTEEC_045994_1985_046060_1985_U01, DTEEC_048842_1985_048908_1985_U01, DTEEC_022680_1985_022746_1985_A01, DTEEC_002387_1985_003798_1985_A01, J03_045994_1986_XN_18N282W__J03_046060_1986_XN_18N282W, J10_048842_1986_XN_18N282W__J11_048908_1986_XN_18N282W, K13_058574_1983_XN_18N282W__K13_058640_1983_XN_18N282W",
-      "derived": "pantă > 35° la 4 m (legenda FOM nu e publicată)"
+      "derived": "slope > 35° at 4 m (FOM legend not published)"
     }
   },
   "terrain_classes": {
@@ -93,7 +93,7 @@
   "targets": [
     {
       "id": "clay_delta",
-      "name": "Argilă, frontul deltei (zona Hawksbill Gap / Three Forks)",
+      "name": "Clay, delta front (Hawksbill Gap / Three Forks area)",
       "kind": "clay",
       "row": 211,
       "col": 115,
@@ -103,12 +103,12 @@
       "lat": 18.45299,
       "lon": 77.40216,
       "snapped_m": 0,
-      "note": "mudstone cu argile la baza frontului deltei; probe Perseverance din campania deltei",
-      "source": "de verificat (traversa Perseverance, USGS SIM 3464)"
+      "note": "Clay-bearing mudstone at the base of the delta front; sampled by Perseverance during the delta campaign",
+      "source": "to verify (Perseverance traverse, USGS SIM 3464)"
     },
     {
       "id": "carbonate_rim",
-      "name": "Carbonați, unitatea de margine",
+      "name": "Carbonates, crater margin unit",
       "kind": "carbonate",
       "row": 57,
       "col": 47,
@@ -118,12 +118,12 @@
       "lat": 18.50495,
       "lon": 77.37798,
       "snapped_m": 0,
-      "note": "carbonați detectați de CRISM în unitatea de margine a craterului",
-      "source": "de verificat (traversa Perseverance, USGS SIM 3464)"
+      "note": "Carbonates detected by CRISM in the crater margin unit",
+      "source": "to verify (Perseverance traverse, USGS SIM 3464)"
     },
     {
       "id": "olivine_floor",
-      "name": "Olivină, Séítah (fundul craterului)",
+      "name": "Olivine, Séítah (crater floor)",
       "kind": "olivine",
       "row": 273,
       "col": 213,
@@ -133,8 +133,8 @@
       "lat": 18.43207,
       "lon": 77.43702,
       "snapped_m": 0,
-      "note": "cumulat bogat în olivină (formațiunea Séítah), eșantionat de Perseverance",
-      "source": "de verificat (traversa Perseverance, USGS SIM 3464)"
+      "note": "Olivine-rich cumulate (Séítah formation), sampled by Perseverance",
+      "source": "to verify (Perseverance traverse, USGS SIM 3464)"
     }
   ],
   "provenance": {
@@ -170,7 +170,7 @@
       "DTEEC_045994_1985_046060_1985_U01": -32.97,
       "DTEEC_023524_1985_023379_1985_U01": -33.15
     },
-    "vertical_datum": "areoid (HiRISE DTEEC); CTX deplasat cu -32.97 m",
+    "vertical_datum": "areoid (HiRISE DTEEC); CTX shifted by -32.97 m",
     "hirise_coverage_pct": 94.4,
     "fine_resolution_m": 4.0,
     "license": "CC0-1.0 (USGS Astrogeology ARD)"

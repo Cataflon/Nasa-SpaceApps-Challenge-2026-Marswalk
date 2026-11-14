@@ -110,7 +110,8 @@ Din `backend/`:
 - Testele noi stau doar în folderele tale de teste. Un test existent din zona ta poate fi modificat, nu șters.
 
 ### Cod
-- Python compatibil cu 3.11 (CI rulează 3.12, local e 3.14). Comentariile și mesajele sunt în română, ca în restul codului; numele de variabile și funcții sunt în engleză.
+- Python compatibil cu 3.11 (CI rulează 3.12, local e 3.14). Numele de variabile și funcții sunt în engleză; comentariile pot rămâne în română.
+- **Tot ce vede utilizatorul sau juriul e în engleză:** mesajele din API (`detail` la erori), textele generate (șabloane, explicații LLM), numele țintelor și straturilor, documentele de prezentare.
 - Determinism peste tot: seed fix, sortări stabile cu tie-break explicit, fără `time.time()` în logică.
 
 ### Note de predare: `docs/roles/notes/rol2.md`

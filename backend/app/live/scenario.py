@@ -225,11 +225,11 @@ def generate(seed: int = 42, duration_min: int = 300, events: list[ScheduledEven
     Aceeași intrare dă exact aceeași ieșire. Ridică ValueError pentru evenimente necunoscute.
     """
     if duration_min < 0:
-        raise ValueError("duration_min trebuie să fie ≥ 0")
+        raise ValueError("duration_min must be >= 0")
     events = sorted(events or [], key=_event_key)
     for ev in events:
         if ev.event not in ALLOWED_EVENTS:
-            raise ValueError(f"Eveniment necunoscut: {ev.event!r}. Permise: {sorted(ALLOWED_EVENTS)}")
+            raise ValueError(f"Unknown event: {ev.event!r}. Allowed: {sorted(ALLOWED_EVENTS)}")
 
     n = int(duration_min) + 1
     t = np.arange(n, dtype=np.float64)

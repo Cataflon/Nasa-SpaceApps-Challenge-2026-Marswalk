@@ -28,27 +28,29 @@ MAX_SLOPE_DEG = 25.0
 UNSAFE_SLOPE_DEG = 35.0  # înlocuitor pentru FOM-ul HiRISE
 # v1: schelet inițial. v2: front de deltă abrupt (pereți de netrecut + rampe), etichete pe straturi.
 # v3: radiația în doză echivalentă RAD (~26,7 µSv/h în loc de ~10).
-GENERATOR_VERSION = 3
+# v4: textele vizibile în engleză (numele țintelor și sitului, etichetele straturilor).
+GENERATOR_VERSION = 4
 # Doza echivalentă la suprafață: RAD 0,64 mSv/zi = 26,7 µSv/h (Hassler et al. 2014, Science).
 # Aceeași valoare ca scenario.DOSE_RATE_USV_H (backend/app/live/scenario.py).
 DOSE_RATE_USV_H = 26.7
 DEFAULT_OUT = ROOT / "data" / "synthetic"
 
 # Etichetele fiecărui strat: ce tip de date e și ce instrument NASA imită în situl real.
+# Textele apar în UI (popup-ul de la click pe hartă), deci sunt în engleză.
 LAYER_LABELS = {
     "elevation": {"data_type": "topographic", "analog_of": "MRO HiRISE DTM + MRO CTX DTM"},
-    "slope": {"data_type": "topographic", "analog_of": "derivat din DTM (pantă maximă pe celulă)"},
-    "terrain": {"data_type": "thermal", "analog_of": "Mars Odyssey THEMIS (inerție termică)"},
+    "slope": {"data_type": "topographic", "analog_of": "derived from DTM (max slope per cell)"},
+    "terrain": {"data_type": "thermal", "analog_of": "Mars Odyssey THEMIS (thermal inertia)"},
     "minerals": {"data_type": "spectral", "analog_of": "MRO CRISM"},
-    "radiation": {"data_type": "radiation", "analog_of": "Curiosity RAD (model după altitudine)"},
-    "unsafe": {"data_type": "topographic", "analog_of": "HiRISE DTM FOM (aici: pantă > 35°)"},
+    "radiation": {"data_type": "radiation", "analog_of": "Curiosity RAD (altitude model)"},
+    "unsafe": {"data_type": "topographic", "analog_of": "HiRISE DTM FOM (here: slope > 35°)"},
 }
 
 HABITAT = (300, 200)
 TARGETS = [
-    {"id": "clay_delta", "name": "Argilă, frontul deltei", "kind": "clay", "row": 180, "col": 140, "science_value": 10, "dwell_min": 30, "image": None},
-    {"id": "carbonate_rim", "name": "Carbonați, marginea", "kind": "carbonate", "row": 120, "col": 260, "science_value": 7, "dwell_min": 20, "image": None},
-    {"id": "olivine_floor", "name": "Olivină, fundul craterului", "kind": "olivine", "row": 340, "col": 330, "science_value": 4, "dwell_min": 15, "image": None},
+    {"id": "clay_delta", "name": "Clay, delta front", "kind": "clay", "row": 180, "col": 140, "science_value": 10, "dwell_min": 30, "image": None},
+    {"id": "carbonate_rim", "name": "Carbonates, delta margin", "kind": "carbonate", "row": 120, "col": 260, "science_value": 7, "dwell_min": 20, "image": None},
+    {"id": "olivine_floor", "name": "Olivine, crater floor", "kind": "olivine", "row": 340, "col": 330, "science_value": 4, "dwell_min": 15, "image": None},
 ]
 DELTA_APEX_M = (1200.0, 0.0)  # (y, x)
 DELTA_RADIUS_M = 3600.0
