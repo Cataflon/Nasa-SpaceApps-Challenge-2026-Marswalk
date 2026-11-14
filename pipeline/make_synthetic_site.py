@@ -24,7 +24,9 @@ from pngio import categorical, hillshade, ramp, write_png
 ROOT = Path(__file__).resolve().parents[1]
 N = 500
 CELL_M = 20.0
-MAX_SLOPE_DEG = 25.0
+# Panta maximă de mers în costum: 20° (conceptul NASA de operațiuni EVA pe Lună, registrul §4.1 [S26];
+# decizia echipei, 14.11.2026). Se scrie explicit în meta.json, peste valoarea din contract.
+MAX_SLOPE_DEG = 20.0
 UNSAFE_SLOPE_DEG = 35.0  # înlocuitor pentru FOM-ul HiRISE
 # v1: schelet inițial. v2: front de deltă abrupt (pereți de netrecut + rampe), etichete pe straturi.
 # v3: radiația în doză echivalentă RAD (~26,7 µSv/h în loc de ~10).
@@ -32,7 +34,8 @@ UNSAFE_SLOPE_DEG = 35.0  # înlocuitor pentru FOM-ul HiRISE
 # v5: `artifacts` (hardware NASA ca POI) și `rover_traverse` (None pe situl sintetic).
 # v6: Ingenuity = Wright Brothers Field (primul zbor); epava e în afara hărții Jezero.
 # v7: doza de fond 28 µSv/h (0,67 mSv/zi, RAD), ca scenario.DOSE_RATE_USV_H.
-GENERATOR_VERSION = 7
+# v8: panta maximă 20° (în loc de 25°), scrisă explicit în meta.json.
+GENERATOR_VERSION = 8
 # Doza echivalentă la suprafață: RAD 0,64 mSv/zi = 26,7 µSv/h (Hassler et al. 2014, Science).
 # Aceeași valoare ca scenario.DOSE_RATE_USV_H (backend/app/live/scenario.py).
 DOSE_RATE_USV_H = 28.0
@@ -101,7 +104,7 @@ def build(seed: int) -> dict[str, np.ndarray]:
     elev = -2540.0 - 0.003 * (x + y - 10000) + 6.0 * smooth_noise(rng, 3.2)
 
     # Delta: un evantai din NV cu un front abrupt. Lățimea frontului variază cu unghiul,
-    # deci frontul are pereți de netrecut (>25°, ~1/4 din front) și rampe pe unde se poate urca.
+    # deci frontul are pereți de netrecut (>20°, ~1/4 din front) și rampe pe unde se poate urca.
     # Panta maximă a logisticei ≈ înălțime / (4 · lățime): la 12 m -> ~55°, la 170 m -> ~6°.
     dy, dx = y - DELTA_APEX_M[0], x - DELTA_APEX_M[1]
     r = np.hypot(dy, dx)
@@ -216,7 +219,7 @@ def write(layers: dict[str, np.ndarray], out: Path, seed: int) -> None:
 
     contract = json.loads((ROOT / "shared" / "contracts" / "meta.json").read_text(encoding="utf-8"))
     slope = layers["slope"]
-    meta = {**contract, "source": "synthetic", "seed": seed, "targets": TARGETS,
+    meta = {**contract, "max_slope_deg": MAX_SLOPE_DEG, "source": "synthetic", "seed": seed, "targets": TARGETS,
             "habitat": {"row": HABITAT[0], "col": HABITAT[1]},
             "artifacts": ARTIFACTS, "rover_traverse": None,
             "layers": labeled_layers(contract["layers"], "synthetic"),

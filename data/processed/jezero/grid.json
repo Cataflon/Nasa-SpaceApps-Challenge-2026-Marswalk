@@ -2,7 +2,7 @@
   "version": 1,
   "site_id": "jezero",
   "fingerprint": {
-    "forbidden_pct": 0.86,
+    "forbidden_pct": 2.05,
     "unsafe_pct": 0.13,
     "elevation_mean_m": -2558.7
   },

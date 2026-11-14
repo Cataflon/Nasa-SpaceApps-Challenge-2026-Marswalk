@@ -1,5 +1,6 @@
 import json
 
+import numpy as np
 import pytest
 
 from app.config import CONTRACTS_DIR
@@ -91,10 +92,34 @@ def test_wind_is_weibull():
     v = sc._weibull(z, np.full(z.size, 4.0), 2.0)
     assert v.mean() == pytest.approx(4.0, rel=0.01)
     assert (v > 8.0).mean() == pytest.approx(np.exp(-np.pi), rel=0.05)
-    # în scenariu: rafale peste 10 m/s apar, dar rar (mai ales după-amiaza, media 6 m/s)
-    wind = [w for seed in range(5) for w in series(sc.generate(seed, 480), "wind_ms")]
-    assert 0 < sum(w > 10 for w in wind) < 0.10 * len(wind)
-    assert sum(w > 15 for w in wind) < 0.01 * len(wind)
+    # în scenariu: rafale peste 10 m/s apar, dar rar (MEDA: 99 % din vânturi sub 11,3 m/s după-amiaza)
+    wind = [w for seed in range(5) for w in series(sc.generate(seed, 600), "wind_ms")]
+    assert 0 < sum(w > 10 for w in wind) < 0.05 * len(wind)
+    assert sum(w > 15 for w in wind) < 0.005 * len(wind)
+
+
+def test_wind_follows_meda_timeslots():
+    """Media pe ore = Tabelul 2 din Viúdez-Moreiras et al. 2022 (2,68 / 4,67 / 6,08 m/s), la mijlocul intervalelor."""
+    mean, k = sc.wind_weibull_at([8.5, 12.5, 16.5])
+    assert list(mean) == pytest.approx([2.68, 4.67, 6.08], abs=0.02)  # tabelul e rotunjit la 0,01
+    assert list(k) == pytest.approx([2.01, 2.16, 3.02])
+    # în serii: dimineața e mai calm decât după-amiaza
+    wind = [series(sc.generate(seed, 600), "wind_ms") for seed in range(10)]
+    hour = lambda h: round((h - sc.EVA_START_LTST_H) * sc.MARS_HOUR_MIN)  # noqa: E731
+    morning = np.mean([w[hour(8.5) - 15 : hour(8.5) + 15] for w in wind])
+    afternoon = np.mean([w[hour(16.5) - 15 : hour(16.5) + 15] for w in wind])
+    assert 1.8 < morning < 3.6 and 4.8 < afternoon < 7.4
+
+
+def test_wind_table_matches_pipeline_dataset():
+    """Aceleași cifre ca data/processed/jezero/wind_stats.json (pipeline/meda_winds.py)."""
+    from app.config import site_dir
+
+    path = site_dir("jezero") / "wind_stats.json"
+    if not path.exists():
+        pytest.skip("wind_stats.json nu e generat")
+    slots = json.loads(path.read_text(encoding="utf-8"))["weibull_by_timeslot"]
+    assert {n: (s["ltst_h"][0], s["ltst_h"][1], s["c_ms"], s["k"]) for n, s in slots.items()} == sc.WIND_WEIBULL_BY_LTST
 
 
 def test_dose_follows_pressure_cycle():

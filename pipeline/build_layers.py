@@ -14,7 +14,7 @@ Pași:
      Terenul și mineralele: provizorii aici (din pantă), înlocuite de capitolul 5 (THEMIS, CRISM
      sau harta geologică USGS SIM 3464 în pipeline/manual_units.py).
   6. Habitatul pe cel mai plat teren de lângă locul de aterizare Perseverance; țintele reale,
-     mutate pe cea mai apropiată celulă accesibilă din habitat (≤ 25°).
+     mutate pe cea mai apropiată celulă accesibilă din habitat (≤ 20°).
   7. Scrie .npy + meta.json (același format ca make_synthetic_site.py) + PNG-urile.
 
 Rulare (mediul .venv-pipeline, după fetch_stac.py):
@@ -43,7 +43,7 @@ N = fs.GRID_N
 CELL_M = fs.GRID_CELL_M
 FINE = 5  # pixeli fini pe latura unei celule: 20 m / 5 = 4 m (= rezoluția de citire HiRISE)
 FINE_M = CELL_M / FINE
-MAX_SLOPE_DEG = 25.0
+MAX_SLOPE_DEG = 20.0  # = make_synthetic_site.MAX_SLOPE_DEG (registrul §4.1 [S26], decizia echipei 14.11)
 UNSAFE_SLOPE_DEG = 35.0  # ROL1: „unde nu există FOM, din pantă > 35°”
 FEATHER_M = 100.0  # lățimea tranziției HiRISE -> CTX (presupunere)
 DOSE_RATE_USV_H = 28.0  # RAD, doză echivalentă 0,67 mSv/zi (Hassler, SwRI 2013); = scenario.DOSE_RATE_USV_H
@@ -623,6 +623,7 @@ def build(raw: Path = RAW, log=print) -> tuple[dict[str, np.ndarray], dict]:
         "name": "Jezero crater, delta front (Perseverance landing site)",
         "source": "nasa",
         "crs": fs.local_proj4(),
+        "max_slope_deg": MAX_SLOPE_DEG,  # 20°, peste valoarea din contract (decizia echipei, 14.11)
         "center": {"lat": fs.CENTER_LAT, "lon": fs.CENTER_LON},
         "habitat": {"row": int(habitat[0]), "col": int(habitat[1])},
         "targets": targets,
@@ -697,7 +698,7 @@ def main() -> None:
     write(layers, meta, args.out)
     fp = meta["fingerprint"]
     print(f"\nSit Jezero scris în {args.out}")
-    print(f"  elevație medie {fp['elevation_mean_m']} m, interzis (>25°) {fp['forbidden_pct']}%, unsafe {fp['unsafe_pct']}%,"
+    print(f"  elevație medie {fp['elevation_mean_m']} m, interzis (>{MAX_SLOPE_DEG:.0f}°) {fp['forbidden_pct']}%, unsafe {fp['unsafe_pct']}%,"
           f" HiRISE pe {meta['provenance']['hirise_coverage_pct']}% din celule")
 
 
