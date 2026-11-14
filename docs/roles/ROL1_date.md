@@ -1,5 +1,14 @@
 # Rolul 1: Date & prezentare
 
+> ## 🆕 NOU (14.11.2026): citește întâi asta
+> Echipa a adăugat 7 funcționalități legate direct de tema challenge-ului („Interplanetary Survival Guide”). Tabelul complet e în `README.md`, secțiunea „🆕 Noutăți”. **Ce ai tu nou de făcut** (detaliile sunt mai jos, la sarcini, marcate 🆕):
+> 1. **`docs/survival-guide.md`** (P1): textul regulilor din Survival Guide-ul printabil (ce faci la furtună locală / regională / solară, scurgere în costum, oboseală, cutremur, pierderea legăturii). Rolul 4 îl importă cu `?raw`.
+> 2. **Întârzierea Pământ-Marte, cu sursă** (P1): `EARTH_ONE_WAY_DELAY_MIN` și `EARTH_ROUND_TRIP_MIN` în `scenario.py`, pentru contorul „Pământul vs. copilotul”. `EVA_START_LTST_H` există deja, pentru ceasul de întoarcere.
+> 3. **Etichete complete pe straturile Jezero** (P1): `mission`, `instrument`, `data_type`, `source` și `product_id` pentru fiecare strat din `meta.json`, pentru click-ul pe hartă („pantă 12° · HiRISE · MRO”).
+> 4. **`docs/how-we-calculate.md` mutat la P1:** fiecare constantă (buget, cost, validator, pericole, scenarii) marcată **sursă** sau **presupunere**.
+> 5. **`docs/slides.md`:** numărul de titlu din benchmark pe primul slide („acasă în siguranță: copilot X% · plan fix Y%”) și un slide despre Pământ (același motor, teren din munții noștri, pentru salvamont; doar pe slide, nu în cod).
+> 6. **`docs/demo.md`:** include ceasul de întoarcere, contorul, click-ul pe hartă și închiderea cu Survival Guide-ul.
+
 Ești unul dintre 4 agenți care implementează **simultan** Marswalk Copilot în același repo. Ceilalți trei lucrează la algoritmi (`backend/app/core/`), backend + LLM (`backend/app/api/`, `live/engine.py`, `llm/`) și frontend (`frontend/`). Tu ai datele, scenariile și documentația.
 
 ## Proiectul în 30 de secunde
@@ -52,12 +61,17 @@ Rolul 3 apelează `generate(seed, duration_min, events) -> Scenario`. Nu schimba
 **P1:**
 4. **`pipeline/build_layers.py`:** din `data/raw/jezero/` în `data/processed/jezero/`. CTX acoperă toată zona, HiRISE are prioritate acolo unde există. Panta se calculează la rezoluția completă, apoi se agregă la 20 m păstrând **maximul**. `unsafe` vine din FOM-ul HiRISE, iar unde nu există FOM, din pantă > 35°.
 5. **Minerale și teren:** CRISM și THEMIS dacă merg repede. **Plan B, dacă nu în 2-3 ore:** poligoane trasate manual după harta geologică USGS SIM 3464, scrise ca listă de coordonate în `pipeline/manual_units.py`. Radiația: același model ca în situl sintetic (doză în funcție de altitudine), declarat ca presupunere.
+   - 🆕 **Etichete pe fiecare strat** din `meta.json` (`layers.<strat>`): `mission` (ex. „MRO”), `instrument` (ex. „HiRISE”), `data_type` (topographic / optical / spectral / thermal / radiation), `source` („nasa” sau „assumption”) și `product_id` (ID-ul item-ului STAC). `/api/site` le trimite deja frontendului; click-ul pe hartă le afișează.
+6. 🆕 **`docs/survival-guide.md`:** regulile pentru Survival Guide-ul printabil, scurte, la imperativ, câte 2-4 rânduri per situație: furtună locală (ocolești sau aștepți la adăpost), furtună regională (te întorci imediat), furtună solară (adăpost sau întoarcere), scurgere în costum, oboseală, cutremur, pierderea legăturii cu habitatul. Pragurile (rezerva de O₂, marja față de apus, doza maximă) se iau din `how-we-calculate.md`, nu se inventează aici. Rolul 4 îl importă cu `?raw` și îl pune pe fișa fiecărei ieșiri.
+7. 🆕 **Întârzierea Pământ-Marte** în `scenario.py`: `EARTH_ONE_WAY_DELAY_MIN` (lumina parcurge distanța Pământ-Marte între ~3 și ~22 min, după poziția planetelor) și `EARTH_ROUND_TRIP_MIN` (dus-întors + timpul de reacție al echipei de la sol), cu sursă (JPL Horizons sau NASA) și cu data aleasă pentru demo. Rolul 3 le expune în `/api/site`.
+
+**P1 (mutat din P2):**
+8. **`docs/how-we-calculate.md`:** completează fiecare rând cu sursa. 🆕 **Fiecare constantă** (din `budget.py`, `costmap.py`, `validator.py`, `hazards.py`, `types.Limits` și `scenario.py`) are statusul **sursă** (cu link) sau **presupunere**. Coloana „Status” folosește exact valorile `sursă`, `presupunere` și `de verificat`, pentru că rolul 4 le transformă în badge-uri. Constantele rolului 2 le citești (nu le modifici). Dacă vrei alte valori, scrie-le în notele tale la „Cereri pentru rolul 2”.
 
 **P2:**
-6. **`docs/sources.md`:** toate sursele din secțiunea 3 a README-ului, fiecare cu link **verificat** (deschis efectiv), ce date folosim din ea și statusul (verificat / de verificat).
-7. **`docs/how-we-calculate.md`:** completează fiecare rând cu sursa. Constantele din `backend/app/core/budget.py` și `costmap.py` le citești (nu le modifici). Dacă vrei alte valori, scrie-le în notele tale la „Cereri pentru rolul 2”.
-8. **`docs/demo.md`:** scenariul demo-ului de 2 minute, secundă cu secundă: ce se apasă și ce se spune. **`docs/slides.md`:** structura slide-urilor după criteriile juriului.
-9. **Imaginile de la opriri:** imagini raw Perseverance (Mastcam-Z / Navcam) apropiate de fiecare țintă, redimensionate.
+9. **`docs/sources.md`:** toate sursele din secțiunea 3 a README-ului, fiecare cu link **verificat** (deschis efectiv), ce date folosim din ea și statusul (verificat / de verificat).
+10. **`docs/demo.md`:** scenariul demo-ului de 2 minute, secundă cu secundă: ce se apasă și ce se spune (vezi secțiunea 8 din README, 🆕 cu numărul de titlu la început, click-ul pe hartă, ceasul de întoarcere, contorul Pământ vs. copilot și închiderea cu Survival Guide-ul). **`docs/slides.md`:** structura slide-urilor după criteriile juriului. 🆕 Pe primul slide: „Copilotul a adus astronautul acasă în siguranță în X% din furtuni; planul fix, în Y%” (din `GET /api/benchmark` → `headline`). 🆕 Un slide pentru Influence: același motor pe Pământ, cu un model de teren din munții noștri, pentru salvamont (doar slide, nu cod).
+11. **Imaginile de la opriri:** imagini raw Perseverance (Mastcam-Z / Navcam) apropiate de fiecare țintă, redimensionate.
 
 ## Teste: rulează doar ce ai modificat
 
