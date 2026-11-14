@@ -116,13 +116,14 @@ def test_deterministic():
 
 
 def test_solar_event_multiplies_dose_rate():
-    e = started(straight_route())
-    e.inject("solar_particle_event", {"dose_rate_multiplier": 20, "duration_min": 5})
-    msgs = e.step()
-    assert msgs[0]["sensors"]["dose_rate_usv_h"] == 200.0
+    # Comparăm cu același motor fără eveniment: doza de bază vine din scenariu și variază pe minut.
+    quiet, solar = started(straight_route()), started(straight_route())
+    solar.inject("solar_particle_event", {"dose_rate_multiplier": 20, "duration_min": 5})
+    base, msgs = quiet.step()[0]["sensors"]["dose_rate_usv_h"], solar.step()
+    assert msgs[0]["sensors"]["dose_rate_usv_h"] == pytest.approx(20 * base, rel=0.01)
     assert any(m["type"] == "event" and m["event"] == "solar_particle_event" for m in msgs)
-    run(e, 6)
-    assert e.last_tick["sensors"]["dose_rate_usv_h"] == 10.0
+    run(quiet, 6), run(solar, 6)
+    assert solar.last_tick["sensors"]["dose_rate_usv_h"] == quiet.last_tick["sensors"]["dose_rate_usv_h"]
 
 
 def test_suit_leak_increases_o2_use():

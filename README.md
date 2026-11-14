@@ -30,6 +30,30 @@ Teste: `cd backend && ../.venv/Scripts/python -m pytest`.
 
 > **Limba:** toată aplicația e în engleză (interfața, mesajele din API, explicațiile LLM-ului, slide-urile), pentru că juriul e internațional. Documentația internă a echipei (acest README, fișierele de rol) rămâne în română.
 
+## 🆕 Noutăți (14.11.2026): 7 adăugări ieftine, cu impact mare
+
+> **Fiecare rol citește aici ce are nou de implementat.** Detaliile sunt și în fișierul rolului (`docs/roles/ROLn_*.md`), în caseta „🆕 NOU” de la început.
+
+Challenge-ul se numește chiar **„Interplanetary Survival Guide”**. Adăugările de mai jos leagă proiectul direct de temă, folosind date pe care le avem deja.
+
+| # | Ce | De ce | Rol 1 (date) | Rol 2 (algoritmi) | Rol 3 (backend) | Rol 4 (frontend) |
+|---|---|---|---|---|---|---|
+| 1 | **Survival Guide printabil**, mutat din bonus în **prioritate (P1)**: o fișă de o pagină per ieșire cu traseul, ora-limită de întoarcere, punctul de neîntoarcere și ce faci la furtună locală / regională / solară | Cea mai bună potrivire cu tema, pentru câteva ore de lucru | Textul regulilor: `docs/survival-guide.md` | — (datele există deja în `plan_route`) | — | Pagina printabilă (CSS de print) |
+| 2 | **Contorul „Pământul vs. copilotul”**: „Houston's help would arrive in 14 min · copilot decided in 0.05 s” | O idee pe care juriul o reține imediat | Întârzierea Pământ-Marte, cu sursă: `scenario.EARTH_ONE_WAY_DELAY_MIN` | — | `compute_ms` în mesajul `decision` + întârzierea în `/api/site` | Contorul în panoul copilotului |
+| 3 | **Ceasul de întoarcere ca cifră principală**: „Return by 14:20” | E prima informație pe care o vrea un astronaut | Ora de start a ieșirii (LTST): `scenario.EVA_START_LTST_H` | `return_by_min` corect în buget | `eva_start_ltst_h` în `/api/site` | Cifra mare, mereu vizibilă |
+| 4 | **Click pe orice punct de pe hartă**, cu valorile din fiecare misiune și sursa lor: „slope 12° · HiRISE · MRO” | Face vizibile cele „5 misiuni” și întărește partea de hartă | `mission` / `instrument` / `product_id` pe fiecare strat din `meta.json` | — | `sources` în `GET /api/point` | Popup la click |
+| 5 | **Un singur număr de titlu din benchmark**: „The copilot brought the astronaut home safely in X% of storms; the fixed plan, in Y%” | Pe primul slide și în video | Pe slide și în video | `headline` în `run_benchmark` | `headline` în `GET /api/benchmark` | Afișat în UI |
+| 6 | **Ecranul „How we calculate”**, cu fiecare constantă marcată **source** sau **assumption** | Onestitatea despre limite crește încrederea (Validity) | `docs/how-we-calculate.md` complet, mutat la **P1** | Toate constantele la nivel de modul, cu comentariul `sursă:` sau `presupunere` | — | Badge-uri pe coloana „Status” |
+| 7 | **Un slide despre Pământ (Influence):** același motor, cu un model de teren din munții noștri, pentru salvamont | Doar pe slide, **nu în cod** | `docs/slides.md` | — | — | — |
+
+**Câmpuri noi în contracte, toate opționale** (se adaugă cu acordul echipei; până atunci frontendul are fallback):
+- `site.json`: `eva_start_ltst_h` (ex. `9.0`), `earth_delay_min` (`{"one_way": 14, "round_trip": 28, "source": "…"}`), iar în `layers[]` etichetele `mission`, `instrument`, `data_type`, `source` (deja trimise de `/api/site`).
+- `GET /api/point`: `sources` (`{"slope": {"mission": "MRO", "instrument": "HiRISE", "data_type": "topographic"}, …}`).
+- `live_messages.json`, mesajul `decision`: `compute_ms` (cât a durat decizia; se măsoară doar pentru afișare, nu intră în logică).
+- `GET /api/benchmark`: `headline` (`{"copilot_safe_pct": X, "plan_safe_pct": Y, "n_scenarios": 100}`).
+
+---
+
 ## 1. Ideea
 
 ### Problema
@@ -273,24 +297,28 @@ cost = distanță × f(pantă) × f(teren) + w_pericol × pericol(x, y, t) + w_r
 
 | Rută | Rol |
 |---|---|
-| `GET /api/site` | Zona, limitele, habitatul, țintele |
-| `GET /api/layers` | Straturile (PNG și legendă) |
-| `GET /api/point` | Valorile tuturor straturilor într-un punct |
+| `GET /api/site` | Zona, limitele, habitatul, țintele, ora de start a ieșirii (`eva_start_ltst_h`), întârzierea Pământ-Marte (`earth_delay_min`) |
+| `GET /api/layers` | Straturile (PNG, legendă și etichetele de misiune / instrument) |
+| `GET /api/point` | Valorile tuturor straturilor într-un punct + sursa fiecăruia (`sources`: misiune, instrument) |
 | `POST /api/route` | Traseu + buget + verdict GO / CAUTION / NO-GO |
 | `POST /api/chat` | Chat cu agentul (streaming) |
 | `WS /api/live` | Simularea live: tick-uri, evenimente, decizii |
 | `POST /api/live/event` | Injectează un eveniment |
-| `GET /api/benchmark` | Copilot față de „doar planul", pe aceleași scenarii |
+| `GET /api/benchmark` | Copilot față de „doar planul", pe aceleași scenarii, plus numărul de titlu (`headline`) |
 
 ### 5.9 Frontendul (React + Vite, pornit din machetă)
 
+- **Ceasul de întoarcere, cifra principală de pe ecran:** „Return by 14:20” (ora locală pe Marte, LTST), mereu vizibil, nu ascuns într-un panou.
 - **Harta:** straturi activabile, habitat, astronaut în mișcare, furtuna cu conul de predicție, traseul curent, alternativele colorate, punctul de neîntoarcere.
-- **Panoul copilotului:** decizia curentă, explicația, chatul și uneltele chemate.
+- **Click pe orice punct:** valorile din fiecare strat cu misiunea și instrumentul lor („slope 12° · HiRISE · MRO”).
+- **Panoul copilotului:** decizia curentă, explicația, chatul și uneltele chemate, plus contorul **„Pământul vs. copilotul”** („Houston's help would arrive in 14 min · copilot decided in 0.05 s”).
 - **Bugetul:** O₂, timp, lumină, doză și profilul de altitudine.
 - **Controale de simulare:** start/pauză, viteza ceasului, butoane de evenimente.
 - **Imagini Perseverance** la opriri.
-- **Bonus:** vedere HUD (ce vede astronautul în cască) și Survival Guide printabil.
-- **Ecranul „How we calculate":** formulele, pragurile și sursele.
+- **Survival Guide printabil (prioritate, nu bonus):** o pagină per ieșire, cu traseul, ora-limită de întoarcere, punctul de neîntoarcere și ce faci la furtună locală / regională / solară.
+- **Numărul de titlu din benchmark:** „home safe: copilot X% · fixed plan Y%”.
+- **Ecranul „How we calculate":** formulele, pragurile și sursele; fiecare constantă e marcată **source** sau **assumption**.
+- **Bonus:** vedere HUD (ce vede astronautul în cască).
 
 ---
 
@@ -363,9 +391,9 @@ marswalk-copilot/
 | Interval | Backend | Algoritmi | Date | Frontend |
 |---|---|---|---|---|
 | H12–H18 | WebSocket `/live` | A* spațiu-timp, alternativele, validatorul | `scenario.py` calibrat pe MEDA, REMS, RAD | Astronaut animat, furtuna, conul, alternativele |
-| H18–H24 | `llm/` (explicații) + șabloane, chatul | Histerezis, WAIT și RETURN, CP-SAT pentru opriri | Imaginile Perseverance la opriri | Panoul de decizie, explicația, chatul |
-| H24–H30 | Benchmark | Teste pe scenarii | Ecranul „Cum calculăm", sursele | HUD sau Survival Guide (bonus) |
-| H30–H34 | Stabilizare | Stabilizare | Slide-uri, video demo | Finisaje |
+| H18–H24 | `llm/` (explicații) + șabloane, chatul; `compute_ms`, `sources`, `eva_start_ltst_h` | Histerezis, WAIT și RETURN, CP-SAT pentru opriri | Imaginile Perseverance la opriri, `survival-guide.md` | Panoul de decizie, explicația, chatul, contorul Pământ vs. copilot, ceasul de întoarcere |
+| H24–H30 | Benchmark + `headline` | Teste pe scenarii, `headline` în benchmark | Ecranul „Cum calculăm” (fiecare constantă: sursă / presupunere), sursele | **Survival Guide printabil**, apoi HUD (bonus) |
+| H30–H34 | Stabilizare | Stabilizare | Slide-uri (numărul de titlu, slide-ul salvamont), video demo | Finisaje |
 | H34–H36 | Îngheț de cod | | Repetiție demo | |
 
 Ajustați orele după deadline-ul real. Înregistrați video-ul de rezervă cu cel puțin 3-4 ore înainte de termen.
@@ -395,13 +423,14 @@ Instrucțiunile complete pentru fiecare rol (pentru 4 agenți care lucrează în
 
 ## 8. Demo-ul (≈2 min)
 
-1. Harta Jezero cu straturile: „date din 5 misiuni NASA" (15 s).
-2. Planificare: „Vreau o probă de argilă de la deltă, am 5 ore" → traseu, buget, punct de neîntoarcere, imaginea Perseverance de la țintă (25 s).
+0. Deschidere cu numărul de titlu: „The copilot brought the astronaut home safely in X% of storms; the fixed plan, in Y%” (5 s).
+1. Harta Jezero cu straturile: „date din 5 misiuni NASA”. Click pe un punct: „slope 12° · HiRISE · MRO” (15 s).
+2. Planificare: „Vreau o probă de argilă de la deltă, am 5 ore" → traseu, buget, punct de neîntoarcere, imaginea Perseverance de la țintă și ceasul mare „Return by 14:20” (25 s).
 3. Pornim ieșirea, iar astronautul merge pe hartă (10 s).
-4. Furtună locală la jumătatea drumului: apare conul de predicție, apar alternativele, validatorul elimină una, regula alege ocolirea instant, iar LLM-ul explică de ce (35 s).
-5. Furtună regională: sistemul decide RETURN, pentru că nu poate fi ocolită (15 s).
-6. Benchmark: copilot față de „doar planul", pe 100 de scenarii (15 s).
-7. Închidere: HUD-ul sau Survival Guide-ul (5 s).
+4. Furtună locală la jumătatea drumului: apare conul de predicție, apar alternativele, validatorul elimină una, regula alege ocolirea instant, iar LLM-ul explică de ce. Contorul: „Houston ar răspunde în 28 min · copilotul a decis în 0,05 s” (35 s).
+5. Furtună regională: sistemul decide RETURN, pentru că nu poate fi ocolită; ceasul de întoarcere se actualizează (15 s).
+6. Benchmark: copilot față de „doar planul", pe 100 de scenarii (10 s).
+7. Închidere: Survival Guide-ul printabil al ieșirii (5 s).
 
 ---
 
@@ -423,8 +452,8 @@ Instrucțiunile complete pentru fiecare rol (pentru 4 agenți care lucrează în
 
 | Criteriu | Argument |
 |---|---|
-| **Influence** | Siguranța primelor ieșiri umane pe Marte; aceeași logică ajută salvamontul pe Pământ |
-| **Creativity** | Replanificare în timp real cu predicția pericolului, nu o hartă statică |
-| **Validity** | DTM-uri oficiale NASA/USGS, date din 5 misiuni, decizii deterministe, benchmark măsurat |
-| **Relevance** | Acoperă cerințele: hiperlocal, ≥3 tipuri de date, siguranță, radiație, mobilitate în costum, obiective științifice, imagini de la sol |
-| **Presentation** | Demo vizual: furtuna se mișcă, traseul se reface, decizia e explicată |
+| **Influence** | Siguranța primelor ieșiri umane pe Marte; un slide arată același motor, cu un model de teren din munții noștri, pentru salvamont |
+| **Creativity** | Replanificare în timp real cu predicția pericolului, nu o hartă statică; contorul „Pământul vs. copilotul” |
+| **Validity** | DTM-uri oficiale NASA/USGS, date din 5 misiuni (vizibile la click pe hartă), decizii deterministe, benchmark măsurat, ecranul „Cum calculăm” cu fiecare constantă marcată sursă sau presupunere |
+| **Relevance** | Acoperă cerințele: hiperlocal, ≥3 tipuri de date, siguranță, radiație, mobilitate în costum, obiective științifice, imagini de la sol; produce chiar un **Survival Guide** per ieșire |
+| **Presentation** | Demo vizual: furtuna se mișcă, traseul se reface, decizia e explicată; un singur număr de titlu din benchmark |

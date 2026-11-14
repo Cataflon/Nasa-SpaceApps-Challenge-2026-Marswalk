@@ -1,5 +1,13 @@
 # Rolul 3: Backend & LLM
 
+> ## 🆕 NOU (14.11.2026): citește întâi asta
+> Echipa a adăugat 7 funcționalități legate direct de tema challenge-ului („Interplanetary Survival Guide”). Tabelul complet e în `README.md`, secțiunea „🆕 Noutăți”. **Ce ai tu nou de făcut** (detaliile sunt mai jos, marcate 🆕). Toate câmpurile sunt **noi și opționale**, deci nimic existent nu se strică:
+> 1. **`compute_ms` în mesajul `decision`:** cât a durat decizia (alternative + validator + regulă), măsurat cu `time.perf_counter()` **doar pentru afișare**, nu intră în logică. Alimentează contorul „Houston ar răspunde în 28 min · copilotul a decis în 0,05 s”.
+> 2. **`/api/site` primește `eva_start_ltst_h` și `earth_delay_min`** (`{"one_way", "round_trip", "source"}`), luate din `app.live.scenario` (`EVA_START_LTST_H`, `EARTH_ONE_WAY_DELAY_MIN`, `EARTH_ROUND_TRIP_MIN`). Cât timp constantele de întârziere lipsesc, `getattr` cu fallback 14 / 28 min.
+> 3. **`/api/point` primește `sources`:** pentru fiecare strat, `mission` / `instrument` / `data_type` / `source` din `meta["layers"][strat]`, pentru click-ul pe hartă („pantă 12° · HiRISE · MRO”). Pe situl sintetic, ce există (`data_type`, `analog_of`, `source`).
+> 4. **`/api/benchmark` trimite mai departe `headline`** din `run_benchmark` („acasă în siguranță: copilot X% · plan fix Y%”).
+> 5. **Scenariile (de la rolul 1, deja gata):** folosește `scenario.sensors_at(s, t_min)`, `scenario.with_event(s, ev)` și `scenario.demo_events(SITE_ID)`. Detalii în `docs/roles/notes/rol1.md`, la „Cereri”.
+
 Ești unul dintre 4 agenți care implementează **simultan** Marswalk Copilot în același repo. Ceilalți trei lucrează la date (`pipeline/`, `scenario.py`, `docs/`), algoritmi (`backend/app/core/`) și frontend (`frontend/`). Tu ai serverul FastAPI, motorul live, LLM-ul și integrarea.
 
 ## Proiectul în 30 de secunde
@@ -27,7 +35,7 @@ Citește din `README.md`: secțiunea 4 (workflow-ul, mai ales Faza 3), 5.7 (LLM-
 | rolul 2 | `core.hazards.*`, `core.alternatives.generate` | motorul redă `mock_stream` (deja făcut) |
 | rolul 2 | `core.decision.choose` | **deja implementat**, folosește-l |
 | rolul 2 | `core.benchmark.run_benchmark` | 501 |
-| rolul 1 | `live.scenario.generate(...)` | `scenario.BASELINE` constant pe fiecare minut |
+| rolul 1 | `live.scenario.generate(...)` | `scenario.BASELINE` constant pe fiecare minut. 🆕 **Deja implementat:** folosește `sensors_at`, `with_event`, `demo_events` |
 
 Prinde `NotImplementedError` **exact acolo unde apelezi**, ca integrarea să meargă automat când celelalte roluri termină, fără nicio modificare din partea ta.
 
@@ -45,12 +53,18 @@ Prinde `NotImplementedError` **exact acolo unde apelezi**, ca integrarea să mea
    - **Pe tick:** scenariul dă senzorii, evenimentele injectate se aplică, apoi `hazards.route_hit`. Dacă traseul e lovit: `alternatives.generate`, `decision.choose`, mesaj `decision` **imediat**, apoi `asyncio.create_task(explain(...))`, care trimite mesajul `explanation`.
    - **Broadcast** către toți clienții WebSocket conectați.
    - **Mesajele urmează exact** `live_messages.json`.
+   - 🆕 Mesajul `decision` are în plus `compute_ms`: durata reală de la detectarea loviturii până la alegerea regulii, cu `time.perf_counter()`. E doar pentru afișare; testele nu verifică o valoare anume, doar că e un număr ≥ 0.
+   - 🆕 Senzorii: `scenario.sensors_at(s, t_min)`. Un eveniment injectat cu `POST /api/live/event` înlocuiește scenariul cu `scenario.with_event(s, ScheduledEvent(t_min, event, params))`. Demo-ul pornește cu `scenario.demo_events(SITE_ID)`.
 5. **`POST /api/live/control`** (`start`, `pause`, `reset`, `speed`, după `live_control.json`) și **`POST /api/live/event`**, legate de motor.
 6. **LLM-ul pe Ollama real:** măsoară latența, ajustează promptul și scrie cifrele în note. Ținta e sub 3 s pe 7B. Testele cu Ollama real sunt marcate `@pytest.mark.ollama`.
 
 **P2:**
 7. **`POST /api/chat`:** NDJSON în streaming, după `chat_stream.json`. Folosește tool calling din Ollama (`tools` în `/api/chat`) cu uneltele `plan_route`, `oxygen_budget`, `layer_value`, `science_stops`, `daylight`, care apelează funcțiile din `core`. Fallback fără Ollama: cuvinte-cheie mapate direct pe unelte, plus un răspuns din șablon.
-8. **`GET /api/benchmark`:** rulează `core.benchmark.run_benchmark` într-un thread și pune rezultatul în cache.
+8. **`GET /api/benchmark`:** rulează `core.benchmark.run_benchmark` într-un thread și pune rezultatul în cache. 🆕 Trimite mai departe `headline` (`copilot_safe_pct`, `plan_safe_pct`, `n_scenarios`) neschimbat.
+
+**🆕 P1 (adăugat 14.11, mic, < 1 h în total):**
+9. **`GET /api/site`:** adaugă `eva_start_ltst_h` (din `scenario.EVA_START_LTST_H`) și `earth_delay_min = {"one_way": …, "round_trip": …, "source": …}` (din `scenario.EARTH_ONE_WAY_DELAY_MIN` / `EARTH_ROUND_TRIP_MIN`, cu `getattr` și fallback 14 / 28 cât timp lipsesc). Etichetele straturilor (`LAYER_LABEL_KEYS`) sunt deja trimise.
+10. **`GET /api/point`:** adaugă `sources = {strat: {k: meta["layers"][strat][k] for k in LAYER_LABEL_KEYS if k in …}}`, alături de `values`. Un test în `tests/api` verifică doar că `sources` are aceleași chei ca `values`.
 
 ## Teste: rulează doar ce ai modificat
 
