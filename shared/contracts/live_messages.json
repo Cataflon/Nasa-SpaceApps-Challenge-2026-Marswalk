@@ -1,0 +1,66 @@
+[
+  {
+    "type": "tick",
+    "t_min": 72,
+    "astronaut": { "row": 230, "col": 165, "speed_ms": 0.9 },
+    "sensors": {
+      "o2_pct": 68.5,
+      "dust_tau": 0.9,
+      "wind_ms": 11.2,
+      "temp_c": -38.0,
+      "pressure_pa": 715,
+      "dose_rate_usv_h": 9.8,
+      "dose_total_msv": 0.06
+    },
+    "hazards": [
+      {
+        "id": "storm_1",
+        "kind": "local_storm",
+        "center": { "row": 220, "col": 30 },
+        "axes_m": [1800, 1100],
+        "angle_deg": 15,
+        "intensity": 0.7,
+        "velocity_ms": [0.0, 2.5],
+        "forecast": [
+          { "t_min": 82, "center": { "row": 220, "col": 105 }, "axes_m": [1950, 1250] },
+          { "t_min": 92, "center": { "row": 220, "col": 180 }, "axes_m": [2100, 1400] }
+        ]
+      }
+    ],
+    "route_id": "plan_0",
+    "remaining_path": [[230, 165], [220, 160], [200, 150], [180, 140]],
+    "budget": { "o2_end_pct": 46, "return_by_min": 260, "sunset_min": 420 },
+    "point_of_no_return": { "row": 200, "col": 150, "t_min": 160 }
+  },
+  {
+    "type": "decision",
+    "decision_id": "d_72",
+    "t_min": 72,
+    "decision": "REROUTE",
+    "alternative_id": "detour_north",
+    "reason_code": "HAZARD_ON_ROUTE",
+    "hazard_id": "storm_1",
+    "eta_hazard_min": 16,
+    "alternatives": [
+      { "id": "detour_north", "kind": "REROUTE", "valid": true, "violations": [], "extra_min": 25, "o2_end_pct": 31, "dose_msv": 0.2, "risk": 0.12, "path": [[230, 165], [210, 175], [185, 160], [180, 140]] },
+      { "id": "detour_south", "kind": "REROUTE", "valid": false, "violations": ["O2_RESERVE"], "extra_min": 40, "o2_end_pct": 22, "dose_msv": 0.21, "risk": 0.1, "path": [[230, 165], [250, 150], [200, 120], [180, 140]] },
+      { "id": "wait", "kind": "WAIT", "valid": true, "violations": [], "extra_min": 45, "o2_end_pct": 30.5, "dose_msv": 0.22, "risk": 0.35, "path": [[230, 165]] },
+      { "id": "return", "kind": "RETURN", "valid": true, "violations": [], "extra_min": 0, "o2_end_pct": 58, "dose_msv": 0.1, "risk": 0.05, "science_lost": ["clay_delta"], "path": [[230, 165], [270, 185], [300, 200]] }
+    ],
+    "explanation": null
+  },
+  {
+    "type": "explanation",
+    "decision_id": "d_72",
+    "t_min": 72,
+    "source": "llm",
+    "text": "Furtuna ajunge pe traseu în 16 min. Ocolirea nord adaugă 25 min și lasă 31% O₂, peste rezerva de 30%."
+  },
+  {
+    "type": "event",
+    "t_min": 140,
+    "event": "solar_particle_event",
+    "severity": "high",
+    "params": { "dose_rate_multiplier": 20, "duration_min": 60 }
+  }
+]

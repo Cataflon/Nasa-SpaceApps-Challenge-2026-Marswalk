@@ -1,0 +1,30 @@
+# Rolul 1: rulează DOAR când se schimbă pipeline-ul sau generatorul de scenarii.
+# Nu instalează rasterio/pystac (lente); testele de aici folosesc doar numpy.
+name: data (pipeline, scenarii)
+
+on:
+  push:
+    paths: ["pipeline/**", "backend/app/live/scenario.py", "backend/tests/scenario/**", ".github/workflows/data.yml"]
+  pull_request:
+    paths: ["pipeline/**", "backend/app/live/scenario.py", "backend/tests/scenario/**", ".github/workflows/data.yml"]
+
+concurrency:
+  group: data-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - run: pip install numpy pytest pydantic fastapi httpx
+      - run: pytest -q pipeline/tests
+      # Codul 5 = niciun test încă; nu e eșec.
+      - run: pytest tests/scenario || [ $? -eq 5 ]
+        working-directory: backend

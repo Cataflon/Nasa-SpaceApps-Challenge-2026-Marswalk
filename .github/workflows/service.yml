@@ -1,0 +1,49 @@
+# Rolul 3: rulează DOAR când se schimbă API-ul, motorul live, LLM-ul sau contractele.
+name: service (api, live, llm)
+
+on:
+  push:
+    paths:
+      - "backend/app/api/**"
+      - "backend/app/live/engine.py"
+      - "backend/app/llm/**"
+      - "backend/app/schemas.py"
+      - "backend/app/config.py"
+      - "backend/tests/api/**"
+      - "backend/tests/live/**"
+      - "backend/tests/llm/**"
+      - "shared/contracts/**"
+      - ".github/workflows/service.yml"
+  pull_request:
+    paths:
+      - "backend/app/api/**"
+      - "backend/app/live/engine.py"
+      - "backend/app/llm/**"
+      - "backend/app/schemas.py"
+      - "backend/app/config.py"
+      - "backend/tests/api/**"
+      - "backend/tests/live/**"
+      - "backend/tests/llm/**"
+      - "shared/contracts/**"
+      - ".github/workflows/service.yml"
+
+concurrency:
+  group: service-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - run: pip install -r requirements.txt
+      - run: pytest tests/api tests/live tests/llm

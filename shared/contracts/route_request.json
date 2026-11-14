@@ -1,0 +1,8 @@
+{
+  "start": { "row": 300, "col": 200 },
+  "stops": ["clay_delta"],
+  "return_to_habitat": true,
+  "preset": "safe",
+  "start_time_min": 0,
+  "max_duration_min": 300
+}

@@ -1,0 +1,7 @@
+{
+  "action": "start",
+  "speed": 10,
+  "route_id": "plan_0",
+  "_allowed_actions": ["start", "pause", "reset", "speed"],
+  "_notes": "speed = minute simulate pe secundă reală (1-60). route_id = traseul de urmat, din POST /api/route. Răspuns: {\"ok\": true, \"state\": \"running|paused|idle\", \"t_min\": 0}"
+}

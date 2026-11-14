@@ -1,0 +1,19 @@
+{
+  "event": "local_storm",
+  "params": {
+    "center": { "row": 220, "col": 30 },
+    "axes_m": [1800, 1100],
+    "angle_deg": 15,
+    "velocity_ms": [0.0, 2.5],
+    "intensity": 0.7
+  },
+  "_allowed_events": [
+    "dust_devil",
+    "local_storm",
+    "regional_storm",
+    "solar_particle_event",
+    "marsquake",
+    "suit_leak",
+    "fatigue"
+  ]
+}

@@ -4,6 +4,28 @@
 
 NASA Space Apps Challenge 2026: ideea, planul complet și sursele de date.
 
+## Pornire rapidă
+
+Cerințe: Python 3.11+, Node 18+, opțional [Ollama](https://ollama.com) cu `qwen2.5:7b-instruct`. Pe Windows, din rădăcina repo-ului:
+
+```powershell
+scripts\setup.ps1   # .venv, dependențe, npm, sit sintetic
+scripts\dev.ps1     # backend :8000 + frontend :5173
+```
+
+Manual:
+
+```bash
+python -m venv .venv && .venv/Scripts/pip install -r backend/requirements.txt
+.venv/Scripts/python pipeline/make_synthetic_site.py
+cd backend && ../.venv/Scripts/python -m uvicorn app.api.main:app --reload --port 8000
+cd frontend && npm install && npm run dev
+```
+
+Teste: `cd backend && ../.venv/Scripts/python -m pytest`.
+
+**Starea scheletului:** rutele încă neimplementate întorc mock-urile din `shared/contracts/` (antet `X-Mock: 1`), iar WebSocket-ul live redă `live_messages.json`. Funcțiile de făcut au `TODO (rolul N)` și `NotImplementedError`. Deja funcționale: situl sintetic, încărcarea sitului, validatorul, regula de decizie, șabloanele și clientul LLM cu fallback.
+
 ---
 
 ## 1. Ideea
@@ -193,7 +215,10 @@ cost = distanță × f(pantă) × f(teren) + w_pericol × pericol(x, y, t) + w_r
 | A* spațiu-timp | Ocolirea unui pericol care se mișcă: o celulă e interzisă doar cât timp pericolul e acolo |
 | Dijkstra invers de la habitat | Costul de întoarcere din orice punct: punctul de neîntoarcere și ruta de urgență, instant |
 | Generator de alternative | Trasee cu ponderi diferite: rapid, sigur, științific |
-| Ordonarea opririlor | Ordinea țintelor științifice (forță brută la ≤6 opriri) |
+| CP-SAT (OR-Tools) | Ce ținte științifice vizitezi și în ce ordine, ca să maximizezi valoarea științifică sub O₂, apus și doză. Costurile între ținte vin din Dijkstra. Rulează la planificare și la re-planificarea live, când bugetul scade („renunțăm la carbonat, păstrăm argila”). Plan B: forță brută la ≤6 opriri |
+| Regula de decizie | Alege dintre alternativele validate pe cea cu riscul cel mai mic (filtru + sortare, < 1 ms) |
+
+**CP-SAT determinist:** `num_workers = 1`, `random_seed` fix și limită `max_deterministic_time`, nu `max_time_in_seconds`. Limita în secunde depinde de viteza CPU-ului și poate schimba rezultatul.
 
 ### 5.4 Modelul de pericol
 
@@ -267,31 +292,52 @@ cost = distanță × f(pantă) × f(teren) + w_pericol × pericol(x, y, t) + w_r
 
 ---
 
-## 6. Structura repo-ului
+## 6. Structura repo-ului (monorepo)
 
 ```
 marswalk-copilot/
-├── backend/app/
-│   ├── main.py          # rute API + WebSocket
-│   ├── site_data.py     # încarcă grilele
-│   ├── costmap.py       # fuziunea straturilor
-│   ├── routing.py       # A*, A* spațiu-timp, Dijkstra invers
-│   ├── budget.py        # viteză, O₂, doză, punct de neîntoarcere
-│   ├── daylight.py      # Mars24
-│   ├── hazards.py       # modelul pericolelor + predicție
-│   ├── scenario.py      # generatorul de date dinamice
-│   ├── live.py          # motorul live
-│   ├── validator.py     # reguli hard
-│   ├── llm.py           # Ollama + scheme + fallback
-│   └── benchmark.py
-├── pipeline/
-│   ├── fetch_stac.py    # caută și decupează HiRISE + CTX
-│   ├── build_layers.py  # pantă, agregare 20 m, CRISM, THEMIS, radiație
-│   └── make_synthetic_site.py
-├── frontend/            # React, pornit din machetă
-├── data/processed/jezero/
-└── docs/
+├── pipeline/                  # date offline (rolul 1)
+│   ├── fetch_stac.py          # caută și decupează HiRISE + CTX
+│   ├── build_layers.py        # pantă, agregare 20 m, CRISM, THEMIS, radiație
+│   └── make_synthetic_site.py # crater fals, gata în prima oră
+├── backend/
+│   ├── app/
+│   │   ├── api/               # FastAPI: rute REST + WebSocket (rolul 3)
+│   │   │   └── main.py
+│   │   ├── core/              # algoritmi puri, fără server (rolul 2)
+│   │   │   ├── site_data.py   # încarcă grilele
+│   │   │   ├── costmap.py     # fuziunea straturilor + preset-uri de ponderi
+│   │   │   ├── routing.py     # A*, A* spațiu-timp, Dijkstra invers
+│   │   │   ├── hazards.py     # modelul pericolelor + predicție
+│   │   │   ├── budget.py      # viteză, O₂, doză, punct de neîntoarcere
+│   │   │   ├── daylight.py    # Mars24
+│   │   │   ├── validator.py   # reguli hard
+│   │   │   ├── decision.py    # regula de alegere dintre alternative
+│   │   │   ├── stops.py       # CP-SAT: alegerea și ordinea opririlor
+│   │   │   └── benchmark.py
+│   │   ├── live/              # motorul de tick-uri (rolul 3)
+│   │   │   ├── engine.py
+│   │   │   └── scenario.py    # generatorul de date dinamice
+│   │   └── llm/               # Ollama (rolul 3)
+│   │       ├── client.py
+│   │       ├── prompts.py
+│   │       ├── templates.py   # explicații de rezervă
+│   │       └── cache.py
+│   └── tests/
+├── frontend/                  # React + Vite, pornit din machetă (rolul 4)
+├── shared/
+│   └── contracts/             # exemple JSON pentru API și mesajele WS + mock-uri
+├── data/
+│   ├── raw/                   # DTM-uri descărcate (în .gitignore)
+│   ├── processed/jezero/      # .npy + meta.json (mici, intră în git)
+│   └── synthetic/
+├── docs/                      # „Cum calculăm", surse, slide-uri
+└── scripts/                   # pornire dev, înregistrare demo
 ```
+
+- **`core/` e separat de `api/`:** algoritmii sunt funcții Python pure, testabile fără server, deci rolul 2 nu așteaptă după backend.
+- **`shared/contracts/`** fixează forma JSON-urilor din prima oră, ca frontendul să lucreze pe mock-uri până e gata backendul.
+- **În git intră doar grilele procesate.** Un `.npy` de 500×500 are ~1 MB; DTM-urile brute rămân în `data/raw/`, ignorat.
 
 ---
 
@@ -303,7 +349,8 @@ marswalk-copilot/
 
 | Interval | Backend | Algoritmi | Date | Frontend |
 |---|---|---|---|---|
-| H0–H3 | Repo, FastAPI, `/health`, situl sintetic | A* pe situl sintetic | `fetch_stac.py`: caută HiRISE + CTX pentru Jezero | Portează macheta, date mock |
+| H0–H1 | **Toți:** contractele (`meta.json`, semnăturile din `core/`, `shared/contracts/`) | | Situl sintetic | |
+| H1–H3 | Repo, FastAPI, `/health`, Ollama instalat + încălzit | A* pe situl sintetic | `fetch_stac.py`: caută HiRISE + CTX pentru Jezero | Portează macheta, date mock |
 | H3–H7 | `/site`, `/layers`, `/route` | Dijkstra invers, punctul de neîntoarcere | Decupaj 10×10 km, pantă, agregare la 20 m | Hartă + straturi + traseu |
 | H7–H12 | `budget.py`, `daylight.py` | `hazards.py`: furtuna care se mișcă, predicția | CRISM, THEMIS, stratul de radiație | Bugetul, profilul de altitudine |
 
@@ -314,23 +361,33 @@ marswalk-copilot/
 | Interval | Backend | Algoritmi | Date | Frontend |
 |---|---|---|---|---|
 | H12–H18 | WebSocket `/live` | A* spațiu-timp, alternativele, validatorul | `scenario.py` calibrat pe MEDA, REMS, RAD | Astronaut animat, furtuna, conul, alternativele |
-| H18–H24 | `llm.py` (explicații) + șabloane, chatul | Histerezis, WAIT și RETURN | Imaginile Perseverance la opriri | Panoul de decizie, explicația, chatul |
+| H18–H24 | `llm/` (explicații) + șabloane, chatul | Histerezis, WAIT și RETURN, CP-SAT pentru opriri | Imaginile Perseverance la opriri | Panoul de decizie, explicația, chatul |
 | H24–H30 | Benchmark | Teste pe scenarii | Ecranul „Cum calculăm", sursele | HUD sau Survival Guide (bonus) |
 | H30–H34 | Stabilizare | Stabilizare | Slide-uri, video demo | Finisaje |
 | H34–H36 | Îngheț de cod | | Repetiție demo | |
 
 Ajustați orele după deadline-ul real. Înregistrați video-ul de rezervă cu cel puțin 3-4 ore înainte de termen.
 
-### Rolurile (pentru 4 oameni)
+### Rolurile (echipă de 4)
 
-| Rol | Responsabil de |
-|---|---|
-| Backend | FastAPI, buget, live, WebSocket, LLM |
-| Algoritmi | A*, spațiu-timp, Dijkstra invers, pericole, validator, benchmark |
-| Date & prezentare | Pipeline STAC, straturi, scenarii, surse, slide-uri, video |
-| Frontend | Hartă, animație, panouri, HUD |
+| Rol | Foldere | Ce face | Livrează către |
+|---|---|---|---|
+| **1. Date & prezentare** | `pipeline/`, `data/`, `docs/` | sit sintetic (prima oră!), STAC, straturi, calibrarea scenariilor, surse, slide-uri, video | `.npy` + `meta.json` → rolul 2 |
+| **2. Algoritmi** | `backend/app/core/` | harta de cost, A\*, A\* spațiu-timp, Dijkstra invers, pericole, buget, validator, regula de decizie, CP-SAT, benchmark | funcții Python → rolul 3 |
+| **3. Backend & LLM** | `backend/app/api/`, `live/`, `llm/` | FastAPI, WebSocket, motorul de tick-uri, Ollama, prompturi, șabloane, chat cu unelte; integrarea finală | JSON pe REST/WS → rolul 4 |
+| **4. Frontend** | `frontend/` | harta, straturile, animația, conul furtunii, panourile, HUD | demo-ul |
 
-Pentru 2-3 oameni: Backend + Algoritmi devin o persoană, iar Date & prezentare preia și o parte din frontend după ziua 1.
+- **LLM-ul nu are rol separat:** doar explică, deci e o muncă de 4-6 ore, legată direct de motorul live.
+- **Rolul 3 îl ia cine are laptopul cu GPU**, pentru că Ollama rulează acolo și demo-ul pornește de pe el.
+
+Instrucțiunile complete pentru fiecare rol (pentru 4 agenți care lucrează în paralel) sunt în [docs/roles/](docs/roles/README.md).
+
+### Regulile de lucru
+
+1. **Ora 0 (o oră, toți împreună):** stabiliți contractele: formatul grilelor (`meta.json`), semnăturile funcțiilor din `core/` (de exemplu `plan_route(grid, start, goal, preset) -> Route`) și JSON-urile din `shared/contracts/`.
+2. **Situl sintetic e gata în prima oră**, ca nimeni să nu aștepte datele reale.
+3. **Fiecare om lucrează în folderele lui, pe branch-ul lui, și face merge în `main` des**, de câteva ori pe zi.
+4. **Prima integrare cap-coadă se face la finalul zilei 1**, chiar dacă e urâtă.
 
 ---
 

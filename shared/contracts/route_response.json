@@ -1,0 +1,27 @@
+{
+  "route_id": "plan_0",
+  "preset": "safe",
+  "path": [[300, 200], [280, 190], [250, 175], [220, 160], [200, 150], [180, 140], [200, 150], [240, 170], [270, 185], [300, 200]],
+  "stops": [
+    { "id": "clay_delta", "index_in_path": 5, "eta_min": 95, "dwell_min": 30 }
+  ],
+  "budget": {
+    "distance_m": 5400,
+    "duration_min": 215,
+    "o2_start_pct": 100,
+    "o2_end_pct": 46,
+    "dose_msv": 0.18,
+    "return_by_min": 260,
+    "sunset_min": 420
+  },
+  "point_of_no_return": { "row": 200, "col": 150, "t_min": 160 },
+  "elevation_profile": [
+    { "distance_m": 0, "elevation_m": -2540 },
+    { "distance_m": 1350, "elevation_m": -2510 },
+    { "distance_m": 2700, "elevation_m": -2470 },
+    { "distance_m": 4050, "elevation_m": -2515 },
+    { "distance_m": 5400, "elevation_m": -2540 }
+  ],
+  "verdict": "GO",
+  "violations": []
+}

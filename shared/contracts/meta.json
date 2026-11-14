@@ -1,0 +1,36 @@
+{
+  "site_id": "synthetic",
+  "name": "Sit sintetic (crater cu deltă)",
+  "source": "synthetic",
+  "cell_size_m": 20,
+  "shape": [500, 500],
+  "crs": "local",
+  "center": { "lat": 18.44, "lon": 77.45 },
+  "habitat": { "row": 300, "col": 200 },
+  "max_slope_deg": 25,
+  "layers": {
+    "elevation": { "file": "elevation.npy", "dtype": "float32", "unit": "m" },
+    "slope": { "file": "slope.npy", "dtype": "float32", "unit": "deg" },
+    "terrain": { "file": "terrain.npy", "dtype": "uint8", "unit": "class" },
+    "minerals": { "file": "minerals.npy", "dtype": "uint8", "unit": "class" },
+    "radiation": { "file": "radiation.npy", "dtype": "float32", "unit": "uSv/h" },
+    "unsafe": { "file": "unsafe.npy", "dtype": "bool", "unit": "mask" }
+  },
+  "terrain_classes": {
+    "0": "bedrock",
+    "1": "regolith",
+    "2": "sand",
+    "3": "boulders"
+  },
+  "mineral_classes": {
+    "0": "none",
+    "1": "clay",
+    "2": "carbonate",
+    "3": "olivine"
+  },
+  "targets": [
+    { "id": "clay_delta", "name": "Argilă, frontul deltei", "kind": "clay", "row": 180, "col": 140, "science_value": 10, "dwell_min": 30, "image": null },
+    { "id": "carbonate_rim", "name": "Carbonați, marginea", "kind": "carbonate", "row": 120, "col": 260, "science_value": 7, "dwell_min": 20, "image": null },
+    { "id": "olivine_floor", "name": "Olivină, fundul craterului", "kind": "olivine", "row": 340, "col": 330, "science_value": 4, "dwell_min": 15, "image": null }
+  ]
+}
