@@ -37,6 +37,6 @@ Constantele din `app/live/engine.py` (de documentat de rolul 1 în `docs/how-we-
 | `WALK_WATTS` | 220 W | putere metabolică suplimentară la mers în costum; dă ~0,25% O₂/min la mers față de 0,12% în repaus |
 | `SUIT_LEAK_PCT_PER_MIN` | 0,15 %/min | consum suplimentar la o scurgere în costum |
 | `FATIGUE_SPEED_FACTOR` / `FATIGUE_O2_FACTOR` | 0,8 / 1,15 | efectul oboselii |
-| `SOLAR_DOSE_MULTIPLIER`, `SOLAR_DURATION_MIN` | ×20, 60 min | furtuna solară |
+| `SOLAR_DOSE_MULTIPLIER`, `SOLAR_DURATION_MIN` | ×2,5, 240 min, luate din `scenario.SOLAR_PARTICLE_EVENT` (🆕 rolul 1, 14.11; rampa vine din scenariu) | furtuna solară |
 | `DEFAULT_WAIT_MIN` | 30 min | cât durează varianta WAIT în fallback |
-| `HAZARD_DEFAULTS` | vezi codul | mărimea și viteza pericolelor injectate fără parametri |
+| `HAZARD_DEFAULTS` | vezi codul (🆕 rolul 1, 14.11: vârtej 130 m, front 30 × 5 km la 15 m/s; vezi notes/rol1.md, „Registrul aplicat”) | mărimea și viteza pericolelor injectate fără parametri |

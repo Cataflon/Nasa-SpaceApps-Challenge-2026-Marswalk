@@ -96,9 +96,9 @@ def test_check_detects_stale_site(tmp_path, layers):
 
 
 def test_radiation_is_rad_dose_equivalent(layers):
-    """RAD: 0,64 mSv/zi doză echivalentă ≈ 26,7 µSv/h (Hassler et al. 2014)."""
+    """RAD: 0,67 mSv/zi doză echivalentă ≈ 28 µSv/h (Hassler, SwRI 2013)."""
     rad = layers["radiation"]
-    assert 24 < float(rad.mean()) < 29
+    assert 26 < float(rad.mean()) < 30
     assert float(rad.min()) > 0
 
 

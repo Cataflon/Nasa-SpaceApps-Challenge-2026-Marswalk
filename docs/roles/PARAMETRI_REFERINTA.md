@@ -179,11 +179,11 @@ Verificare de bun-simț: 5 h de mers pe plat consumă ≈ 58%, deci o ieșire de
 | 2 | Constantele din `budget.py` → valorile din §4.2; `SUIT_FACTOR` 0,6 cu justificarea din §4.1 | `core/budget.py` | rolul 2 |
 | 2 | Registrul unic `core/params.py` (mai jos) | `core/` | rolul 2 |
 | 2 | `SIGMA_V` calibrat pe variabilitatea vântului (R2-11) | `core/hazards.py` | rolul 2 |
-| 1 | `dose_rate_usv_h` 10 → 28; ciclul zilnic ±11%; furtuna solară × 2,5 cu creștere de ore și scădere pe 36 h | `live/scenario.py` | rolul 1 |
-| 1 | Vânt Weibull, temperatură și presiune după §1 | `live/scenario.py` | rolul 1 |
-| 1 | Scena demo: vârtej mare (ocolibil) + front de furtună (WAIT/RETURN) + regională (RETURN) | `DEMO_SCENARIO_EVENTS` | rolul 1 + echipa |
-| 3 | `dose_rate_multiplier` implicit 2,5, nu 20 | `live/engine.py` | rolul 3 |
-| toți | `max_slope_deg` 25 → 20; exemplul SPE din contract 20 → 2,5 | `meta.json`, `Limits`, `live_messages.json` (înghețate) | **echipa** |
+| 1 | ✅ **Făcut (rolul 1):** `dose_rate_usv_h` 10 → 28; ciclul zilnic ±11%; furtuna solară × 2,5 cu creștere de ore și scădere pe 36 h | `live/scenario.py` | rolul 1 |
+| 1 | ✅ **Făcut (rolul 1):** vânt Weibull, temperatură și presiune după §1, tau 0,5 | `live/scenario.py` | rolul 1 |
+| 1 | ✅ **Făcut (rolul 1):** scena demo: vârtej mare (REROUTE, min 30) + front de furtună (întoarcere imediată, min 80) + regională (RETURN, min 125); verificată cu motorul și alternativele reale | `DEMO_SCENARIO_EVENTS`, `JEZERO_DEMO_EVENTS` | rolul 1 + echipa |
+| 3 | ✅ **Făcut (rolul 1, cu acordul echipei):** `dose_rate_multiplier` implicit 2,5, luat din scenariu | `live/engine.py` | rolul 3 |
+| toți | `max_slope_deg` 25 → 20 (încă de decis); ✅ exemplul SPE din contract 20 → 2,5 (făcut de rolul 1) | `meta.json`, `Limits`, `live_messages.json` (înghețate) | **echipa** |
 
 ## Registrul de parametri propus: `backend/app/core/params.py`
 

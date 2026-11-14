@@ -46,7 +46,7 @@ FINE_M = CELL_M / FINE
 MAX_SLOPE_DEG = 25.0
 UNSAFE_SLOPE_DEG = 35.0  # ROL1: „unde nu există FOM, din pantă > 35°”
 FEATHER_M = 100.0  # lățimea tranziției HiRISE -> CTX (presupunere)
-DOSE_RATE_USV_H = 26.7  # RAD, doză echivalentă (Hassler et al. 2014); = scenario.DOSE_RATE_USV_H
+DOSE_RATE_USV_H = 28.0  # RAD, doză echivalentă 0,67 mSv/zi (Hassler, SwRI 2013); = scenario.DOSE_RATE_USV_H
 
 # Locul de aterizare Perseverance (Octavia E. Butler Landing): primul punct din waypoint-urile
 # oficiale ale roverului (sol 13, fără deplasare). NASA/JPL, M20_waypoints.json

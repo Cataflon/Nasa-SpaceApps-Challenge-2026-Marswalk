@@ -289,7 +289,7 @@ def test_jezero_values_are_plausible(jezero):
     assert -2700 < float(elev.mean()) < -2400  # fundul craterului Jezero, față de areoid
     assert 0 <= float(slope.min()) and float(slope.max()) < 90
     assert 0.1 < (slope > 25).mean() * 100 < 15  # sunt obstacole, dar terenul e mergibil
-    assert 24 < float(layers["radiation"].mean()) < 29
+    assert 26 < float(layers["radiation"].mean()) < 30
     assert meta["provenance"]["hirise_coverage_pct"] > 50
 
 
