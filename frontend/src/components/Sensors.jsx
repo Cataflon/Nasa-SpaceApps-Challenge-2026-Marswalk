@@ -1,8 +1,9 @@
 ﻿import { useEffect, useRef, useState } from 'react';
 import Icon from './Icon';
 import { events, number } from '../utils';
-import { modules, stateNames, equipmentReading, demoMeasurement } from '../sensors/equipment';
+import { modules, stateNames } from '../sensors/equipment';
 import '../sensors.css';
+import EquipmentSource from './EquipmentSource';
 
 function ModuleImage({module}) {
   return <span className="module-photo" role="img" aria-label={`${module.name}, concept illustration`} style={{backgroundPosition:`${module.image%3*50}% ${module.image<3?0:100}%`}}/>;
@@ -33,17 +34,10 @@ function Connections({container,metric,readings}) {
   return <svg className="equipment-connections" viewBox={`0 0 ${geometry.width} ${geometry.height}`} aria-hidden="true"><defs><marker id="equipment-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M1 1L9 5L1 9" fill="none" stroke="context-stroke" strokeWidth="1.4"/></marker></defs>{geometry.paths.map(p=><g key={p.key} className={`connection state-${readings[p.key].state} ${metric===p.key?'active':''}`}><path d={p.d} markerEnd="url(#equipment-arrow)"/><circle r="2.5" className="signal-dot"><animateMotion dur="4s" repeatCount="indefinite" path={p.d}/></circle></g>)}</svg>;
 }
 
-export default function Sensors({live}) {
-  const [metric,setMetric]=useState('o2_pct'),[demo,setDemo]=useState(false),[demoStates,setDemoStates]=useState({}),[demoTime,setDemoTime]=useState(0),[demoSamples,setDemoSamples]=useState([]);
-  const container=useRef(null), demoStatesRef=useRef(demoStates);
-  demoStatesRef.current=demoStates;
-  useEffect(()=>{
-    if(!demo)return;
-    let time=0;setDemoTime(0);setDemoSamples([]);
-    const timer=setInterval(()=>{time++;setDemoTime(time);setDemoSamples(previous=>[...previous.slice(-119),{t:time,...Object.fromEntries(modules.map(m=>[m.key,demoStatesRef.current[m.key]==='fault'?null:demoMeasurement(m,time).value]))}]);},1000);
-    return()=>clearInterval(timer);
-  },[demo]);
-  const readings=Object.fromEntries(modules.map(m=>[m.key,equipmentReading(m,live.tick,demo?'live':live.status,demo?demoMeasurement(m,demoTime,demoStates[m.key]??'ok'):null)]));
+export default function Sensors({live,feed}) {
+  const [metric,setMetric]=useState('o2_pct');
+  const container=useRef(null);
+  const {demo,states:demoStates,setStates:setDemoStates,samples:demoSamples,readings}=feed;
   const selected=modules.find(m=>m.key===metric),reading=readings[metric];
   const history=(demo?demoSamples:live.samples).filter(s=>Number.isFinite(s[metric])&&(selected.min===undefined||s[metric]>=selected.min)&&(selected.max===undefined||s[metric]<=selected.max));
   const min=history.length?Math.min(...history.map(s=>s[metric])):null,max=history.length?Math.max(...history.map(s=>s[metric])):null;
@@ -52,7 +46,7 @@ export default function Sensors({live}) {
   const faults=Object.values(readings).filter(r=>r.state==='fault').length,warnings=Object.values(readings).filter(r=>r.state==='warning').length,available=Object.values(readings).filter(r=>Number.isFinite(r.value)).length;
   function card(m){const r=readings[m.key];return <button key={m.key} data-module={m.key} className={`equipment-module state-${r.state} ${metric===m.key?'selected':''}`} onClick={()=>setMetric(m.key)} aria-pressed={metric===m.key} aria-controls="equipment-inspector"><div className="module-top"><span>{m.code} <small>/ {String(m.image+1).padStart(2,'0')}</small></span><Status state={r.state}/></div><div className="module-body"><ModuleImage module={m}/><div><h2>{m.name}</h2><strong className="module-value">{number(r.value,m.key==='dust_tau'?2:1)}<small>{m.unit}</small></strong><p>{m.description}</p></div></div><div className="module-bottom"><span>Measured accuracy <b>{r.accuracy?`±${number(r.accuracy.value,2)} ${r.accuracy.unit}`:'Not supplied'}</b></span><Icon name="chevron" size={14}/></div></button>;}
   return <div className="equipment-page">
-    <div className="page-heading equipment-heading"><div><span className="eyebrow">Equipment & environmental telemetry</span><h1>A closer look at every system.</h1><p>Inspect a module or select its connection on the suit.</p></div><div className="equipment-source"><div className="segmented"><button aria-pressed={!demo} onClick={()=>setDemo(false)}>Mission feed</button><button aria-pressed={demo} onClick={()=>setDemo(true)}>Equipment demo</button></div><span>{demo?'Simulated readings & diagnostics':live.receivedAt?`Last received ${new Date(live.receivedAt).toLocaleTimeString()}`:'Waiting for mission telemetry'}</span></div></div>
+    <div className="page-heading equipment-heading"><div><span className="eyebrow">Equipment & environmental telemetry</span><h1>A closer look at every system.</h1><p>Inspect a module or select its connection on the suit.</p></div><EquipmentSource feed={feed}/></div>
     {demo&&<div className="equipment-demo-note" role="status"><Icon name="activity" size={16}/><span>Equipment demo · values, accuracy and faults are simulated. Mission telemetry is unaffected.</span></div>}
     <div className="equipment-summary"><div><span className={`summary-dot ${faults?'fault':warnings?'warning':''}`}/><strong>{faults?`${faults} module fault${faults>1?'s':''}`:warnings?`${warnings} reading${warnings>1?'s':''} to verify`:available?'Telemetry available':'Awaiting measurements'}</strong></div><span>{available} / 6 channels reporting</span><span>{warnings} warnings</span><span>{faults} faults</span><span className="summary-mode">{demo?'Demo diagnostics':live.tick?'Basic data validation · hardware health unreported':'Start an EVA to receive mission values'}</span></div>
     <section className="equipment-layout" ref={container} aria-label="Suit equipment map">

@@ -19,7 +19,7 @@ function CompassDial({kind,bearing,arrived,unavailable,trace=[]}) {
   </div>;
 }
 
-export default function EVAWatch({site,route,live,position,path,frame,progress,setProgress,playing,setPlaying}) {
+export default function EVAWatch({equipment,site,route,live,position,path,frame,progress,setProgress,playing,setPlaying,embedded=false}) {
   const active=!!live.tick&&live.state!=='idle';
   const [clock,setClock]=useState(()=>new Date());
   useEffect(()=>{const timer=setInterval(()=>setClock(new Date()),1000);return()=>clearInterval(timer);},[]);
@@ -39,7 +39,7 @@ export default function EVAWatch({site,route,live,position,path,frame,progress,s
   const trace=guidance&&origin?[[75,75],[75+(guidance.ahead.col-origin.col)*6,75+(guidance.ahead.row-origin.row)*6]]:[];
   const time=clock.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
   const decision=live.decision?.decision;
-  return <div className="eva-watch-layout">
+  return <div className={`eva-watch-layout ${embedded?'embedded-watch':''}`}>
     <div className="wrist-assembly">
       <div className="watch-strap strap-top" aria-hidden="true"><i/><i/><i/></div>
       <section className="eva-watch" aria-label="EVA watch with habitat and route compasses">
@@ -51,15 +51,15 @@ export default function EVAWatch({site,route,live,position,path,frame,progress,s
           <div className="dual-compasses"><CompassDial kind="home" bearing={baseBearing} arrived={atBase} unavailable={offline}/><CompassDial kind="route" bearing={routeBearing} arrived={atGoal} unavailable={offline||waiting} trace={trace}/></div>
           <div className="wrist-distances"><div><span>Habitat · direct</span><strong>{number(baseDistance===null?null:baseDistance/1000,2)}<small> km</small></strong></div><div><span>Route remaining</span><strong>{number(remaining===null?null:remaining/1000,2)}<small> km</small></strong></div></div>
           <div className="wrist-route-instruction"><Icon name={offline?'alert':waiting?'pause':'arrow'} size={18}/><span>{offline?'Navigation held · reconnect telemetry':waiting?'Wait for the next mission decision':atGoal?'You reached the end of this route':Number.isFinite(routeBearing)?`Follow route · ${number(routeBearing)}° N`:'Select a route to begin'}</span></div>
-          <div className="wrist-vitals"><span>O₂ <b>{number(live.tick?.sensors?.o2_pct,1)}%</b></span><span>t+{number(live.tick?.t_min??0)} min</span><span>NORTH UP</span></div>
+          <div className="wrist-vitals"><span>O₂ <b>{number(equipment?equipment.readings.o2_pct.value:live.tick?.sensors?.o2_pct,1)}%</b></span><span>t+{number(live.tick?.t_min??0)} min</span><span>NORTH UP</span></div>
         </div>
         <div className="watch-bezel-bottom"><span>HABITAT</span><i/><span>ROUTE</span></div>
       </section>
       <div className="watch-strap strap-bottom" aria-hidden="true"><i/><i/><i/><i/></div>
     </div>
-    <aside className="watch-explanation"><span className="eyebrow">Two bearings. One glance.</span><h2>Keep home in sight.<br/>Stay on your route.</h2><div className="watch-key home"><Icon name="target" size={19}/><div><h3>Habitat compass</h3><p>Always points toward the base from your current grid position. Distance is measured in a straight line.</p></div></div><div className="watch-key route"><Icon name="compass" size={19}/><div><h3>Mission tracker</h3><p>Follows the next segment of the selected route and updates as the astronaut advances or the copilot reroutes.</p></div></div>
+    {!embedded&&<aside className="watch-explanation"><span className="eyebrow">Two bearings. One glance.</span><h2>Keep home in sight.<br/>Stay on your route.</h2><div className="watch-key home"><Icon name="target" size={19}/><div><h3>Habitat compass</h3><p>Always points toward the base from your current grid position. Distance is measured in a straight line.</p></div></div><div className="watch-key route"><Icon name="compass" size={19}/><div><h3>Mission tracker</h3><p>Follows the next segment of the selected route and updates as the astronaut advances or the copilot reroutes.</p></div></div>
       {!active&&frame&&<div className="watch-preview-controls"><label htmlFor="watch-position">Preview position <b>{number(progress*100)}%</b></label><input id="watch-position" type="range" min="0" max="1" step=".001" value={progress} onChange={e=>{setProgress(Number(e.target.value));setPlaying(false);}}/><div><button className="button secondary" onClick={()=>{setProgress(0);setPlaying(false);}}><Icon name="reset" size={15}/>Reset</button><button className="button primary" onClick={()=>setPlaying(!playing)}><Icon name={playing?'pause':'play'} size={15}/>{playing?'Pause preview':'Play preview'}</button></div></div>}
       <p className="watch-data-note">{active?`${decisions[decision]??'Following the mission route'}. Bearings use the simulated live position.`:'Preview follows the selected route. Start an EVA for live mission tracking.'}</p><p className="watch-data-note">Both dials keep grid north at the top. Suit orientation is not supplied. The habitat arrow is a bearing, not a validated return path.</p>
-    </aside>
+    </aside>}
   </div>;
 }

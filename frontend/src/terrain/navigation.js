@@ -1,8 +1,15 @@
 // Échantillonnage par distance du parcours choisi, en cellules de la grille.
+const routeLengths = new WeakMap();
+// Paths are immutable API/worker results. Reuse their distance index across map,
+// tracker and watch frames instead of rebuilding it during every animation tick.
+export function advancePreview(progress, meters, totalCells, cellSize) {
+  if (![progress,meters,totalCells,cellSize].every(Number.isFinite)||totalCells<=0||cellSize<=0)return progress;
+  return Math.max(0,Math.min(1,progress+meters/(totalCells*cellSize)));
+}
 export function routeFrame(path, fraction = 0, position = null, lookAheadCells = 3) {
   if (!Array.isArray(path) || path.length < 2) return null;
-  const lengths = [0];
-  for (let i=1;i<path.length;i++) lengths.push(lengths[i-1]+Math.hypot(path[i][0]-path[i-1][0],path[i][1]-path[i-1][1]));
+  let lengths = routeLengths.get(path);
+  if(!lengths){lengths=[0];for (let i=1;i<path.length;i++) lengths.push(lengths[i-1]+Math.hypot(path[i][0]-path[i-1][0],path[i][1]-path[i-1][1]));routeLengths.set(path,lengths);}
   const total=lengths.at(-1);
   if (!total) return null;
   let distance=Math.max(0,Math.min(1,fraction))*total;

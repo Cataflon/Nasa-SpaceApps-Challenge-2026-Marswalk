@@ -1,53 +1,44 @@
-﻿import { useEffect, useState } from 'react';
-import { useSite, useRoute, useLive, usePosition } from './hooks/useMission';
-import MapView from './components/MapView';
-import Sensors from './components/Sensors';
-import Navigator from './components/Navigator';
-import { Information } from './components/Information';
-import Icon from './components/Icon';
-import { events, number } from './utils';
+﻿import {useEffect,useMemo,useState} from 'react';
+import {useSite,useRoute,useLive,usePosition} from './hooks/useMission';
+import {useNavigationTransport} from './hooks/useNavigationTransport';
 import WorkspaceNavigation from './components/WorkspaceNavigation';
-import MissionMetrics from './components/MissionMetrics';
-import MissionSheet from './components/MissionSheet';
-
-export default function App() {
-  const siteResult = useSite(), planner = useRoute(), live = useLive(planner.result);
-  const position = usePosition(live.tick, live.speed, live.state !== 'running' || !['live', 'mock'].includes(live.status));
-  const [page, setPage] = useState('mission'), [planning, setPlanning] = useState(false);
-  const [selected, setSelected] = useState(null), [chat, setChat] = useState(false);
-  const [eventType, setEventType] = useState('local_storm'), [navigationRoute, setNavigationRoute] = useState(null);
-  useEffect(() => { window.scrollTo({ top: 0, behavior: 'instant' }); }, [page]);
-  const site = siteResult.data, route = planner.result?.data, mock = siteResult.mock || planner.result?.mock;
-  const offline = ['offline', 'reconnecting', 'invalid'].includes(live.status);
-  if (!site) return <div className="loading-screen"><img className="loading-brand-logo" src="/images/marswalk_logo_transparent.png" alt="Marswalk"/><p>{siteResult.error ?? 'Loading expedition area...'}</p></div>;
-  return <div className={`app expedition-shell view-${page}`}>
-    <WorkspaceNavigation page={page} onNavigate={setPage} mock={mock} offline={offline} site={site}/>
-    {offline && <div className="connection-banner" role="status">Live link interrupted. Last received data retained; position is held.</div>}
-    <main className={page === 'mission' ? 'mission-main' : 'content-main'}>
-      {page === 'mission' && <>
-        <div className="mission-layout field-workbench">
-          <div className="map-column">
-            <MapView key={site.site_id} site={site} route={route} live={live} position={position} mock={siteResult.mock} selected={selected} onSelect={setSelected} onRoutePreview={setNavigationRoute}/>
-            <MissionMetrics live={live}/>
-            <section className="simulation-bar" aria-label="Simulation controls">
-              <div className="simulation-actions">
-                <button className="button primary" disabled={!route || route.verdict === 'NO-GO' || live.busy || offline} onClick={() => live.control(live.state === 'running' ? 'pause' : 'start')}><Icon name={live.state === 'running' ? 'pause' : 'play'} size={15}/>{live.state === 'running' ? 'Pause EVA' : live.state === 'paused' ? 'Resume EVA' : 'Start EVA'}</button>
-                <button className="icon-button" aria-label="Reset simulation" disabled={!route || live.busy} onClick={() => live.control('reset')}><Icon name="reset" size={16}/></button>
-                <label className="speed-label">RATE<select aria-label="Simulation speed" value={live.speed} disabled={!route || live.busy} onChange={e => live.control('speed', Number(e.target.value))}>{[1, 5, 10, 30, 60].map(v => <option key={v} value={v}>{v}×</option>)}</select></label>
-              </div>
-              <div className="simulation-time"><span>ELAPSED</span><strong>t+{number(live.tick?.t_min ?? 0)}<small> min</small></strong></div>
-              <div className="event-controls"><label className="sr-only" htmlFor="event-select">Simulated event</label><select id="event-select" value={eventType} onChange={e => setEventType(e.target.value)}>{Object.entries(events).map(([id, name]) => <option key={id} value={id}>{name}</option>)}</select><button className="button secondary" disabled={!route || live.state === 'idle' || live.busy || offline} onClick={() => live.event(eventType)}>Inject</button></div>
-            </section>
-          </div>
-          <MissionSheet site={site} route={route} live={live} planner={planner} planning={planning} setPlanning={setPlanning} selected={selected} onSelect={setSelected} chat={chat} setChat={setChat} mock={mock}/>
-        </div>
-        {planner.result?.mock && <p className="mock-note">Recorded demo plan / clay site / 215 min. Backend planning uses the submitted selections when available.</p>}
-        {live.error && <p className="error" role="alert">{live.error}</p>}
-      </>}
-      {page === 'sensors' && <Sensors live={live}/>}
-      {page === 'navigation' && <Navigator navigationRoute={navigationRoute} site={site} route={route} live={live} position={position} mock={mock} selected={selected} onSelect={setSelected}/>}
-      {page === 'information' && <Information/>}
-    </main>
-    <footer className="app-footer"><span>Marswalk Copilot</span><span>{mock ? 'DEMONSTRATION DATA' : 'MISSION SERVICE'} <b>·</b> {site.cell_size_m} m planning grid</span><span>Jezero surface exploration</span></footer>
+import PlanningMap from './components/PlanningMap';
+import PlanningDashboard from './components/PlanningDashboard';
+import TerrainLayersPanel from './components/TerrainLayersPanel';
+import ElevationProfile from './components/ElevationProfile';
+import SimulationWorkspace from './components/SimulationWorkspace';
+import Sensors from './components/Sensors';
+import Icon from './components/Icon';
+import TaggedPoints from './components/TaggedPoints';
+import {useEquipmentFeed} from './hooks/useEquipmentFeed';
+import {useWaypointTrip} from './hooks/useWaypointTrip';
+const planningLive={state:'idle',tick:null,decision:null,trail:[],history:[],explanations:{}};
+function readNotes(siteId){try{const data=JSON.parse(localStorage.getItem(`marswalk.notes.${siteId}`)??'[]');return Array.isArray(data)?data.filter(p=>p&&typeof p.name==='string'&&p.kind==='annotation'&&Number.isFinite(p.row)&&Number.isFinite(p.col)).slice(0,100):[];}catch{return [];}}
+export default function App(){
+  const siteResult=useSite(),planner=useRoute(),live=useLive(planner.result),equipment=useEquipmentFeed(live);
+  const livePosition=usePosition(live.tick,live.speed,live.state!=='running'||!['live','mock'].includes(live.status));
+  const [page,setPage]=useState('mission'),[selected,setSelected]=useState(null),[navigationRoute,setNavigationRoute]=useState(null),[report,setReport]=useState(null),[settings,setSettings]=useState({layer:'surface',showHazards:true,showRoutes:true}),[profileHover,setProfileHover]=useState(null),[cameraRequest,setCameraRequest]=useState(null),[previewKind,setPreviewKind]=useState('safe'),[layersOpen,setLayersOpen]=useState(false),[points,setPoints]=useState([]),[notesError,setNotesError]=useState('');
+  const site=siteResult.data,route=planner.result?.data,mock=siteResult.mock||planner.result?.mock,offline=['offline','reconnecting','invalid'].includes(live.status);
+  useEffect(()=>{setPoints(site?readNotes(site.site_id):[]);setNotesError('');},[site?.site_id]);
+  useEffect(()=>{setProfileHover(null);setPreviewKind('safe');},[selected?.id]);
+  useEffect(()=>{window.scrollTo({top:0,behavior:'instant'});},[page]);
+  const mapSite=useMemo(()=>site?{...site,targets:[...site.targets,...points]}:null,[site,points]);
+  const trip=useWaypointTrip(site,points);
+  const transport=useNavigationTransport({tripRoute:trip.result,route,navigationRoute,live,livePosition,cellSize:site?.cell_size_m??20});
+  function savePoints(next){if(next.length>100){setNotesError('This map supports up to 100 local notes.');return;}setPoints(next);try{localStorage.setItem(`marswalk.notes.${site.site_id}`,JSON.stringify(next));setNotesError('');}catch{setNotesError('Notes are available for this session but could not be saved on this device.');}}
+  function focus(target){setCameraRequest({target,at:Date.now()});document.getElementById('planning-map-top')?.scrollIntoView({block:'start',behavior:'smooth'});}
+  if(!site)return <div className="loading-screen"><img className="loading-brand-logo" src="/images/marswalk_logo_transparent.png" alt="Marswalk"/><p>{siteResult.error??'Loading expedition area…'}</p></div>;
+  return <div className={`app expedition-shell workflow-shell view-${page}`}><WorkspaceNavigation page={page} onNavigate={setPage} mock={mock} offline={offline} site={site}/>{offline&&<div className="connection-banner" role="status">Live link interrupted. Last received data retained; position is held.</div>}
+    <main className="workflow-main">
+    {page==='mission'&&<div className="planning-workspace"><div className="workflow-page-heading"><div><span className="eyebrow">Route design</span><h1>Plan the next expedition.</h1><p>Explore the terrain, mark locations and build a mission you can afford.</p></div><div className="planning-heading-actions"><button className="button secondary" aria-expanded={layersOpen} aria-controls="planning-layers" onClick={()=>setLayersOpen(p=>!p)}><Icon name="layers" size={16}/>Terrain layers</button><button className="button primary" onClick={()=>setPage('simulation')}>Simulation<Icon name="chevron" size={15}/></button></div></div>
+      <TaggedPoints siteId={site.site_id} selected={selected} points={points} onChange={savePoints} onSelect={setSelected} trip={trip} onPreview={()=>{transport.chooseMode('preview');setPage('simulation');}} running={live.state==='running'}/><div id="planning-map-top" className="planning-map-top"><PlanningMap site={mapSite} route={trip.result??route} live={planningLive} position={null} selected={selected} onSelect={setSelected} onRoutePreview={setNavigationRoute} settings={settings} onReport={setReport} profileHover={profileHover} focusRequest={cameraRequest} routeKind={previewKind} mapTitle="Jezero · route design"/>
+      {layersOpen&&<div className="planning-layer-drawer" id="planning-layers"><div className="section-title"><h3>Terrain layers</h3><button className="icon-button" aria-label="Close terrain layers" onClick={()=>setLayersOpen(false)}><Icon name="close" size={14}/></button></div><TerrainLayersPanel hideOverview site={site} info={report?.info} settings={settings} onChange={setSettings} hazardCount={0}/></div>}</div>
+      <div className="planning-map-legend"><span>USGS CTX · {report?.info?`${report.info.cols*report.info.cell_size_m/1000} × ${report.info.rows*report.info.cell_size_m/1000} km · ${report.info.cell_size_m} m grid · vertical ${report.info.verticalScale}×`:'Loading source metadata'}</span><div><span><i style={{background:'#4BC3A2'}}/>Slope weighted</span><span><i style={{background:'#E97845'}}/>Shortest / mission route</span><span><i style={{background:'#A18AF0'}}/>Science preset</span></div></div>
+      <ElevationProfile profile={report?.profile} label={report?.profileLabel} onHover={setProfileHover}/>{notesError&&<p className="error" role="status">{notesError}</p>}
+      <PlanningDashboard site={site} planner={planner} localTrip={trip.result} live={live} selected={selected} onSelect={setSelected} report={report} previewKind={previewKind} onPreviewKind={setPreviewKind} settings={settings} onSettings={setSettings} points={points} onPoints={savePoints} onSimulate={()=>setPage('simulation')} onFocus={focus}/>
+    </div>}
+    {page==='simulation'&&<SimulationWorkspace equipment={equipment} site={site} mapSite={mapSite} route={route} live={live} offline={offline} transport={transport} selected={selected} onSelect={setSelected} onSensors={()=>setPage('sensors')} onPlanning={()=>setPage('mission')} mock={mock} onCopilotRoute={planner.setResult}/>}
+    {page==='sensors'&&<Sensors live={live} feed={equipment}/>}
+    </main><footer className="app-footer"><span>Marswalk Copilot</span><span>{mock?'DEMONSTRATION DATA':'MISSION SERVICE'} · {site.cell_size_m} m planning grid</span><span>Jezero surface exploration</span></footer>
   </div>;
 }

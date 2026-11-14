@@ -6,7 +6,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { routeFrame, bearingTo, distanceTo } from '../src/terrain/navigation.js';
+import { routeFrame, bearingTo, distanceTo, advancePreview } from '../src/terrain/navigation.js';
 import { decisions, events, violation, number } from '../src/utils.js';
 import { modules, equipmentReading } from '../src/sensors/equipment.js';
 
@@ -68,3 +68,16 @@ test('equipment: canalele senzorilor există în tick-ul din contract și se cit
   assert.equal(lost.state, 'warning');
   assert.equal(equipmentReading(modules[0], null, 'live').state, 'waiting');
 });
+
+test('shared navigation steps and playback use meters, clamp at both ends and preserve heading',()=>{
+  const path=[[10,10],[0,10],[0,20]],total=routeFrame(path).total;
+  let progress=advancePreview(0,100,total,20);
+  assert.equal(progress,.25);assert.deepEqual(routeFrame(path,progress).eye,{row:5,col:10});
+  progress=advancePreview(progress,-50,total,20);assert.equal(progress,.125);
+  assert.equal(advancePreview(progress,-10000,total,20),0);
+  assert.equal(advancePreview(progress,10000,total,20),1);
+  assert.equal(advancePreview(progress,50,0,20),progress);
+  assert.equal(routeFrame(path,0).heading,0);assert.equal(routeFrame(path,1).heading,90);
+});
+
+test('a closed trip preserves forward travel direction on its return leg',()=>{const path=[[10,10],[0,10],[10,10]];assert.equal(routeFrame(path,.25).heading,0);assert.equal(routeFrame(path,.75).heading,180);assert.deepEqual(routeFrame(path,.25).eye,routeFrame(path,.75).eye);});

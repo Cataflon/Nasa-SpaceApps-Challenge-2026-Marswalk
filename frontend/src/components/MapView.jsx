@@ -1,8 +1,7 @@
 ﻿import { lazy, Suspense, useEffect, useState } from 'react';
-import Icon from './Icon';
-const TerrainView = lazy(() => import('./TerrainView'));
-export default function MapView({ site, route, live, position, selected, onSelect, onRoutePreview, compact = false }) {
+const TerrainView=lazy(()=>import('./TerrainView'));
+export default function MapView({site,route,live,position,selected,onSelect,onRoutePreview,compact=false,mapTitle="Mission Terrain Explorer",...explorerProps}){
   const [expanded,setExpanded]=useState(false);
-  useEffect(()=>{const listener=e=>{if(e.key==='Escape')setExpanded(false);};window.addEventListener('keydown',listener);return()=>window.removeEventListener('keydown',listener);},[]);
-  return <section className={`map-stage is-3d ${compact?'compact':''} ${expanded?'map-expanded':''}`} aria-label="Harta 3D a misiunii"><div className="map-heading"><div><span className="eyebrow">Jezero / Explorare de suprafață</span><h2>{compact?'Navigator 3D':'Relieful misiunii'}</h2></div><button className="icon-button" onClick={()=>setExpanded(!expanded)} aria-label={expanded?'Închide harta extinsă':'Extinde harta'}><Icon name={expanded?'close':'expand'}/></button></div><Suspense fallback={<p className="terrain-message">Se încarcă vizualizarea 3D…</p>}><TerrainView site={site} route={route} live={live} position={position} selected={selected} onSelect={onSelect} onRoutePreview={onRoutePreview} compact={compact}/></Suspense></section>;
+  useEffect(()=>{if(!expanded)return;const previous=document.body.style.overflow;document.body.style.overflow='hidden';const close=e=>{if(e.key==='Escape')setExpanded(false);};window.addEventListener('keydown',close);return()=>{document.body.style.overflow=previous;window.removeEventListener('keydown',close);};},[expanded]);
+  return <section className={`map-stage is-3d ${compact?'compact':''} ${expanded?'map-expanded':''}`} aria-label="Mission Terrain Explorer"><div className="map-heading"><div><span className="eyebrow">Jezero / Surface exploration</span><h2>{mapTitle}</h2></div></div><Suspense fallback={<p className="terrain-message terrain-loading">Loading the 3D viewport…</p>}><TerrainView site={site} route={route} live={live} position={position} selected={selected} onSelect={onSelect} onRoutePreview={onRoutePreview} compact={compact} {...explorerProps} expanded={expanded} onExpand={()=>setExpanded(value=>!value)}/></Suspense></section>;
 }

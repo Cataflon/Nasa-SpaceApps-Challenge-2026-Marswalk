@@ -23,4 +23,10 @@ function plan(start, goal, safe) {
   let distance=0,ascent=0,maxSlope=0;for(let k=1;k<path.length;k++){const a=path[k-1],b=path[k],i=a[0]*cols+a[1],j=b[0]*cols+b[1],d=Math.hypot(b[0]-a[0],b[1]-a[1])*cell;distance+=d;ascent+=Math.max(0,z[j]-z[i]);maxSlope=Math.max(maxSlope,slope(i,j,d));}
   return {path,distance,ascent,maxSlope};
 }
-self.onmessage=({data})=>{if(data.type==='grid'){grid=data.grid;return;}try{if(!grid)throw Error('Relieful nu este încă disponibil.');const {start,goal,id}=data;for(const p of [start,goal])if(!Number.isInteger(p.row)||!Number.isInteger(p.col)||p.row<0||p.col<0||p.row>=grid.rows||p.col>=grid.cols)throw Error('Punct în afara grilei.');self.postMessage({id,safe:plan(start,goal,true),short:plan(start,goal,false)});}catch(error){self.postMessage({id:data.id,error:error.message});}};
+self.onmessage=({data})=>{if(data.type==='grid'){grid=data.grid;return;}try{
+  if(!grid)throw Error('Terrain is not ready.');
+  const {start,goal,id,tripStops}=data,stops=tripStops??[goal];
+  for(const p of [start,...stops])if(!p||!Number.isInteger(p.row)||!Number.isInteger(p.col)||p.row<0||p.col<0||p.row>=grid.rows||p.col>=grid.cols)throw Error('Point outside terrain grid.');
+  function trip(safe){let from=start,result={path:[],distance:0,ascent:0,maxSlope:0};for(const stop of stops){const segment=plan(from,stop,safe);if(!segment)return null;result.path.push(...(result.path.length?segment.path.slice(1):segment.path));result.distance+=segment.distance;result.ascent+=segment.ascent;result.maxSlope=Math.max(result.maxSlope,segment.maxSlope);from=stop;}return result;}
+  self.postMessage({id,safe:trip(true),short:tripStops?null:trip(false)});
+}catch(error){self.postMessage({id:data.id,error:error.message});}};

@@ -87,3 +87,23 @@ Au fost verificate toate cele patru fișiere Markdown din docs/roles/notes.
 - Iconiță nouă: pătrat rotunjit negru-maro cu logo-ul alb și elementele portocalii centrate, generat cu ImageGen din artwork-ul furnizat. Salvat în frontend/public/images/marswalk-app-icon.png, folosit de fereastra Electron și favicon. Build și actualizare pachet desktop reușite; promptul este în frontend/design/equipment-assets.md.
 
 - Curățată imaginea costumului cu ceas prin ImageGen: eliminate resturile semitransparente din colțuri, păstrate proporțiile, poziția și dimensiunea 1024×1536. Dashboardul folosește eva-suit-watch-clean.png; verificarea canalului alpha confirmă transparență zero în cele 64 de probe din colțuri, față de valori semitransparente în imaginea veche.
+
+## Mission Terrain Explorer
+
+### Actualizare: planificare și operațiuni separate
+
+- Follow-up UX: meniu persistent inclusiv în layout compact, waypointuri mutate deasupra hărții, itinerar ordonat cu rutare locală prin punctele salvate și întoarcere opțională la habitat. Tripul poate fi parcurs în preview pe hartă, tracker FPV și ceas.
+- Senzorii au acum o singură sursă la nivel App: clock, selecție Mission feed/Equipment demo, stări warning/fault, istoric și valori comune în Sensors și Simulation. O₂ din dispozitive și O₂/vânt din instrumente folosesc aceleași citiri. Defectul nu mai cade înapoi pe o valoare veche.
+- FPV netezește direcția înainte relativ la ochi, nu o țintă fixă ce poate rămâne în urmă. Preview-ul păstrează progresul inclusiv la trasee închise cu segmente suprapuse. Spații mai mari între hartă și dispozitive. Build/pachet reușite, 15 teste trecute și verificare nativă pentru trip, pas, senzor defect comun și meniu la scroll.
+- Cerere pentru rolul 3: API-ul /api/route acceptă doar stops ca ID-uri din catalog. Pentru waypointuri în misiuni live este necesar suport pentru coordonate/opririle personalizate, validate pe grila site-ului și păstrate în contextul replanificării. Frontendul oferă deja traseu local și preview, dar nu inventează bugete sau verdict GO pentru aceste opriri.
+
+- Trei pagini în aplicația Electron: Planning, Simulation și Sensors. Planning are hartă mare, layere în drawer, legendă, profil de altitudine, catalog științific, planner, buget și puncte cu tag salvate local. Aceeași hartă devine mini-fereastră la scroll. Site Overview și Reference nu mai apar în interfață.
+- Simulation afișează harta în stânga și trackerul FPV plus ceasul simultan în dreapta. Poziție comună pentru toate; preview, pas înainte/înapoi și reset sincronizate. Telemetrie sumar sub ele, buton către Sensors și copilot doar în Simulation.
+- Limită API păstrată explicit: motorul live nu are seek/reverse. Pașii sunt disponibili în preview; live folosește start/pause/reset/speed și evenimentele existente. Tagurile sunt adnotări locale, nu ID-uri de opriri acceptate de backend.
+- Optimizări: cache pentru datele terenului/habitatului, index de distanță reutilizat, obiect de traseu stabil în preview, randare la schimbări și animații, rezoluții adaptate, fără workers de rutare în scenele de tracking/FPV. Nu s-a modificat grila USGS.
+- Validare: build reușit, 13 teste Node trecute, verificare nativă Electron pentru PiP, plan, pas sincronizat, reset, start/pauză demo, sumar/detalii senzori, adăugare/eliminare punct și layere. Backend real și Playwright nu au fost verificate end-to-end în această sesiune. Detalii în frontend/design/planning-and-operations.md.
+
+- Implementată cerința atașată: layout cu trei coloane, overview/straturi în stânga, relief central și știință/analiză în dreapta; secțiuni pliabile, toolbar flotant, fit al camerei, reset/follow/fullscreen, marcaje compacte cu ocluzie, scară proiectată și nord orientat după cameră.
+- Straturi reale de elevație și pantă derivată din CTX, pericole din tick; minerale/dificultate dezactivate explicit fără raster aliniat. Mesh-ul și grila USGS nu au fost schimbate.
+- Profil de altitudine din interpolarea exactă pe triunghiurile reliefului, legat interactiv de un punct pe traseu; rute existente colorate și alternative estompate; detaliile țintelor și preselectarea în planner păstrate. Fără date de risc/O₂ inventate.
+- Validare: build reușit, 12 teste Node trecute, verificări native desktop pentru relief, selecție, top/perspectivă, Slope și profil sincronizat. Playwright indisponibil, fără script lint. Detalii, fișiere și limite în frontend/design/terrain-explorer.md.
