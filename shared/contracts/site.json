@@ -1,21 +1,21 @@
 {
   "site_id": "synthetic",
-  "name": "Sit sintetic (crater cu deltă)",
+  "name": "Synthetic site (crater with delta)",
   "cell_size_m": 20,
   "shape": [500, 500],
   "center": { "lat": 18.44, "lon": 77.45 },
   "habitat": { "row": 300, "col": 200 },
   "max_slope_deg": 25,
   "targets": [
-    { "id": "clay_delta", "name": "Argilă, frontul deltei", "kind": "clay", "row": 180, "col": 140, "science_value": 10, "dwell_min": 30, "image": null },
-    { "id": "carbonate_rim", "name": "Carbonați, marginea", "kind": "carbonate", "row": 120, "col": 260, "science_value": 7, "dwell_min": 20, "image": null },
-    { "id": "olivine_floor", "name": "Olivină, fundul craterului", "kind": "olivine", "row": 340, "col": 330, "science_value": 4, "dwell_min": 15, "image": null }
+    { "id": "clay_delta", "name": "Clay, delta front", "kind": "clay", "row": 180, "col": 140, "science_value": 10, "dwell_min": 30, "image": null },
+    { "id": "carbonate_rim", "name": "Carbonates, delta margin", "kind": "carbonate", "row": 120, "col": 260, "science_value": 7, "dwell_min": 20, "image": null },
+    { "id": "olivine_floor", "name": "Olivine, crater floor", "kind": "olivine", "row": 340, "col": 330, "science_value": 4, "dwell_min": 15, "image": null }
   ],
   "layers": [
-    { "id": "elevation", "label": "Altitudine", "png": "/static/layers/elevation.png", "unit": "m" },
-    { "id": "slope", "label": "Pantă", "png": "/static/layers/slope.png", "unit": "deg" },
-    { "id": "terrain", "label": "Teren", "png": "/static/layers/terrain.png", "unit": "class" },
-    { "id": "minerals", "label": "Minerale", "png": "/static/layers/minerals.png", "unit": "class" },
-    { "id": "radiation", "label": "Radiație", "png": "/static/layers/radiation.png", "unit": "uSv/h" }
+    { "id": "elevation", "label": "Elevation", "png": "/static/layers/elevation.png", "unit": "m" },
+    { "id": "slope", "label": "Slope", "png": "/static/layers/slope.png", "unit": "deg" },
+    { "id": "terrain", "label": "Terrain", "png": "/static/layers/terrain.png", "unit": "class" },
+    { "id": "minerals", "label": "Minerals", "png": "/static/layers/minerals.png", "unit": "class" },
+    { "id": "radiation", "label": "Radiation", "png": "/static/layers/radiation.png", "unit": "uSv/h" }
   ]
 }

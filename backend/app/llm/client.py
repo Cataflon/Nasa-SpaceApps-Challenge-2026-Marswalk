@@ -17,8 +17,8 @@ OPTIONS = {"temperature": 0, "seed": 42, "num_ctx": 4096, "num_predict": 120}
 async def explain(summary: dict) -> dict:
     """Întoarce {"text": ..., "source": "llm" | "template" | "cache"}.
 
-    `summary` trebuie să conțină `decision`, `alternative_id`, `alternative_ids` și cifrele
-    folosite de șablon (o2_end_pct, eta_hazard_min, extra_min).
+    `summary` vine din `llm.summary.build_summary` (conține `decision`, `alternative_id`,
+    `alternative_ids` și cifrele folosite de șablon: o2_end_pct, eta_hazard_min, extra_min).
     """
     fallback = {
         "text": templates.render(summary["decision"], **summary),
@@ -51,11 +51,14 @@ async def explain(summary: dict) -> dict:
         return fallback
 
     # Verificare de consistență: LLM-ul nu are voie să schimbe decizia.
-    if out.get("decizie") != summary["decision"] or out.get("alternativa_id") != summary.get("alternative_id"):
+    if out.get("decision") != summary["decision"] or out.get("alternative_id") != summary.get("alternative_id"):
         log.warning("LLM-ul a contrazis decizia, folosesc șablonul: %s", out)
         return fallback
+    if not isinstance(out.get("reason"), str) or not out["reason"].strip():
+        log.warning("LLM-ul nu a dat un motiv, folosesc șablonul: %s", out)
+        return fallback
 
-    result = {"text": out["motiv"], "source": "llm"}
+    result = {"text": out["reason"].strip(), "source": "llm"}
     cache.put(summary, result)
     return result
 

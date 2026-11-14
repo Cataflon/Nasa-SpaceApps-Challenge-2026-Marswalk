@@ -1,5 +1,6 @@
 ﻿import { number } from '../utils';
 export default function BudgetPanel({ route, tick }) {
+<<<<<<< HEAD
   const b = tick?.budget ?? route?.budget, o2 = b?.o2_end_pct;
   const profile = route?.elevation_profile ?? [];
   const min = Math.min(...profile.map(p => p.elevation_m)), max = Math.max(...profile.map(p => p.elevation_m));
@@ -10,4 +11,22 @@ export default function BudgetPanel({ route, tick }) {
     <dl className="data-list"><div><dt>Distanță planificată</dt><dd>{number(route?.budget?.distance_m / 1000, 1)} km</dd></div><div><dt>Durată planificată</dt><dd>{number(route?.budget?.duration_min)} min</dd></div><div><dt>Întoarcere până la</dt><dd>t+{number(b?.return_by_min)} min</dd></div><div><dt>Apus</dt><dd>t+{number(b?.sunset_min)} min</dd></div><div><dt>Doză planificată</dt><dd>{number(route?.budget?.dose_msv, 2)} mSv</dd></div></dl>
     {profile.length > 1 && <details className="altitude"><summary>Profil de altitudine</summary><svg viewBox="0 0 280 88" role="img" aria-label={`Altitudine între ${min} și ${max} metri pe ${distance} metri de traseu`}><polyline points={path} fill="none" stroke="var(--accent)" strokeWidth="2"/><text x="12" y="85">0 km</text><text x="225" y="85">{number(distance / 1000, 1)} km</text></svg><p className="small muted">{number(min)} → {number(max)} m altitudine</p></details>}
   </section>;
+=======
+  const s = tick?.sensors;
+  const b = route?.budget;
+  return (
+    <section className="panel">
+      <h2>Budget {route && <span className={`verdict ${route.verdict}`}>{route.verdict}</span>}</h2>
+      <dl className="grid">
+        <dt>O₂ now</dt><dd>{s ? `${s.o2_pct.toFixed(1)}%` : "–"}</dd>
+        <dt>O₂ on arrival</dt><dd>{tick?.budget?.o2_end_pct ?? b?.o2_end_pct ?? "–"}%</dd>
+        <dt>Return by</dt><dd>t+{tick?.budget?.return_by_min ?? b?.return_by_min ?? "–"} min</dd>
+        <dt>Sunset</dt><dd>t+{tick?.budget?.sunset_min ?? b?.sunset_min ?? "–"} min</dd>
+        <dt>Dose</dt><dd>{s ? `${s.dose_total_msv} mSv` : b ? `${b.dose_msv} mSv` : "–"}</dd>
+        <dt>Dust (τ)</dt><dd>{s?.dust_tau ?? "–"}</dd>
+        <dt>Wind</dt><dd>{s ? `${s.wind_ms} m/s` : "–"}</dd>
+      </dl>
+    </section>
+  );
+>>>>>>> d264b9cf9d1367380612c950112af0ef601db712
 }

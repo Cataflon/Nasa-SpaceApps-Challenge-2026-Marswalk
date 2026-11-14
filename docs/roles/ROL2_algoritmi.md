@@ -1,5 +1,12 @@
 # Rolul 2: Algoritmi
 
+> ## 🆕 NOU (14.11.2026): citește întâi asta
+> Echipa a adăugat 7 funcționalități legate direct de tema challenge-ului („Interplanetary Survival Guide”). Tabelul complet e în `README.md`, secțiunea „🆕 Noutăți”. **Ce ai tu nou de făcut** (detaliile sunt mai jos, marcate 🆕):
+> 1. **Numărul de titlu din benchmark:** `run_benchmark` întoarce și `headline = {"copilot_safe_pct", "plan_safe_pct", "n_scenarios"}`, adică „copilotul a adus astronautul acasă în siguranță în X% din furtuni; planul fix, în Y%”. Merge pe primul slide și în video.
+> 2. **Fiecare constantă marcată:** toate constantele din `core/` stau la nivel de modul, fiecare cu un comentariu `# sursă: …` sau `# presupunere`. Rolul 1 le copiază în ecranul „Cum calculăm”.
+> 3. **Ceasul de întoarcere:** `budget.return_by_min` trebuie să fie corect și mereu prezent în răspunsul `plan_route`. Frontendul îl afișează ca cifră principală („Te întorci până la 14:20”).
+> 4. **Survival Guide:** nu e cod nou la tine. Fișa se construiește din `plan_route` (traseu, `return_by_min`, `point_of_no_return`), deci câmpurile acestea nu se schimbă.
+
 Ești unul dintre 4 agenți care implementează **simultan** Marswalk Copilot în același repo. Ceilalți trei lucrează la date (`pipeline/`, `scenario.py`, `docs/`), backend + LLM (`backend/app/api/`, `live/engine.py`, `llm/`) și frontend (`frontend/`). Tu ai tot ce e în `backend/app/core/`: algoritmii puri, fără server și fără rețea.
 
 ## Proiectul în 30 de secunde
@@ -49,7 +56,8 @@ Citește din `README.md`: secțiunea 4 (workflow-ul, mai ales Faza 3), 5.2 (hart
 1. `costmap.static_cost`: `np.inf` peste panta maximă sau pe masca `unsafe`. Factori de teren din `TERRAIN_FACTOR`.
 2. `routing.astar`: 8 vecini, cost = lungimea pasului × costul celulei, euristică octilă × costul minim. Tie-break determinist `(f, g, row, col)`.
 3. `routing.reverse_dijkstra` + `path_home`.
-4. `budget.route_budget` + `point_of_no_return`. Constantele sunt presupuneri: le listezi în note la „Presupuneri”, ca rolul 1 să le documenteze.
+4. `budget.route_budget` + `point_of_no_return`. Constantele sunt presupuneri: le listezi în note la „Presupuneri”, ca rolul 1 să le documenteze. 🆕 `return_by_min` (ora-limită de întoarcere, în minute de la start) e mereu completat: e cifra principală din UI și de pe Survival Guide.
+   - 🆕 **Toate constantele din `core/`** (buget, cost, validator, pericole, decizie) stau la nivel de modul, nu în corpul funcțiilor, fiecare cu `# sursă: <link sau referință>` sau `# presupunere`. Din ele se face ecranul „Cum calculăm”.
 5. `daylight`: Mars24 dacă iese repede. Altfel, plan B: valori fixe declarate.
 6. `stops.brute_force_stops`, apoi `stops.plan_stops` cu CP-SAT, folosind `solver_params()` pentru determinism. Un test verifică că pe instanțe mici dau același rezultat.
 7. `planner.plan_route`.
@@ -61,6 +69,7 @@ Citește din `README.md`: secțiunea 4 (workflow-ul, mai ales Faza 3), 5.2 (hart
 
 **P2:**
 11. `benchmark.run_benchmark`: copilot față de „doar planul”, pe furtuni generate cu seed fix chiar în `core/`, ca să nu depinzi de `scenario.py`. Metrici: ieșiri încheiate în siguranță, O₂ minim, doză, știință colectată. Testul pe 100 de scenarii e `@pytest.mark.slow`; un test rapid rulează pe 3.
+    - 🆕 **`headline`** în rezultat: `{"copilot_safe_pct": float, "plan_safe_pct": float, "n_scenarios": int}`. „Acasă în siguranță” = astronautul ajunge în habitat cu O₂ ≥ rezerva, doza ≤ limita, înainte de apus minus marja, fără să treacă prin pericol peste prag. Definiția exactă o scrii în note, ca rolul 1 să o pună pe slide. Testul rapid verifică doar că `headline` există și că procentele sunt în [0, 100]; **nu** forța un anumit rezultat.
 
 ## Teste: rulează doar ce ai modificat
 
@@ -101,7 +110,8 @@ Din `backend/`:
 - Testele noi stau doar în folderele tale de teste. Un test existent din zona ta poate fi modificat, nu șters.
 
 ### Cod
-- Python compatibil cu 3.11 (CI rulează 3.12, local e 3.14). Comentariile și mesajele sunt în română, ca în restul codului; numele de variabile și funcții sunt în engleză.
+- Python compatibil cu 3.11 (CI rulează 3.12, local e 3.14). Numele de variabile și funcții sunt în engleză; comentariile pot rămâne în română.
+- **Tot ce vede utilizatorul sau juriul e în engleză:** mesajele din API (`detail` la erori), textele generate (șabloane, explicații LLM), numele țintelor și straturilor, documentele de prezentare.
 - Determinism peste tot: seed fix, sortări stabile cu tie-break explicit, fără `time.time()` în logică.
 
 ### Note de predare: `docs/roles/notes/rol2.md`

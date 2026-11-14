@@ -1,11 +1,14 @@
-"""Explicații din șablon, folosite când LLM-ul nu răspunde, întârzie sau dă JSON invalid."""
+"""Explicații din șablon, folosite când LLM-ul nu răspunde, întârzie sau dă JSON invalid.
+
+Textele sunt în engleză, ca restul interfeței.
+"""
 
 TEMPLATES = {
-    "CONTINUE": "Traseul rămâne sigur. O₂ estimat la sosire: {o2_end_pct:.0f}%.",
-    "REROUTE": "Pericol pe traseu în {eta_hazard_min:.0f} min. Ocolire {alternative_id}: +{extra_min:.0f} min, O₂ la sosire {o2_end_pct:.0f}%.",
-    "WAIT": "Pericol pe traseu în {eta_hazard_min:.0f} min. Așteptăm {extra_min:.0f} min; O₂ la sosire {o2_end_pct:.0f}%.",
-    "RETURN": "Pericolul nu poate fi ocolit în siguranță. Ne întoarcem; O₂ la sosire {o2_end_pct:.0f}%.",
-    "EMERGENCY": "Nicio variantă nu respectă toate limitele. Rută de urgență spre habitat.",
+    "CONTINUE": "Route remains safe. Estimated O₂ on arrival: {o2_end_pct:.0f}%.",
+    "REROUTE": "Hazard on route in {eta_hazard_min:.0f} min. Detour {alternative_id}: +{extra_min:.0f} min, O₂ on arrival {o2_end_pct:.0f}%.",
+    "WAIT": "Hazard on route in {eta_hazard_min:.0f} min. Holding for {extra_min:.0f} min; O₂ on arrival {o2_end_pct:.0f}%.",
+    "RETURN": "Hazard cannot be avoided safely. Returning to habitat; O₂ on arrival {o2_end_pct:.0f}%.",
+    "EMERGENCY": "No option meets all safety limits. Taking the emergency route to the habitat.",
 }
 
 
@@ -14,4 +17,4 @@ def render(kind: str, **values) -> str:
     try:
         return TEMPLATES[kind].format(**{**defaults, **values})
     except (KeyError, ValueError):
-        return f"Decizie: {kind}."
+        return f"Decision: {kind}."
