@@ -174,8 +174,10 @@ cost = distanță × f(pantă) × f(teren) + w_pericol × pericol(x, y, t) + w_r
 
 ### 5.7 LLM-ul (Ollama)
 
-- **Model:** `qwen2.5:7b-instruct`. Rezervă pe laptopuri slabe: `qwen2.5:3b` sau `llama3.2:3b`.
-- **Setări:** `temperature: 0`, `seed: 42`, format cu schemă JSON.
+- **Hardware de dezvoltare/demo:** Ryzen 7 7840HS, 24 GB RAM, RTX 4050 cu 6 GB VRAM.
+- **Model decizie (live):** `qwen2.5:7b-instruct` (Q4, ~4,7 GB, intră complet în VRAM, rapid). Alternativă de testat: `qwen3:8b` cu thinking oprit. Rezervă: `qwen2.5:3b` sau `llama3.2:3b`.
+- **Model chat/explicații (opțional):** un 14B (ex. `qwen2.5:14b`) nu încape în 6 GB și se împarte între GPU și CPU, deci e mai lent (câțiva tokeni/s). Se folosește doar unde latența nu contează, nu pentru decizia live.
+- **Setări:** `temperature: 0`, `seed: 42`, format cu schemă JSON, context mic (2-4k) ca să rămână în VRAM.
 - **Când rulează:** doar la evenimente și la cererile din chat.
 - **Intrare:** rezumatul situației și alternativele deja validate.
 - **Ieșire:**
