@@ -7,7 +7,7 @@ import pytest
 
 from app.core.costmap import static_cost
 from app.core.grid import octile
-from app.core.routing import astar, path_home, reverse_dijkstra
+from app.core.routing import astar, astar_spacetime, path_home, reverse_dijkstra
 from grids import make_site, synthetic_site_or_skip, wall_with_gap
 
 SQRT2 = math.sqrt(2.0)
@@ -434,7 +434,173 @@ def test_path_home_rejects_cell_outside_grid():
         path_home(parent_index, (4, 0))
 
 
+# --- astar_spacetime ---
+
+
+def never_blocked(shape):
+    return lambda t: np.zeros(shape, dtype=bool)
+
+
+def blocked_between(shape, cells, t_from, t_to):
+    """Celulele date sunt blocate pentru t_from ≤ t ≤ t_to."""
+    def blocked_at(t):
+        mask = np.zeros(shape, dtype=bool)
+        if t_from <= t <= t_to:
+            for cell in cells:
+                mask[cell] = True
+        return mask
+    return blocked_at
+
+
+def assert_valid_timed_path(cost, timed, start, goal, blocked_at=None, t0=0.0):
+    cells = [c for c, _ in timed]
+    times = [t for _, t in timed]
+    assert cells[0] == start and cells[-1] == goal and times[0] == t0
+    assert all(t1 > t0_ for t0_, t1 in zip(times, times[1:])), "timpul trebuie să crească strict"
+    for (r0, c0), (r1, c1) in zip(cells, cells[1:]):
+        assert max(abs(r1 - r0), abs(c1 - c0)) <= 1
+        assert np.isfinite(cost[r1, c1])
+        if r0 != r1 and c0 != c1:
+            assert np.isfinite(cost[r0, c1]) and np.isfinite(cost[r1, c0]), "taie un colț"
+    if blocked_at is not None:
+        for cell, t in timed[1:]:
+            assert not blocked_at(t)[cell], f"intră în {cell} la minutul {t}, când e blocată"
+
+
+def test_spacetime_without_hazard_costs_the_same_as_astar():
+    cost = random_grid(5)
+    start, goal = (0, 0), (24, 24)
+    cost[start] = cost[goal] = 1.0
+    minutes = np.ones_like(cost)
+
+    timed = astar_spacetime(cost, start, goal, 0.0, never_blocked(cost.shape), minutes)
+    cells = [c for c, _ in timed]
+
+    assert_valid_timed_path(cost, timed, start, goal)
+    assert len(set(cells)) == len(cells)  # fără așteptări
+    assert path_cost(cost, cells) == pytest.approx(path_cost(cost, astar(cost, start, goal)))
+
+
+def test_spacetime_waits_for_temporary_wall_on_only_passage():
+    site = make_site(wall_with_gap(30, gap_row=5))
+    cost = static_cost(site)
+    blocked_at = blocked_between(cost.shape, [(5, 15)], 5, 15)
+    start, goal = (5, 10), (5, 20)
+
+    timed = astar_spacetime(cost, start, goal, 0.0, blocked_at, np.ones_like(cost))
+
+    assert_valid_timed_path(cost, timed, start, goal, blocked_at)
+    cells = [c for c, _ in timed]
+    assert any(a == b for a, b in zip(cells, cells[1:])), "trebuie să existe o așteptare"
+    assert min(t for c, t in timed if c == (5, 15)) > 15
+
+
+def test_spacetime_detours_when_cheaper_than_waiting():
+    cost = np.ones((21, 40))
+    band = [(r, c) for r in range(7, 14) for c in range(18, 23)]
+    blocked_at = blocked_between(cost.shape, band, 0, 59)  # blocată tot orizontul
+    start, goal = (10, 0), (10, 39)
+
+    timed = astar_spacetime(cost, start, goal, 0.0, blocked_at, np.ones_like(cost))
+
+    assert_valid_timed_path(cost, timed, start, goal, blocked_at)
+    cells = [c for c, _ in timed]
+    assert len(set(cells)) == len(cells), "ocolul e mai ieftin decât așteptarea"
+    assert any(r < 7 or r > 13 for r, c in cells if 18 <= c <= 22)
+
+
+def test_spacetime_no_solution_in_horizon_is_none():
+    cost = np.ones((10, 10))
+    everything = lambda t: np.ones(cost.shape, dtype=bool)  # nici mutare, nici așteptare
+    assert astar_spacetime(cost, (0, 0), (9, 9), 0.0, everything, np.ones_like(cost)) is None
+
+    walled = np.ones((10, 10))
+    walled[:, 5] = np.inf
+    assert astar_spacetime(walled, (0, 0), (9, 9), 0.0, never_blocked(walled.shape), np.ones_like(walled)) is None
+
+
+def test_spacetime_beyond_horizon_ignores_hazard():
+    # Blocat permanent, dar orizontul e de 5 min: după k = 5 căutarea nu mai vede pericolul.
+    cost = np.ones((3, 12))
+    wall = [(r, 6) for r in range(3)]
+    timed = astar_spacetime(cost, (1, 0), (1, 11), 0.0, blocked_between(cost.shape, wall, 0, 1e9),
+                            np.ones_like(cost), horizon_min=5)
+    assert timed is not None and timed[-1][0] == (1, 11)
+
+
+def test_spacetime_is_deterministic_and_respects_t0():
+    site = make_site(wall_with_gap(30, gap_row=5))
+    cost = static_cost(site)
+    blocked_at = blocked_between(cost.shape, [(5, 15)], 105, 115)
+    runs = [astar_spacetime(cost, (5, 10), (5, 20), 100.0, blocked_at, np.ones_like(cost)) for _ in range(10)]
+
+    assert all(r == runs[0] for r in runs)
+    assert runs[0][0] == ((5, 10), 100.0)
+    assert min(t for c, t in runs[0] if c == (5, 15)) > 115
+
+
+def test_spacetime_start_equals_goal_and_bad_input():
+    cost = np.ones((5, 5))
+    assert astar_spacetime(cost, (2, 2), (2, 2), 7.0, never_blocked(cost.shape), cost) == [((2, 2), 7.0)]
+    with pytest.raises(ValueError, match="downsample"):
+        astar_spacetime(cost, (0, 0), (4, 4), 0.0, never_blocked(cost.shape), cost, downsample=0)
+    with pytest.raises(ValueError, match="afara grilei"):
+        astar_spacetime(cost, (0, 0), (5, 4), 0.0, never_blocked(cost.shape), cost)
+
+
+@pytest.mark.parametrize("shape", [(40, 60), (43, 61)])  # al doilea nu se împarte exact la 5
+def test_spacetime_downsampled_path_is_valid_on_fine_grid(shape):
+    rng = np.random.default_rng(3)
+    cost = rng.uniform(1.0, 3.0, shape)
+    cost[10:30, 25:28] = np.inf  # un obstacol
+    band = [(r, c) for r in range(0, shape[0]) for c in range(40, 44) if r < shape[0] // 2]
+    blocked_at = blocked_between(shape, band, 0, 30)
+    start, goal = (shape[0] - 3, 2), (2, shape[1] - 3)
+
+    timed = astar_spacetime(cost, start, goal, 0.0, blocked_at, np.ones(shape), downsample=5)
+
+    assert_valid_timed_path(cost, timed, start, goal)
+
+
+def test_spacetime_downsample_same_block_falls_back_to_fine_grid():
+    cost = np.ones((20, 20))
+    timed = astar_spacetime(cost, (1, 1), (3, 3), 0.0, never_blocked(cost.shape), cost, downsample=5)
+    assert [c for c, _ in timed] == [(1, 1), (2, 2), (3, 3)]
+
+
 # --- situl sintetic 500×500 ---
+
+
+def test_synthetic_spacetime_downsample_5_under_1_5_s():
+    from app.core.budget import minutes_grid
+    from app.core.hazards import Hazard, hazard_field
+
+    site = synthetic_site_or_skip()
+    cost = static_cost(site, "safe")
+    target = next(t for t in site.meta["targets"] if t["id"] == "clay_delta")
+    goal = (target["row"], target["col"])
+    # Furtună care traversează drumul habitat → clay_delta de la vest spre est.
+    storm = Hazard("s", "local_storm", (240 * 20.0, 60 * 20.0), (900.0, 500.0), 0.0, 0.8, (0.0, 1.5), 0.0)
+    blocked_at = lambda t: hazard_field([storm], t, site.shape, site.cell_size_m) >= 0.3
+    minutes = minutes_grid(site)
+
+    started = time.perf_counter()
+    timed = astar_spacetime(cost, site.habitat, goal, 0.0, blocked_at, minutes, horizon_min=60, downsample=5)
+    elapsed = time.perf_counter() - started
+
+    assert elapsed < 1.5, f"astar_spacetime (downsample=5) a durat {elapsed:.2f} s (ținta: < 1,5 s)"
+    assert timed is not None
+    assert_valid_timed_path(cost, timed, site.habitat, goal)
+
+    # Traseul A* obișnuit intră în furtună; cel spațiu-timp nu.
+    from app.core.budget import route_budget
+    from app.core.hazards import route_hit
+
+    plain = astar(cost, site.habitat, goal)
+    plain_eta = route_budget(plain, site.layers["elevation"], site.cell_size_m, 0.0, 600.0, 0.0).eta_min
+    assert route_hit(plain, plain_eta, [storm], site.cell_size_m)[0]
+    assert route_hit([c for c, _ in timed], [t for _, t in timed], [storm], site.cell_size_m) == (False, None)
+
 
 
 def test_synthetic_reverse_dijkstra_under_two_seconds():

@@ -5,6 +5,7 @@ import numpy as np
 import pytest
 
 from app.config import CONTRACTS_DIR
+from app.core import hazards as hazards_module
 from app.core.hazards import (
     FORECAST_STEPS_MIN,
     Hazard,
@@ -17,6 +18,13 @@ from app.core.hazards import (
 )
 
 CELL = 20.0
+
+
+@pytest.fixture(autouse=True)
+def contract_cone(monkeypatch):
+    """Exemplul din live_messages.json e construit cu +15 m/min la 2,5 m/s, adică SIGMA_REL = 0,1.
+    Valoarea calibrată din cod (R2-11) e alta; testele de formă folosesc valoarea contractului."""
+    monkeypatch.setattr(hazards_module, "SIGMA_REL", 0.1)
 
 
 def contract_storm() -> dict:
@@ -71,16 +79,19 @@ def test_rotation_by_90_swaps_axes():
 
 
 def test_route_hit_on_crossing_path_gives_correct_minute():
-    # Furtună fixă, rază 100 m care crește cu 15 m/min; traseul coboară pe coloana centrului,
-    # o celulă pe minut. Primul punct cu intensitate ≥ 0,3: rândul 13, la minutul 13.
-    hazards = [storm(25, 50, 100.0, 100.0)]
-    path = [(r, 50) for r in range(40)]
-    eta = [float(r) for r in range(40)]
+    # Furtună care coboară spre sud cu 1/3 m/s (20 m/min), rază 100 m; cu SIGMA_REL = 0,1 raza
+    # crește cu 2 m/min. Traseul urcă spre nord pe coloana centrului, o celulă pe minut, din
+    # rândul 59. La minutul i: astronautul la rândul 59 − i, centrul la 25 + i (în celule).
+    # Contact (intensitate ≥ 0,3, adică d ≤ √0,7 × rază) la primul i cu
+    # (34 − 2i) × 20 ≤ 0,8367 × (100 + 2i): i = 15.
+    hazards = [storm(25, 50, 100.0, 100.0, v=(1 / 3, 0.0))]
+    path = [(59 - i, 50) for i in range(40)]
+    eta = [float(i) for i in range(40)]
 
-    assert route_hit(path, eta, hazards, CELL, threshold=0.3) == (True, 13.0)
+    assert route_hit(path, eta, hazards, CELL, threshold=0.3) == (True, 15.0)
     # Același rezultat ca citirea din hazard_field la momentul fiecărui punct.
     first = next(i for i, (r, c) in enumerate(path) if hazard_field(hazards, eta[i], (60, 100), CELL)[r, c] >= 0.3)
-    assert first == 13
+    assert first == 15
 
 
 def test_route_hit_parallel_far_away_is_false():
@@ -110,9 +121,12 @@ def test_regional_storm_covers_whole_grid():
 
 
 def test_predict_moves_center_and_grows_axes_additively():
-    h = predict(storm(10, 10, 500.0, 300.0, v=(1.0, -2.0)), 30.0)
-    assert h.center_m == pytest.approx((210.0 + 1800.0, 210.0 - 3600.0))
-    assert h.axes_m == pytest.approx((500.0 + 450.0, 300.0 + 450.0))
+    h = predict(storm(10, 10, 500.0, 300.0, v=(3.0, -4.0)), 30.0)  # |v| = 5 m/s
+    assert h.center_m == pytest.approx((210.0 + 5400.0, 210.0 - 7200.0))
+    growth = 0.1 * 5.0 * 60.0 * 30.0  # SIGMA_REL × |v| × 60 × Δ = 900 m
+    assert h.axes_m == pytest.approx((500.0 + growth, 300.0 + growth))
+    # Un pericol fix nu are con.
+    assert predict(storm(10, 10, 500.0, 300.0), 30.0).axes_m == (500.0, 300.0)
 
 
 def test_hazard_field_500_under_50_ms():

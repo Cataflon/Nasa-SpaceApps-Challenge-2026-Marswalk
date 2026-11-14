@@ -2,9 +2,102 @@
 
 ## Gata
 
-Teste: `python -m pytest tests/core` → 150 trecute
-(`test_decision` 6, `test_grid` 14, `test_costmap` 27, `test_routing` 51, `test_budget` 11,
-`test_daylight` 9, `test_stops` 14, `test_planner` 7, `test_hazards` 11).
+Teste: `python -m pytest tests/core` → 173 trecute, plus 2 lente (`-m slow`)
+(`test_decision` 6, `test_grid` 14, `test_costmap` 27, `test_routing` 62, `test_budget` 11,
+`test_daylight` 9, `test_stops` 14, `test_planner` 7, `test_hazards` 11, `test_alternatives` 8,
+`test_benchmark` 4 + 2 lente).
+
+### R2-11: benchmark, generatorul de furtuni și calibrarea conului
+
+**Copilot față de „doar planul”, 100 de scenarii (seed 42), habitat → `clay_delta` → habitat:**
+
+| Metrică | Doar planul | Copilot |
+|---|---|---|
+| Ieșiri încheiate în siguranță | 56 % | **83 %** |
+| Ieșiri cu expunere ≥ 0,3 (pe mișcarea reală a furtunii) | 44 % | 17 % |
+| O₂ la sosire, minim / mediu | 71,8 % / 71,8 % | 57,2 % / 78,5 % |
+| Doză medie | 0,0253 mSv | 0,0192 mSv |
+| Știință colectată | 100 % | 52 % |
+
+Pe tipuri (sigur / total): vârtejuri 56/67 → 62/67, fronturi 0/27 → 18/27, furtuni regionale
+0/6 → 3/6. În niciun scenariu copilotul nu e mai puțin sigur decât planul. Decizii pe cele 100
+de scenarii: 38 CONTINUE, 24 REROUTE, 31 WAIT, 42 RETURN, 17 EMERGENCY. Prețul siguranței:
+copilotul renunță la țintă în aproape jumătate din ieșiri. Ultimele 3 furtuni regionale ajung
+înainte ca astronautul să poată fi acasă.
+
+- `storms.py` (nou): generator propriu, cu `default_rng((seed, i))` pe scenariu (primele
+  scenarii sunt aceleași pentru orice n). Tipul după ponderi fixe; furtuna e țintită astfel
+  încât marginea zonei periculoase să atingă traseul într-un minut aleator. Mișcarea reală are
+  zgomot: viteza AR(1) cu 15 %, direcția derivă 1°/min. Mărimea reală e constantă; doar
+  predicția are con. Dimensiunile și vitezele vin din registru: vârtejuri 100-135 m (§3.1),
+  front 30 × 5 km la 10-20 m/s (§3.2), furtună regională cu rază ≈ 1000 km (§3.2).
+- `benchmark.run_benchmark(n, seed, site=None)`: pași de 5 min. Copilotul vede pericolul
+  observat (poziția reală de acum + viteza din ultimele 5 min) și decide prin `generate` →
+  `choose`. Siguranța se judecă pe mișcarea reală. Reguli de simulare: decide doar dacă primul
+  contact prezis e în ≤ 30 min (`REACT_WINDOW_MIN`); RETURN e definitiv; cel mult 8 decizii.
+- **Conul de predicție, decizie luată cu utilizatorul:** calibrarea cu un `SIGMA_V` absolut
+  (m/s) dădea 2,96 m/s (1,52 doar pe vârtejuri, 4,34 doar pe fronturi). Cu ea, copilotul alegea
+  RETURN de la plecare în toate scenariile (100 % sigur, 0 % știință), pentru că o singură viteză
+  absolută nu servește deodată fronturi de 15 m/s și vârtejuri de 4 m/s. Am trecut la un **con
+  relativ la viteză**: semiaxele cresc cu `SIGMA_REL × |v| × 60 × Δ`. `SIGMA_V` a rămas în
+  fișier, nefolosită.
+- **`SIGMA_REL = 0,35`**, calibrat cu `calibrate_sigma_v(100, 42)`: cel mai mic coeficient pentru
+  care centrul real e în elipsa prezisă în ≥ 95 % din cazuri, la fiecare orizont 10-180 min
+  (fără furtunile regionale). Exemplul din `live_messages.json` corespunde lui 0,1; testele care
+  îl reproduc folosesc 0,1 explicit. Calibrarea e pe modelul nostru de zgomot (nivel C), nu pe
+  date MEDA.
+- **Fereastra de reacție de 30 min e necesară.** Fără ea, copilotul reacționa la contacte prezise
+  peste 100 de minute, unde conul de 95 % acoperă tot traseul, și alegea RETURN din habitat.
+
+### R2-10: `alternatives.generate`
+
+- Întoarce, nevalidate, în ordinea: `current` (CONTINUE), ocolirile `detour_<latură>` (REROUTE,
+  sortate după id), `wait` (WAIT), `return` (RETURN). Cifrele vin din `route_budget` pe tot
+  traseul până la habitat, pornind de la t_min, O₂ și doza curente.
+- Ocolirile: `astar_spacetime` cu fiecare preset (safe, fast, science), `downsample=5`, orizont
+  = min(180, momentul în care pericolul iese din dreptunghiul traseului, eșantionat din 10 în 10
+  min). Măștile de blocare se calculează o dată și se refolosesc între preset-uri. Traseele
+  identice se elimină (rămâne cel cu riscul cel mai mic). Latura: semnul produsului vectorial
+  dintre direcția poziție → țintă și abaterea medie (nord/sud, sau est/vest dacă dreapta e aproape
+  nord-sud); a doua cu aceeași latură primește sufixul preset-ului. Așteptările din A* spațiu-timp
+  intră în buget ca staționări.
+- `wait`: cel mai mic W din {5, 10, …, 90} pentru care nici poziția în timpul așteptării, nici
+  traseul curent pornit la t + W nu mai sunt lovite. Dacă niciun W nu ajunge: W = 90, iar
+  varianta trece prin pericol (validatorul o elimină).
+- `return`: `path_home` din cache; dacă trece prin pericol, `astar_spacetime` spre habitat.
+- `crosses_hazard = risk ≥ HIT_THRESHOLD` (constantă nouă în `hazards`, 0,3, folosită și ca
+  prag implicit de `route_hit`), deci riscul și „trece prin pericol” nu se contrazic.
+  **Excepție declarată:** pentru RETURN nu se numără pericolele al căror singur răspuns permis e
+  RETURN (`HAZARD_RESPONSES`: furtuna regională). Altfel, la o furtună regională orice drum,
+  inclusiv cel spre casă, ar fi invalid, iar regula ar da EMERGENCY în loc de RETURN.
+- Integrare cu regula: pe grila mică, scena 4 (furtună pe drumul dus) → REROUTE; cu furtună
+  regională → RETURN, ambele cu cifre calculate. Pe situl sintetic, furtuna care taie drumul spre
+  `clay_delta` → o singură ocolire (cele 3 preset-uri dau același traseu), `detour_west`, +8 min,
+  risc 0; `wait` 25 min, risc 0,29; regula alege REROUTE `detour_west`.
+
+### R2-9: `routing.astar_spacetime`
+
+- Starea e (celulă, k), cu k = floor(t / DT_MIN), DT_MIN = 1 min. Măștile `blocked_at` se
+  calculează o dată pe interval (K = orizont / DT_MIN), ținute ca `bytes` aplatizați cu bordură:
+  la 20 m, 60 de liste Python ar ocupa ≈ 120 MB, iar ca bytes ocupă ≈ 15 MB.
+- Mutări: cei 8 vecini, cu aceleași reguli ca `astar` (D2, fără tăierea colțurilor, aceeași
+  euristică), plus „aștept pe loc” până la intervalul următor. Interzis: cost inf sau celulă
+  blocată în intervalul sosirii. Dincolo de orizont pericolul nu se mai verifică (A* obișnuit):
+  e corect doar dacă orizontul acoperă trecerea pericolului.
+- **Abatere de la textul pasului (timpul unei mutări):** pasul cerea timpul rotunjit la
+  intervale, minimum 1. Pe 20 m o celulă se parcurge în ≈ 0,4 min, deci rotunjirea umfla timpul
+  de ≈ 2,5 ori: sosirea ieșea la 123 min în loc de ≈ 60, iar pericolul era verificat la momente
+  greșite. Timpul se ține acum exact; doar k (pentru mască și pentru cheia de vizitare) e
+  rotunjit în jos, conform definiției k = floor(t / DT_MIN) din pas.
+- Plan B, parametru nou `downsample=1` la final: blocuri f × f conservatoare (cost = maximul,
+  inf dacă oricare celulă e inf; blocat dacă oricare e blocată; timp = maximul × f). Proiecția
+  înapoi pe 20 m se face prin centrele blocurilor, cu Bresenham și timpi interpolați. Blocurile
+  de start și de goal iau costul celulei reale. Dacă start și goal cad în același bloc, căutarea
+  se face direct pe grila fină. Poate închide un pasaj mai îngust decât un bloc.
+- Teste noi: 11. Pe situl sintetic, o furtună care traversează drumul habitat → `clay_delta`:
+  traseul A* obișnuit intră în ea (`route_hit` la minutul 19,9); traseele spațiu-timp, la
+  `downsample` 1 și 5, o ocolesc (`route_hit` = False) și ajung la 64,4, respectiv 67,2 min,
+  față de 58,4 min fără pericol.
 
 ### R2-8: `hazards`
 
@@ -216,6 +309,20 @@ Python 3.14.6, numpy 2.5.4; mediana din mai multe rulări.
 | `hazards.hazard_field`, 500×500, plus furtună regională (toată grila) | 7,7 ms (max 10,3 ms) | < 50 ms pe tick |
 | `hazards.route_hit` / `route_risk`, 241 de puncte, 3 pericole | 0,11 ms | < 50 ms pe tick |
 | `hazards.to_contract` (cu 8 pași de prognoză) | 0,04 ms | < 50 ms pe tick |
+| `routing.astar_spacetime`, habitat → `clay_delta`, furtună, orizont 60 min, `downsample=5` | 0,07 s | < 1,5 s |
+| `routing.astar_spacetime`, același caz, `downsample=1` (grila de 20 m) | 0,41 s | < 1,5 s |
+| `routing.astar_spacetime` fără pericol, `downsample` 5 / 1 | 0,06 s / 0,45 s | < 1,5 s |
+| cele 60 de măști `hazard_field ≥ 0,3` (incluse mai sus) | 0,025 s | — |
+| `alternatives.generate`, situl sintetic, furtună pe traseu, cache cald | 0,16 s | < 2 s |
+| `alternatives.generate`, primul apel pe sit (Dijkstra spre casă + `minutes_grid` intră în cache) | 0,79 s | < 2 s |
+| `benchmark.run_benchmark(100, 42)` | 51-70 s | < 2 min |
+| `benchmark.calibrate_sigma_v(100, 42)` | 2,2 s | fără țintă proprie |
+
+De știut despre timpi: rulat imediat după testul de 100 de scenarii (peste un minut de calcul
+susținut), testul `plan_route < 3 s` a picat o dată, cu 3,29 s. Singur trece (1,5 s), iar într-un
+script, chiar după un benchmark, durează 1,34 s; GC-ul nu schimbă nimic. Cauza probabilă e
+scăderea frecvenței procesorului laptopului sub sarcină. Testele lente nu rulează implicit, deci
+suita normală (și CI-ul) nu e afectată.
 
 Timpii lui `astar` sunt cu regula „fără tăierea colțurilor” și cu convenția D2 (media celor două
 celule). Față de R2-2, traseele spre ținte au rămas sub 65 ms; cazul colț la colț a crescut de
@@ -229,7 +336,9 @@ Pe situl sintetic: 1,34 % din celule sunt interzise. Costul finit e între 1,03 
 
 ## În lucru
 
-- Urmează R2-9 (`routing.astar_spacetime`).
+- Toate funcțiile din `ROL2_algoritmi.md` sunt implementate (P0, P1, P2). Rămân de făcut doar
+  dacă se cer: registrul `core/params.py` propus în `PARAMETRI_REFERINTA.md` și calibrarea
+  zgomotului din `storms.py` pe date MEDA reale.
 - De preluat din `docs/roles/PARAMETRI_REFERINTA.md`, la pașii care le ating (constantele
   din `budget.py` sunt deja preluate la R2-4):
   - registrul `core/params.py` (un singur loc pentru constante, cu nivel A/B/C și sursă);
@@ -250,6 +359,23 @@ Pe situl sintetic: 1,34 % din celule sunt interzise. Costul finit e între 1,03 
   ieftină, înainte de a chema `astar` de la habitat: `cost_to_home[celulă] == inf` din
   `reverse_dijkstra` (calculat o dată per hartă). Pentru traseul de întoarcere nu e nevoie de
   `astar` deloc: `path_home(parent_index, celulă)` durează sub 0,1 ms.
+- **Pentru rolul 3 (motorul live, după R2-11):** conul de predicție e acum relativ la viteză
+  (`hazards.SIGMA_REL = 0,35`). La orizonturi lungi conul acoperă tot traseul, deci chemați
+  `alternatives.generate` doar dacă `route_hit` dă un contact în următoarele 30 de minute
+  (`benchmark.REACT_WINDOW_MIN`); altfel continuați și verificați la tick-ul următor. După un
+  RETURN, benchmark-ul nu mai replanifică; recomandăm la fel în motor.
+  `GET /api/benchmark` → `benchmark.run_benchmark(n, seed)`: 100 de scenarii durează ≈ 1 min,
+  deci rezultatul trebuie pus în cache sau calculat la pornire, nu la fiecare cerere.
+- **Pentru rolul 1:** zgomotul mișcării furtunilor din `storms.py` (viteză ±15 %, direcție
+  1°/min) e o presupunere. Registrul trimite la variabilitatea vântului MEDA [S7]; cu cifre de
+  acolo, `calibrate_sigma_v` dă imediat un `SIGMA_REL` cu sursă.
+- **Pentru rolul 3: `alternatives.generate` e gata.** Semantica lui `path` în fiecare
+  `Alternative`: traseul rămas COMPLET, de la poziția curentă până la habitat (inclusiv opririle
+  rămase); la `wait`, doar `[position]`, ca în `live_messages.json`. Celulele sunt tupluri
+  `(row, col)` (în JSON devin liste). Variantele vin nevalidate: le trimiteți direct la
+  `decision.choose`. `remaining_path` trebuie să înceapă la `position` (altfel ValueError).
+  Un apel durează ≈ 0,16 s pe situl sintetic, cu cache-ul cald; primul apel pe un sit, ≈ 0,8 s.
+  Apelați-l doar la tick-urile în care `hazards.route_hit` pe traseul rămas dă True.
 - **Pentru rolul 3: planner-ul e gata.** `POST /api/route` poate trece de pe mock pe
   `planner.plan_route(site, start, stops, preset, start_time_min, max_duration_min,
   return_to_habitat)`. Întoarce exact forma din `route_response.json`; `route_id` e mereu
@@ -327,7 +453,20 @@ Constante din `budget.py` care au nivel și sursă în registru (scrise și în 
 `M_TOTAL_KG` 196 kg (B [S24][S34], de confirmat), `G_MARS` 3,71 (A), `C_LEVEL` 0,59 J/(kg·m)
 (B [S28]), `O2_PCT_PER_MIN_PER_WATT` 0,000711 (B [S31][S33]), `O2_PCT_PER_MIN_REST` 0,125 (B).
 | `hazards` | `UNCERTAINTY_GROWTH_PER_MIN` | 0,005 | NEFOLOSITĂ din R2-8 (înlocuită de `SIGMA_V`); păstrată doar pentru compatibilitate |
-| `hazards` | `SIGMA_V` | 0,25 m/s | C: incertitudinea vitezei furtunii; semiaxele cresc aditiv cu 15 m/min, ca în exemplul din contract. De calibrat pe variabilitatea vântului MEDA (registru §3.1, [S7]) în R2-11 |
+| `hazards` | `SIGMA_V` | 0,25 m/s | NEFOLOSITĂ din R2-11 (înlocuită de `SIGMA_REL`); păstrată doar pentru compatibilitate |
+| `hazards` | `SIGMA_REL` | 0,35 | C (calibrat pe modelul nostru de zgomot, nu pe MEDA): semiaxele cresc cu 0,35 × viteza × timp; acoperă 95 % din cazuri la toate orizonturile 10-180 min |
+| `storms` | `KIND_WEIGHTS` | vârtej 0,6 / front 0,3 / regională 0,1 | C: ponderi fixe |
+| `storms` | `DUST_DEVIL_SPEED_MS` | 2-6 m/s | C: „câțiva m/s”, cu vântul de fond (registru §3.1) |
+| `storms` | `REGIONAL_SPEED_MS` | 20 m/s | C: limita de sus a vitezelor din registru §3.2 |
+| `storms` | `INTENSITY` | vârtej 0,9 / front 0,7 / regională 0,9 | C (0,7 ca în exemplul din contract) |
+| `storms` | zgomotul mișcării | viteză AR(1): 15 %, corelație 0,9/min; direcție 1°/min | C: fără date MEDA descărcate; de înlocuit cu [S7] |
+| `benchmark` | `REACT_WINDOW_MIN` | 30 min | C: copilotul decide doar pentru contacte prezise în următoarele 30 min |
+| `benchmark` | `MAX_DECISIONS`, `STEP_MIN` | 8 decizii, pași de 5 min | C: limite de simulare |
+| `benchmark` | viteza estimată | deplasarea observată în ultimele 5 min | C: estimatorul cel mai simplu |
+
+Din registru, cu sursă (scrise și în cod): vârtejuri cu diametru 100-135 m (A [S16][S17]),
+front 30 × 5 km (B [S18][S19]) la 10-20 m/s (B [S20]), furtună regională cu rază ≈ 1000 km
+(B [S21]).
 | `hazards` | profilul intensității | `intensity × max(0, 1 − d²)` | C: formă parabolică, maxim în centru, zero pe marginea elipsei; din docstring-ul scheletului |
 | `hazards` | unghiul și centrul celulei | unghi de la est, în sensul acelor de ceasornic pe hartă; centrul celulei la `(row + 0,5) × cell` | C: convenții de coordonate |
 | `hazards` | `FORECAST_STEPS_MIN` | 10, 20, 30, 45, 60, 90, 120, 180 | orizonturile de predicție |
@@ -342,6 +481,15 @@ formula declinației (A, registru §5), `MARS_HOUR_S` 3698,98 s (A, registru §5
 `TT_MINUS_UTC_S` 69,184 s (A, IERS: 32,184 s + 37 secunde intercalate; registrul nu o conține).
 | `stops.solver_params` | `random_seed` 42, `max_deterministic_time` 5,0 | CP-SAT | alegeri de determinism, nu fizică |
 | `stops` | scalarea la întregi | minute × 10, O₂ × 100, valoare × 100 | C: rezoluție 0,1 min, 0,01 % O₂, 0,01 valoare; o limită poate fi depășită cu cel mult o rotunjire pe termen |
+| `routing.astar_spacetime` | `DT_MIN` | 1 min | C: rezoluția în timp a pericolului; o mască pe minut |
+| `routing.astar_spacetime` | `WAIT_COST_FACTOR` | 1,0 | C: un minut de așteptare costă cât un minut de mers pe terenul cel mai bun (cost minim / minutele lui); nici gratuit, nici interzis |
+| `routing.astar_spacetime` | blocarea | doar în intervalul sosirii | C: nu se verifică intervalele traversate în timpul unei mutări (< 1 min pe 20 m) |
+| `routing.astar_spacetime` | `downsample` | blocuri conservatoare, proiecție prin centre | C: proiecția fină nu e reverificată față de măștile la 20 m |
+| `hazards` | `HIT_THRESHOLD` | 0,3 | C: intensitatea de la care un punct e „în pericol” (contact, `crosses_hazard`) |
+| `alternatives` | `BLOCK_THRESHOLD` | 0,1 | C: celulele blocate pentru ocoliri, sub pragul de contact. Marja ține riscul ocolirilor clar sub pragul regulii (0,3) și sub penalizarea întoarcerii pentru știință (0,15 la `safe`) |
+| `alternatives` | `WAIT_OPTIONS_MIN` | 5, 10, …, 90 min | C: din textul pasului |
+| `alternatives` | orizontul ocolirilor | min(180, ieșirea pericolului din dreptunghiul traseului), pas de 10 min | C: dreptunghiul aproximează „zona traseului” |
+| `alternatives` | RETURN și pericolele „doar RETURN” | nu se numără la `crosses_hazard` | C: întoarcerea e chiar răspunsul cerut la furtuna regională |
 | `planner` | `SOL_START_UTC` | 2026-11-14 14:22 UTC | C: începutul fix al ieșirii, ≈ 08:00 ora locală la Jezero (Ls ≈ 22°); apusul la ≈ 633 min. Fix, ca planul să fie determinist |
 | `planner` | `max_duration_min` | termen-limită raportat ca `DAYLIGHT` | C: validatorul nu are o regulă de durată; sosirea după start + durata maximă devine încălcare `DAYLIGHT` (termenul efectiv = minimul dintre apus − marjă și start + durată) |
 | `planner` | `return_to_habitat=False` | validat ca și cum traseul s-ar termina acolo | C: O₂-ul și sosirea se iau la ultimul punct; staționarea la ultima țintă nu intră în buget |

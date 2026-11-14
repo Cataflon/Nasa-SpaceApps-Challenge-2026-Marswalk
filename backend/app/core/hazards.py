@@ -27,13 +27,20 @@ HAZARD_RESPONSES = {
 }
 
 FORECAST_STEPS_MIN = [10, 20, 30, 45, 60, 90, 120, 180]
+# C: intensitatea de la care un punct e „în pericol” (route_hit, crosses_hazard, celule blocate).
+HIT_THRESHOLD = 0.3
 # NEFOLOSITĂ: modelul multiplicativ vechi (+0,5 % din axe pe minut). Păstrată doar pentru că
 # poate fi importată de alții; predicția folosește modelul aditiv cu SIGMA_V.
 UNCERTAINTY_GROWTH_PER_MIN = 0.005
-# C: incertitudinea vitezei furtunii. Semiaxele cresc aditiv cu SIGMA_V × 60 × Δ (eroarea de
-# poziție = eroarea de viteză × timp). 0,25 m/s = +15 m/min, exact ca în exemplul din
-# live_messages.json. De calibrat pe variabilitatea vântului MEDA (registru §3.1, [S7]) în R2-11.
+# NEFOLOSITĂ din R2-11: modelul absolut (semiaxe + SIGMA_V × 60 × Δ, 0,25 m/s = +15 m/min).
+# Un singur SIGMA_V absolut nu servește deodată fronturi de 15 m/s și vârtejuri de 4 m/s.
 SIGMA_V = 0.25
+# Conul de predicție, relativ la viteză: semiaxele cresc aditiv cu SIGMA_REL × |v| × 60 × Δ
+# (eroarea de poziție = eroarea relativă de viteză × viteza × timp). Calibrat cu
+# benchmark.calibrate_sigma_v pe 100 de scenarii (seed 42), acoperire 95 % la toate orizonturile
+# din FORECAST_STEPS_MIN, pe modelul de zgomot din storms.py (nivel C, nu pe date MEDA).
+# Exemplul din live_messages.json (2,5 m/s, +15 m/min) corespunde lui SIGMA_REL = 0,1.
+SIGMA_REL = 0.35
 
 
 @dataclass
@@ -81,15 +88,17 @@ def from_contract(d: dict, cell_size_m: float, t0_min: float = 0.0, shape: tuple
 
 
 def _grown_axes(hazard: Hazard, dt_min):
-    """Semiaxele după dt_min minute (aditiv); merge pe scalari și pe tablouri."""
-    growth = SIGMA_V * 60.0 * np.maximum(0.0, dt_min)
+    """Semiaxele după dt_min minute (aditiv, proporțional cu viteza); scalari sau tablouri."""
+    speed = math.hypot(hazard.velocity_ms[0], hazard.velocity_ms[1])
+    growth = SIGMA_REL * speed * 60.0 * np.maximum(0.0, dt_min)
     return hazard.axes_m[0] + growth, hazard.axes_m[1] + growth
 
 
 def predict(hazard: Hazard, t_min: float) -> Hazard:
     """Poziția și mărimea prezisă la momentul t_min.
 
-    Centrul se mută cu viteza; semiaxele cresc aditiv cu SIGMA_V × 60 × Δ (Δ = t − t0, minim 0).
+    Centrul se mută cu viteza; semiaxele cresc aditiv cu SIGMA_REL × |v| × 60 × Δ (Δ = t − t0,
+    minim 0). Un pericol fix (v = 0) nu are con.
     Hazard-ul întors are t0_min = t_min.
     """
     dt = t_min - hazard.t0_min
@@ -106,6 +115,14 @@ def _intensity(dy, dx, a, b, angle_deg: float, intensity: float):
     u = dx * cos_t + dy * sin_t
     v = -dx * sin_t + dy * cos_t
     return intensity * np.maximum(0.0, 1.0 - (u / a) ** 2 - (v / b) ** 2)
+
+
+def ellipse_intensity(dy, dx, a, b, angle_deg: float, intensity: float):
+    """Intensitatea pentru deplasări (dy, dx) în metri față de centru, fără creșterea incertitudinii.
+
+    Aceeași formulă ca hazard_field și route_hit; folosită de simulare pentru expunerea REALĂ.
+    """
+    return _intensity(dy, dx, a, b, angle_deg, intensity)
 
 
 def to_contract(hazard: Hazard, t_min: float, cell_size_m: float) -> dict:
@@ -176,7 +193,7 @@ def _route_intensity(path, eta_min, hazards: list[Hazard], cell_size_m: float) -
     return out
 
 
-def route_hit(path: list[tuple[int, int]], eta_min: list[float], hazards: list[Hazard], cell_size_m: float, threshold: float = 0.3) -> tuple[bool, float | None]:
+def route_hit(path: list[tuple[int, int]], eta_min: list[float], hazards: list[Hazard], cell_size_m: float, threshold: float = HIT_THRESHOLD) -> tuple[bool, float | None]:
     """Traseul intră în pericol prezis? Întoarce (da/nu, minutul primului contact).
 
     Contact = primul punct în care intensitatea prezisă la eta_min[i] e ≥ threshold.

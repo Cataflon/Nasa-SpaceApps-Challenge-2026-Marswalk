@@ -1,7 +1,7 @@
 """Punctul de intrare pentru planificare, apelat de POST /api/route.
 
-Leagă: costmap.static_cost -> stops (ordinea) -> routing.astar pe segmente -> budget
--> routing.reverse_dijkstra (punct de neîntoarcere) -> validator -> verdict.
+LeagÄƒ: costmap.static_cost -> stops (ordinea) -> routing.astar pe segmente -> budget
+-> routing.reverse_dijkstra (punct de neÃ®ntoarcere) -> validator -> verdict.
 """
 
 import math
@@ -18,23 +18,23 @@ from app.core.stops import HOME, brute_force_stops, plan_stops
 from app.core.types import Alternative, Cell, Limits
 from app.core.validator import violations
 
-# C: începutul ieșirii (t = 0) e fix, ca planul să fie determinist: 2026-11-14 14:22 UTC, adică
-# ≈ 08:00 ora solară locală la Jezero (Ls ≈ 22°). Apusul cade la ≈ 633 min de la start.
+# C: Ã®nceputul ieÈ™irii (t = 0) e fix, ca planul sÄƒ fie determinist: 2026-11-14 14:22 UTC, adicÄƒ
+# â‰ˆ 08:00 ora solarÄƒ localÄƒ la Jezero (Ls â‰ˆ 22Â°). Apusul cade la â‰ˆ 633 min de la start.
 SOL_START_UTC = "2026-11-14T14:22:00Z"
 
-# Limitele validatorului pentru planificare. Panta maximă: A [S26], 20° din conceptul NASA de
-# operațiuni pe Lună; `Limits` (înghețat) are încă 25°. Restul rămân cele din `Limits`.
+# Limitele validatorului pentru planificare. Panta maximÄƒ: A [S26], 20Â° din conceptul NASA de
+# operaÈ›iuni pe LunÄƒ; `Limits` (Ã®ngheÈ›at) are Ã®ncÄƒ 25Â°. Restul rÄƒmÃ¢n cele din `Limits`.
 PLANNER_LIMITS = Limits(max_slope_deg=20.0)
 
-CAUTION_O2_MARGIN_PCT = 10.0  # ROL2: CAUTION dacă O₂ final < rezervă + 10 puncte
-CAUTION_SUNSET_MARGIN_MIN = 60.0  # ROL2: CAUTION dacă întoarcerea e la < 60 min de apus
+CAUTION_O2_MARGIN_PCT = 10.0  # ROL2: CAUTION dacÄƒ Oâ‚‚ final < rezervÄƒ + 10 puncte
+CAUTION_SUNSET_MARGIN_MIN = 60.0  # ROL2: CAUTION dacÄƒ Ã®ntoarcerea e la < 60 min de apus
 PROFILE_POINTS = 50
 
-# Cache per (sit, cheie) -> (referință slabă la sit, valoare), ca în costmap.static_cost.
+# Cache per (sit, cheie) -> (referinÈ›Äƒ slabÄƒ la sit, valoare), ca Ã®n costmap.static_cost.
 _cache: dict[tuple[int, str], tuple[weakref.ref, object]] = {}
 
 
-def _cached(site: Site, key: str, compute):
+def site_cache(site: Site, key: str, compute):
     entry = _cache.get((id(site), key))
     if entry is not None and entry[0]() is site:
         return entry[1]
@@ -49,14 +49,14 @@ def _cached(site: Site, key: str, compute):
     return value
 
 
-def _home_tree(site: Site, preset: str):
-    """(cost_to_home, parent) pe harta de cost a preset-ului; o dată per (sit, preset)."""
-    return _cached(site, f"home:{preset}", lambda: reverse_dijkstra(static_cost(site, preset), site.habitat))
+def home_tree(site: Site, preset: str):
+    """(cost_to_home, parent) pe harta de cost a preset-ului; o datÄƒ per (sit, preset)."""
+    return site_cache(site, f"home:{preset}", lambda: reverse_dijkstra(static_cost(site, preset), site.habitat))
 
 
 def _o2_to_home(site: Site) -> np.ndarray:
-    """O₂-ul necesar până acasă din fiecare celulă; o dată per sit."""
-    return _cached(site, "o2_home", lambda: reverse_dijkstra(o2_cost_grid(site), site.habitat)[0])
+    """Oâ‚‚-ul necesar pÃ¢nÄƒ acasÄƒ din fiecare celulÄƒ; o datÄƒ per sit."""
+    return site_cache(site, "o2_home", lambda: reverse_dijkstra(o2_cost_grid(site), site.habitat)[0])
 
 
 def _segment_budget(site: Site, path: list[Cell]):
@@ -72,25 +72,25 @@ def plan_route(
     max_duration_min: float = 300,
     return_to_habitat: bool = True,
 ) -> dict:
-    """Întoarce un dict cu EXACT forma din shared/contracts/route_response.json.
+    """ÃŽntoarce un dict cu EXACT forma din shared/contracts/route_response.json.
 
-    `stops` sunt id-uri din site.meta["targets"]. Dacă lista are >1 țintă, ordinea o decide
-    stops.plan_stops (sau brute_force_stops ca plan B); ținte pot fi lăsate deoparte dacă nu
-    încap în timp sau O₂. `max_duration_min` e un termen-limită: sosirea după
-    start_time_min + max_duration_min e raportată ca încălcare DAYLIGHT (vezi notele).
+    `stops` sunt id-uri din site.meta["targets"]. DacÄƒ lista are >1 È›intÄƒ, ordinea o decide
+    stops.plan_stops (sau brute_force_stops ca plan B); È›inte pot fi lÄƒsate deoparte dacÄƒ nu
+    Ã®ncap Ã®n timp sau Oâ‚‚. `max_duration_min` e un termen-limitÄƒ: sosirea dupÄƒ
+    start_time_min + max_duration_min e raportatÄƒ ca Ã®ncÄƒlcare DAYLIGHT (vezi notele).
 
-    ValueError: id-uri de ținte necunoscute, sau o țintă în care nu se poate ajunge.
+    ValueError: id-uri de È›inte necunoscute, sau o È›intÄƒ Ã®n care nu se poate ajunge.
     """
     start = (int(start[0]), int(start[1]))
     limits = PLANNER_LIMITS
     targets = {t["id"]: t for t in site.meta["targets"]}
     unknown = sorted(set(stops) - set(targets))
     if unknown:
-        raise ValueError(f"Ținte necunoscute: {unknown}")
-    stops = list(dict.fromkeys(stops))  # fără duplicate, ordinea păstrată
+        raise ValueError(f"Èšinte necunoscute: {unknown}")
+    stops = list(dict.fromkeys(stops))  # fÄƒrÄƒ duplicate, ordinea pÄƒstratÄƒ
 
     cost = static_cost(site, preset)
-    _, parent = _home_tree(site, preset)
+    _, parent = home_tree(site, preset)
     habitat = site.habitat
     cells = {t: (targets[t]["row"], targets[t]["col"]) for t in stops}
 
@@ -107,10 +107,10 @@ def plan_route(
             return to_home(b)[::-1]
         path = astar(cost, a, b)
         if path is None:
-            raise ValueError(f"Nu există traseu de la {a} la {b}.")
+            raise ValueError(f"Nu existÄƒ traseu de la {a} la {b}.")
         return path
 
-    # Termenul-limită efectiv: apusul minus marja, sau start + durata maximă, care vine primul.
+    # Termenul-limitÄƒ efectiv: apusul minus marja, sau start + durata maximÄƒ, care vine primul.
     sunset = start_time_min + sunrise_sunset_min(site.meta["center"]["lat"], site.meta["center"]["lon"], SOL_START_UTC)[1]
     deadline = min(sunset - limits.sunset_margin_min, start_time_min + max_duration_min)
 
@@ -118,7 +118,7 @@ def plan_route(
     if len(stops) >= 2:
         order = _order_stops(site, start, stops, cells, targets, leg, deadline - start_time_min, limits)
 
-    # Lipim segmentele, fără să dublăm punctul de joncțiune.
+    # Lipim segmentele, fÄƒrÄƒ sÄƒ dublÄƒm punctul de joncÈ›iune.
     path = [start]
     stop_index: dict[str, int] = {}
     for t in order:
@@ -129,7 +129,7 @@ def plan_route(
 
     last = len(path) - 1
     dwell = {stop_index[t]: float(targets[t]["dwell_min"]) for t in order if stop_index[t] < last}
-    budget_sunset = deadline + limits.sunset_margin_min  # return_by_min respectă termenul efectiv
+    budget_sunset = deadline + limits.sunset_margin_min  # return_by_min respectÄƒ termenul efectiv
     b = route_budget(path, site.layers["elevation"], site.cell_size_m, start_time_min, budget_sunset,
                      site.layers["radiation"], dwell_min_at=dwell)
 
@@ -177,13 +177,13 @@ def plan_route(
 
 
 def _order_stops(site, start, stops, cells, targets, leg, max_minutes, limits) -> list[str]:
-    """Ordinea opririlor din plan_stops. "habitat" = startul la plecare și habitatul la întoarcere."""
+    """Ordinea opririlor din plan_stops. "habitat" = startul la plecare È™i habitatul la Ã®ntoarcere."""
     travel_min: dict[tuple[str, str], float] = {}
     travel_o2: dict[tuple[str, str], float] = {}
 
     def add(a: str, b: str, path: list[Cell]) -> None:
         for key, p in (((a, b), path), ((b, a), path[::-1])):
-            seg = _segment_budget(site, p)  # timpul și O₂-ul pe sensul real: panta orientată diferă
+            seg = _segment_budget(site, p)  # timpul È™i Oâ‚‚-ul pe sensul real: panta orientatÄƒ diferÄƒ
             travel_min[key], travel_o2[key] = seg.duration_min, 100.0 - seg.o2_end_pct
 
     for t in stops:
@@ -191,7 +191,7 @@ def _order_stops(site, start, stops, cells, targets, leg, max_minutes, limits) -
         for key, p in (((HOME, t), out), ((t, HOME), back)):
             seg = _segment_budget(site, p)
             travel_min[key], travel_o2[key] = seg.duration_min, 100.0 - seg.o2_end_pct
-    for i, a in enumerate(sorted(stops)):  # o singură dată pe pereche neordonată
+    for i, a in enumerate(sorted(stops)):  # o singurÄƒ datÄƒ pe pereche neordonatÄƒ
         for b in sorted(stops)[i + 1:]:
             add(a, b, leg(cells[a], cells[b]))
 
@@ -211,7 +211,7 @@ def _order_stops(site, start, stops, cells, targets, leg, max_minutes, limits) -
 
 
 def _elevation_profile(site: Site, path: list[Cell]) -> list[dict]:
-    """PROFILE_POINTS puncte echidistante pe distanța cumulată (toate, dacă traseul e mai scurt)."""
+    """PROFILE_POINTS puncte echidistante pe distanÈ›a cumulatÄƒ (toate, dacÄƒ traseul e mai scurt)."""
     points = np.asarray(path)
     steps = np.abs(np.diff(points, axis=0))
     step_m = site.cell_size_m * np.where((steps == 1).all(axis=1), math.sqrt(2.0), 1.0)
