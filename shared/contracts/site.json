@@ -20,6 +20,8 @@
     {"id": "ingenuity_first_flight", "name": "Wright Brothers Field (Ingenuity's first flight)", "type": "historical_hardware", "row": 289, "col": 214, "caution_radius_m": 0, "note": "First powered, controlled flight on another planet (19 April 2021). (synthetic map: position is illustrative; real position on the Jezero site)", "source": "synthetic", "status": "synthetic"}
   ],
   "rover_traverse": null,
+  "eva_start_ltst_h": 8.0,
+  "earth_delay_min": { "one_way": 11.0, "round_trip": 27.0, "source": "JPL approximate Keplerian elements (Standish); Earth-Mars distance 1.319 AU on 2026-11-14" },
   "layers": [
     { "id": "elevation", "label": "Elevation", "png": "/static/layers/elevation.png", "unit": "m" },
     { "id": "slope", "label": "Slope", "png": "/static/layers/slope.png", "unit": "deg" },
