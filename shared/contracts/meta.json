@@ -32,5 +32,14 @@
     { "id": "clay_delta", "name": "Clay, delta front", "kind": "clay", "row": 180, "col": 140, "science_value": 10, "dwell_min": 30, "image": null },
     { "id": "carbonate_rim", "name": "Carbonates, delta margin", "kind": "carbonate", "row": 120, "col": 260, "science_value": 7, "dwell_min": 20, "image": null },
     { "id": "olivine_floor", "name": "Olivine, crater floor", "kind": "olivine", "row": 340, "col": 330, "science_value": 4, "dwell_min": 15, "image": null }
-  ]
+  ],
+  "artifacts": [
+    {"id": "three_forks_depot", "name": "Three Forks Sample Depot (10 sample tubes)", "type": "recovery_target", "row": 186, "col": 150, "caution_radius_m": 0, "note": "Ten titanium tubes with rock cores and atmosphere, left by Perseverance for Mars Sample Return. (synthetic map: position is illustrative; real position on the Jezero site)", "source": "synthetic", "status": "synthetic"},
+    {"id": "landing_site", "name": "Octavia E. Butler Landing (Perseverance touchdown)", "type": "landmark", "row": 292, "col": 210, "caution_radius_m": 0, "note": "Where Perseverance touched down on 18 February 2021. (synthetic map: position is illustrative; real position on the Jezero site)", "source": "synthetic", "status": "synthetic"},
+    {"id": "descent_stage", "name": "Mars 2020 Descent Stage (sky crane) crash site", "type": "hazard_debris", "row": 274, "col": 188, "caution_radius_m": 150, "note": "Sharp metal debris and possible hydrazine residue: keep clear. (synthetic map: position is illustrative; real position on the Jezero site)", "source": "synthetic", "status": "synthetic"},
+    {"id": "backshell_parachute", "name": "Backshell and supersonic parachute", "type": "hazard_debris", "row": 228, "col": 205, "caution_radius_m": 100, "note": "Risk of snagging on cables and fabric. (synthetic map: position is illustrative; real position on the Jezero site)", "source": "synthetic", "status": "synthetic"},
+    {"id": "heat_shield", "name": "Mars 2020 heat shield", "type": "historical_hardware", "row": 345, "col": 255, "caution_radius_m": 50, "note": "Carbon-composite heat shield with ablative cork. (synthetic map: position is illustrative; real position on the Jezero site)", "source": "synthetic", "status": "synthetic"},
+    {"id": "ingenuity_final", "name": "Ingenuity Mars Helicopter (final location)", "type": "historical_hardware", "row": 150, "col": 100, "caution_radius_m": 30, "note": "First aircraft to fly on another planet: 72 flights. (synthetic map: position is illustrative; real position on the Jezero site)", "source": "synthetic", "status": "synthetic"}
+  ],
+  "rover_traverse": null
 }

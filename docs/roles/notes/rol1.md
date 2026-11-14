@@ -74,6 +74,41 @@
 - Jezero: numele sitului și al țintelor, `note`, `source` și etichetele straturilor sunt în engleză. Straturile `.npy` sunt neschimbate.
 - `scenario.py`: mesajele `ValueError` (care pot ajunge în `detail` la API) sunt în engleză.
 
+### Hardware NASA și datele roverului Perseverance (14.11)
+- **Sursa:** `M20_waypoints.json`, datele hărții oficiale [Perseverance location map](https://science.nasa.gov/mission/mars-2020-perseverance/location-map/). Conține 708 poziții localizate (solurile 13-2022), dintre care 306 în pătratul nostru, cu altitudinea față de areoid. Se descarcă cu `fetch_stac.py` (sau `--only waypoints`) în `data/raw/jezero/m20_waypoints.json`.
+- **Calibrare verticală pe adevărul de la sol:** DTM-ul era cu +5,8 m peste altitudinile măsurate de rover; după corecție, abaterea medie rămasă e de 5,2 m pe 306 puncte (`provenance.rover_vertical_check`).
+- **Țintele Jezero = locurile unde a lucrat roverul** (mediana pozițiilor din campanie):
+  - `clay_delta`: solurile 500-599, baza frontului deltei;
+  - `olivine_floor`: solurile 200-299, Séítah;
+  - `carbonate_rim`: solurile 800-899, unitatea de margine.
+  - `source` spune solurile.
+- **`artifacts`** (în `meta.json`, contracte și `/api/site`): POI-uri statice, **nu** intră în rutare.
+  - **Verificate din datele roverului:** `three_forks_depot` (solurile 652-686, roverul staționat cât a lăsat tuburile; la ~200 m de `clay_delta`) și `landing_site` (solul 13).
+  - **„to verify”** (aproximative, din textul primit): `descent_stage` (cerc 150 m), `backshell_parachute` (100 m), `heat_shield`, `ingenuity_final`.
+  - Pe situl sintetic, aceleași ID-uri, puse analog (`status: synthetic`, sit **v5**).
+- **`rover_traverse`**: traseul real al roverului în celule (doar pe Jezero; `null` pe situl sintetic).
+- **Modificări în afara zonei (cu acordul oamenilor):**
+  - `shared/contracts/meta.json` și `site.json`: `artifacts` + `rover_traverse`;
+  - `backend/app/api/main.py`: `/api/site` le trimite cu `meta.get`;
+  - test nou `backend/tests/api/test_site_artifacts.py`;
+  - casete 🆕🆕 în `README.md`, `ROL3`, `ROL4` și `shared/contracts/README.md`.
+- `.npy`-urile Jezero se scriu acum atomic (problema de concurență din capitolul 4).
+
+### 5. Terenul și mineralele Jezero (`build_layers.py`, `pipeline/manual_units.py`)
+- **`terrain`** din THEMIS IR de noapte (proxy pentru inerția termică, mozaicul `mc13_syrtis_major_nir`) + rugozitatea HiRISE (panta la 4 m minus panta la 20 m):
+  - 0 rocă = cele mai luminoase 25% sau pantă > 20°;
+  - 2 nisip = cele mai întunecate 25% pe pante < 12°;
+  - 3 bolovani = rugozitate > 12°;
+  - 1 regolit = restul.
+  - Rezultat: rocă 19,7%, regolit 67,1%, nisip 12,5% (concentrat în sud-vest, unde sunt dunele), bolovani 0,7%. Pragurile sunt presupuneri.
+- **`minerals`** (planul B, fără CRISM în STAC) din unități **ancorate pe date reale** (`manual_units.py`):
+  - argile = platoul deltei extras din DTM (> 50 m peste fundul craterului) + 250 m în jurul campaniei roverului la frontul deltei (solurile 400-699);
+  - olivină = 400 m în jurul Séítah (solurile 200-340);
+  - carbonați = 500 m în jurul unității de margine (solurile 750-899).
+  - Fiecare țintă stă pe mineralul ei. Contururile sunt aproximative (`source: assumption`), iar unitățile apar în `meta.layers.minerals.units`.
+- `how-we-calculate.md`: rânduri noi pentru elevație, pantă, `unsafe`, teren, minerale și pozițiile țintelor și artefactelor (în engleză, cu status).
+- Teste: 4 noi + validarea pe Jezero (clase valide, proporții plauzibile, mineralul fiecărei ținte).
+
 ## În lucru
 
 ## Cereri

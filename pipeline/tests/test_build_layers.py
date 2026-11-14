@@ -118,6 +118,98 @@ def test_targets_inside_square():
     assert {t["id"] for t in bl.TARGETS} == {t["id"] for t in CONTRACT["targets"]}
 
 
+# --- datele roverului Perseverance și artefactele ------------------------------------------------
+
+WPS = [{"sol": 13, "lat": 18.44463, "lon": 77.45089, "elev_geoid": -2569.9, "i": 0},
+       {"sol": 14, "lat": 18.44463, "lon": 77.45089, "elev_geoid": -2569.9, "i": 1},  # aceeași celulă
+       {"sol": 652, "lat": 18.4525, "lon": 77.4077, "elev_geoid": -2545.5, "i": 2},
+       {"sol": 686, "lat": 18.4534, "lon": 77.4085, "elev_geoid": -2545.2, "i": 3},
+       {"sol": 1500, "lat": 18.4541, "lon": 77.2557, "elev_geoid": -2400.0, "i": 4}]  # în afara pătratului
+
+
+def test_rover_position_is_median_of_sol_window():
+    lat, lon = bl.rover_position(WPS, (652, 686))
+    assert lat == pytest.approx((18.4525 + 18.4534) / 2) and lon == pytest.approx((77.4077 + 77.4085) / 2)
+    assert bl.rover_position(WPS, (2000, 2100)) is None and bl.rover_position([], (13, 13)) is None
+
+
+def test_rover_traverse_keeps_order_drops_duplicates_and_outside():
+    path = bl.rover_traverse(WPS)
+    assert path[0] == list(bl.latlon_to_cell(18.44463, 77.45089))
+    assert len(path) == 3  # duplicatul și punctul din afara pătratului lipsesc
+
+
+def test_vertical_offset_vs_rover():
+    elev = np.full((bl.N, bl.N), -2560.0, dtype=np.float32)
+    many = [{**w, "i": k, "elev_geoid": -2566.0} for k, w in enumerate(WPS[:4] * 5)]
+    chk = bl.vertical_offset_vs_rover(elev, many)
+    assert chk["offset_m"] == pytest.approx(6.0) and chk["mean_abs_dev_m"] == 0
+    assert bl.vertical_offset_vs_rover(elev, WPS) is None  # prea puține puncte
+
+
+def test_locate_prefers_rover_and_falls_back():
+    depot = next(a for a in bl.ARTIFACTS if a["id"] == "three_forks_depot")
+    lat, lon, src = bl.locate(depot, WPS)
+    assert src.startswith(bl.ROVER_SOURCE) and "sols 652-686" in src
+    lat, lon, src = bl.locate(depot, [])
+    assert (lat, lon, src) == (depot["lat"], depot["lon"], bl.APPROX_SOURCE)
+
+
+def test_artifact_definitions():
+    ids = [a["id"] for a in bl.ARTIFACTS]
+    assert len(ids) == len(set(ids)) and "three_forks_depot" in ids
+    for a in bl.ARTIFACTS:
+        assert a["type"] in {"recovery_target", "landmark", "historical_hardware", "hazard_debris"}, a["id"]
+        assert a["name"].isascii() or "é" in a["name"]  # texte în engleză
+        if a["type"] == "hazard_debris":
+            assert a["caution_radius_m"] > 0, a["id"]
+
+
+def test_synthetic_artifacts_match_contract():
+    import make_synthetic_site as mss
+
+    assert mss.ARTIFACTS == CONTRACT["artifacts"]
+    for a in mss.ARTIFACTS:
+        assert 0 <= a["row"] < bl.N and 0 <= a["col"] < bl.N
+
+
+# --- capitolul 5: terenul (THEMIS) și mineralele (unități ancorate) ------------------------------
+
+
+def test_terrain_from_themis_classes():
+    n = 40
+    slope = np.full((n, n), 5.0, dtype=np.float32)
+    elev = np.zeros((n, n), dtype=np.float32)
+    nir = np.tile(np.linspace(0, 1, n, dtype=np.float32), (n, 1))  # rece (nisip) -> cald (rocă)
+    t = bl.terrain_from_themis(nir, slope, elev)
+    assert t[0, 0] == 2 and t[0, -1] == 0 and t[0, n // 2] == 1
+    slope[10, 10] = 30.0  # pantă mare: rocă (și bolovani, pentru că rugozitatea e mare)
+    t = bl.terrain_from_themis(nir, slope, elev)
+    assert t[10, 10] in (0, 3)
+    assert set(np.unique(bl.terrain_from_themis(None, slope, elev))) <= {0, 1, 3}  # fără THEMIS: fără nisip
+
+
+def test_disk_and_delta_masks():
+    import manual_units as mu
+
+    m = mu.disk_mask([(10, 10)], 3, (30, 30))
+    assert m[10, 13] and not m[10, 14] and m.sum() == 29  # disc de rază 3 pe grilă
+    elev = np.zeros((30, 30), dtype=np.float32)
+    elev[:10, :10] = 100.0  # platou
+    elev[20:, 20:] = 100.0  # alt platou, neconectat
+    d = mu.delta_mask(elev, (2, 2), floor_m=0.0, min_rise_m=50.0, reachable_from=reachable_from)
+    assert d[:10, :10].all() and not d[20:, 20:].any()
+    assert not mu.delta_mask(elev, (15, 15), 0.0, 50.0, reachable_from).any()
+
+
+def test_minerals_from_units_marks_targets():
+    elev = np.zeros((bl.N, bl.N), dtype=np.float32)
+    targets = [{"kind": "olivine", "row": 100, "col": 100}, {"kind": "carbonate", "row": 300, "col": 300}]
+    minerals, units = bl.minerals_from_units(elev, [], (250, 250), targets, log=lambda *_: None)
+    assert minerals[100, 100] == 3 and minerals[300, 300] == 2 and minerals[0, 0] == 0
+    assert {u["id"] for u in units} >= {"delta_deposits", "seitah", "margin_unit"}
+
+
 # --- reproiectarea (rasterio, fără rețea) -------------------------------------------------------
 
 
@@ -204,3 +296,44 @@ def test_jezero_habitat_flat_and_targets_reachable(jezero):
         assert slope[cell] <= meta["max_slope_deg"] and not unsafe[cell], t["id"]
         assert reach[cell], t["id"]
         assert t["image"] is None or t["image"].startswith("/static/layers/stops/")
+
+
+def test_jezero_terrain_and_minerals(jezero):
+    meta, layers = jezero
+    terrain, minerals = layers["terrain"], layers["minerals"]
+    assert set(np.unique(terrain)) <= {0, 1, 2, 3} and set(np.unique(minerals)) <= {0, 1, 2, 3}
+    frac = [float(np.mean(terrain == k)) for k in range(4)]
+    assert frac[1] > 0.3 and 0.01 < frac[2] < 0.5  # regolit dominant, ceva nisip
+    kind_class = {"clay": 1, "carbonate": 2, "olivine": 3}
+    for t in meta["targets"]:
+        assert minerals[t["row"], t["col"]] == kind_class[t["kind"]], t["id"]  # ținta stă pe mineralul ei
+    assert 0.05 < float(np.mean(minerals == 1)) < 0.6  # delta (argile) e o parte importantă a sitului
+    assert meta["layers"]["minerals"]["units"] and meta["layers"]["terrain"]["instrument"]
+
+
+def test_jezero_matches_rover_ground_truth(jezero):
+    """Altitudinea DTM-ului se potrivește cu cea măsurată de Perseverance (dacă au fost date)."""
+    meta, _ = jezero
+    chk = meta["provenance"].get("rover_vertical_check")
+    if not chk:
+        pytest.skip("situl a fost construit fără waypoint-urile roverului")
+    assert chk["n_points"] >= 100
+    assert abs(chk["offset_m"]) < 0.5  # după calibrare
+    assert chk["mean_abs_dev_m"] < 10
+
+
+def test_jezero_artifacts_and_traverse(jezero):
+    meta, layers = jezero
+    arts = {a["id"]: a for a in meta["artifacts"]}
+    assert "three_forks_depot" in arts and "landing_site" in arts
+    for a in arts.values():
+        assert 0 <= a["row"] < bl.N and 0 <= a["col"] < bl.N
+        assert a["status"] in {"verified", "to verify"} and a["source"]
+    if meta.get("rover_traverse"):
+        assert arts["three_forks_depot"]["status"] == "verified"
+        # depozitul e la ~300 m de ținta de argilă (ambele la baza frontului deltei)
+        clay = next(t for t in meta["targets"] if t["id"] == "clay_delta")
+        d = math.hypot(arts["three_forks_depot"]["row"] - clay["row"], arts["three_forks_depot"]["col"] - clay["col"])
+        assert d * meta["cell_size_m"] < 500
+        path = meta["rover_traverse"]["path"]
+        assert len(path) > 50 and all(0 <= r < bl.N and 0 <= c < bl.N for r, c in path)

@@ -45,12 +45,14 @@ Challenge-ul se numește chiar **„Interplanetary Survival Guide”**. Adăugă
 | 5 | **Un singur număr de titlu din benchmark**: „The copilot brought the astronaut home safely in X% of storms; the fixed plan, in Y%” | Pe primul slide și în video | Pe slide și în video | `headline` în `run_benchmark` | `headline` în `GET /api/benchmark` | Afișat în UI |
 | 6 | **Ecranul „How we calculate”**, cu fiecare constantă marcată **source** sau **assumption** | Onestitatea despre limite crește încrederea (Validity) | `docs/how-we-calculate.md` complet, mutat la **P1** | Toate constantele la nivel de modul, cu comentariul `sursă:` sau `presupunere` | — | Badge-uri pe coloana „Status” |
 | 7 | **Un slide despre Pământ (Influence):** același motor, cu un model de teren din munții noștri, pentru salvamont | Doar pe slide, **nu în cod** | `docs/slides.md` | — | — | — |
+| 8 | 🆕 **Hardware NASA real pe hartă** ([harta oficială Perseverance](https://science.nasa.gov/mission/mars-2020-perseverance/location-map/)): depozitul de probe **Three Forks** (10 tuburi de titan, țintă de recuperare pentru Mars Sample Return), locul de aterizare, sky crane-ul, parașuta și scutul termic, Ingenuity, plus **traseul real al roverului** | Legătură directă cu misiunea reală NASA; demo: „mergi să recuperezi tuburile de la Three Forks”; detaliu de siguranță: cercuri de precauție în jurul resturilor | **Gata:** `artifacts` și `rover_traverse` în `meta.json`, poziții din waypoint-urile oficiale ale roverului | — (POI statice, **nu** intră în rutare) | **Gata:** `/api/site` le trimite | Strat activabil „NASA hardware”, iconițe per tip, cerc de precauție, popup, traseul roverului |
 
 **Câmpuri noi în contracte, toate opționale** (se adaugă cu acordul echipei; până atunci frontendul are fallback):
 - `site.json`: `eva_start_ltst_h` (ex. `9.0`), `earth_delay_min` (`{"one_way": 14, "round_trip": 28, "source": "…"}`), iar în `layers[]` etichetele `mission`, `instrument`, `data_type`, `source` (deja trimise de `/api/site`).
 - `GET /api/point`: `sources` (`{"slope": {"mission": "MRO", "instrument": "HiRISE", "data_type": "topographic"}, …}`).
 - `live_messages.json`, mesajul `decision`: `compute_ms` (cât a durat decizia; se măsoară doar pentru afișare, nu intră în logică).
 - `GET /api/benchmark`: `headline` (`{"copilot_safe_pct": X, "plan_safe_pct": Y, "n_scenarios": 100}`).
+- 🆕 `site.json` / `meta.json`: `artifacts` (listă de POI: `id`, `name`, `type` = `recovery_target | landmark | historical_hardware | hazard_debris`, `row`, `col`, `lat`, `lon`, `caution_radius_m`, `note`, `source`, `status` = `verified | to verify | synthetic`) și `rover_traverse` (`{"name", "source", "sols", "path": [[row, col], …]}` sau `null` pe situl sintetic). **Deja în contracte și în `/api/site`.**
 
 ---
 

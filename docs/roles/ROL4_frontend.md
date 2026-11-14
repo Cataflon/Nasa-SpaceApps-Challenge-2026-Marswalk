@@ -8,6 +8,7 @@
 > 4. **Survival Guide printabil, mutat din bonus în P1:** o pagină per ieșire.
 > 5. **Numărul de titlu din benchmark** (P1): „acasă în siguranță: copilot X% · plan fix Y%”.
 > 6. **„How we calculate”** (P1): badge-uri pe coloana „Status” (`source`, `assumption`, `to verify`).
+> 7. 🆕🆕 **Hardware NASA real pe hartă (adăugat după, P1, ~1 h):** strat activabil „NASA hardware” din `site.artifacts` (depozitul de probe Three Forks, locul de aterizare, sky crane-ul, parașuta, scutul termic, Ingenuity), cu iconițe per `type`, cerc de precauție (`caution_radius_m`), popup și **traseul real al roverului Perseverance** din `site.rover_traverse`. Datele sunt **deja** în `/api/site` și în mock-ul `site.json`. Detalii la sarcina 3, marcate 🆕🆕.
 
 Ești unul dintre 4 agenți care implementează **simultan** Marswalk Copilot în același repo. Ceilalți trei lucrează la date (`pipeline/`, `docs/`), algoritmi (`backend/app/core/`) și backend + LLM (`backend/app/api/`, `live/`, `llm/`). Tu ai tot `frontend/`: ce vede juriul la demo.
 
@@ -45,6 +46,12 @@ Dependențele sunt doar `react` și `vite`. Graficele (profilul de altitudine, b
    - **la hover**, valorile din `GET /api/point`, cu debounce și fallback silențios
    - 🆕 **la click pe orice punct**, un popup cu toate straturile: valoarea, unitatea **și sursa**, de forma „pantă 12° · HiRISE · MRO”. Sursa vine din `sources` în `/api/point` sau, dacă lipsește, din etichetele `layers[]` din `/api/site` (`mission`, `instrument`, `data_type`, `analog_of`). Pe situl sintetic apare „sintetic (analog: HiRISE)”. Face vizibile cele „5 misiuni NASA”.
    - habitatul, țintele cu imaginea de la oprire (`targets[].image`, poate fi `null`)
+   - 🆕🆕 **Stratul „NASA hardware” (activabil, pornit implicit la demo)** din `site.artifacts`. Sursa: [harta oficială a roverului Perseverance](https://science.nasa.gov/mission/mars-2020-perseverance/location-map/). Câmpuri: `id`, `name`, `type`, `row`, `col`, `caution_radius_m`, `note`, `source`, `status`. Fallback: `[]` dacă lipsește.
+     - **Iconiță diferită per `type`:** `recovery_target` (depozitul Three Forks, evidențiat: „10 sample tubes”), `landmark` (locul de aterizare Octavia E. Butler), `historical_hardware` (Ingenuity, scutul termic), `hazard_debris` (sky crane, parașuta + backshell).
+     - **Cerc de precauție** cu raza `caution_radius_m / cell_size_m` celule în jurul `hazard_debris` (roșu-portocaliu, semitransparent). E doar vizual: **nu** intră în rutare.
+     - **Popup la click/hover:** `name`, `note` și o etichetă mică cu `status` (`verified` = poziție din datele roverului, `to verify`, `synthetic`).
+     - **Traseul real al roverului** din `site.rover_traverse.path` (`[[row, col], …]`, doar pe situl Jezero; `null` pe cel sintetic): o linie subțire, punctată, cu legenda „Perseverance traverse (sols …)”.
+     - **La demo:** ținta `clay_delta` e la ~200 m de depozitul Three Forks. Replica: „Go recover the titanium sample tubes Perseverance left at Three Forks!”.
 4. **Ieșirea live:**
    - astronautul **interpolat lin** între tick-uri, cu urma lăsată în spate
    - furtuna curentă și **conul de predicție** (elipsele din `forecast`, tot mai transparente pe măsură ce orizontul crește)

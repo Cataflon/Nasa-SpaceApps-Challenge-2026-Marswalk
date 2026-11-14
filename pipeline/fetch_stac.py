@@ -9,6 +9,9 @@ Ce aducem (colecțiile din https://stac.astrogeology.usgs.gov/geostac/):
   - mro_hirise_socet_dtms          DTM HiRISE 1 m + FOM (calitate) + ortoimagine   topographic, optical
   - mro_ctx_controlled_usgs_dtms   DTM CTX ~20 m + ortoimagine (acoperă tot pătratul) topographic, optical
   - mo_themis_controlled_mosaics   THEMIS IR zi / noapte, 100 m                     thermal
+  - M20_waypoints.json (NASA/JPL, harta https://science.nasa.gov/mission/mars-2020-perseverance/location-map/)
+    pozițiile localizate ale roverului Perseverance, cu altitudinea față de areoid: traseul real,
+    depozitul Three Forks, calibrarea verticală a DTM-ului.                     rover localization
 CRISM (minerale) NU e în STAC-ul USGS: vine din PDS / ODE sau din harta geologică (plan B).
 Datele meteo (MEDA, REMS) și radiația (RAD) nu sunt produse orbitale: sunt în scenario.py.
 
@@ -44,6 +47,11 @@ KM_PER_DEG_LAT = 2 * math.pi * MARS_RADIUS_M / 360 / 1000  # ≈ 59,27 km
 
 GRID_CELL_M = 20.0
 GRID_N = 500
+
+# Pozițiile roverului Perseverance (datele hărții oficiale de localizare). Fiecare punct are
+# sol, lat, lon (planetocentric, est) și elev_geoid (altitudinea față de areoid, în m).
+WAYPOINTS_URL = "https://mars.nasa.gov/mmgis-maps/M20/Layers/json/M20_waypoints.json"
+WAYPOINTS_FILE = "m20_waypoints.json"
 
 # Ce aducem din fiecare colecție și cum îl etichetăm.
 COLLECTIONS = {
@@ -291,6 +299,28 @@ def fetch_all(out: Path, hirise_step_m: float = 4.0, dry_run: bool = False, kind
     return products
 
 
+def fetch_waypoints(out: Path, url: str = WAYPOINTS_URL) -> Path:
+    """Descarcă pozițiile roverului Perseverance (GeoJSON, ~600 KB) în `out/WAYPOINTS_FILE`.
+
+    Sursa e fișierul de date din spatele hărții oficiale NASA de localizare a roverului.
+    User-Agent generic: nu trimitem nimic despre echipă sau utilizator.
+    """
+    import urllib.request
+
+    req = urllib.request.Request(url, headers={"User-Agent": "marswalk-pipeline/1.0"})
+    with urllib.request.urlopen(req, timeout=60) as resp:
+        text = resp.read().decode("utf-8")
+    data = json.loads(text)  # validăm înainte să scriem
+    if data.get("type") != "FeatureCollection" or not data.get("features"):
+        raise ValueError(f"Răspuns neașteptat de la {url}")
+    out.mkdir(parents=True, exist_ok=True)
+    path = out / WAYPOINTS_FILE
+    atomic_write_text(path, text)
+    sols = [f["properties"]["sol"] for f in data["features"]]
+    print(f"\n== waypoints Perseverance: {len(sols)} puncte, solurile {min(sols)}-{max(sols)} -> {path}")
+    return path
+
+
 def write_manifest(out: Path, products: list[Product], hirise_step_m: float) -> Path:
     """Scrie manifest.json. Produsele de alte tipuri decât cele aduse acum (rulare cu --only)
     se păstrează din manifestul vechi; ordinea e deterministă (tip, item, asset)."""
@@ -333,7 +363,7 @@ def main() -> None:
     p.add_argument("--list-collections", action="store_true")
     p.add_argument("--collection", help="doar caută item-urile dintr-o colecție")
     p.add_argument("--dry-run", action="store_true", help="caută și afișează, fără să descarce")
-    p.add_argument("--only", nargs="*", choices=list(COLLECTIONS), help="doar anumite tipuri de produse")
+    p.add_argument("--only", nargs="*", choices=[*COLLECTIONS, "waypoints"], help="doar anumite tipuri de produse")
     p.add_argument("--hirise-step", type=float, default=4.0, help="rezoluția de citire HiRISE în m (1 = nativ)")
     p.add_argument("--out", type=Path, default=DEFAULT_OUT)
     args = p.parse_args()
@@ -346,9 +376,13 @@ def main() -> None:
         for it in search(args.collection):
             print(it.id, [round(v, 3) for v in it.bbox], list(it.assets))
     else:
-        products = fetch_all(args.out, args.hirise_step, args.dry_run, args.only)
-        if not args.dry_run:
-            print("\nmanifest:", write_manifest(args.out, products, args.hirise_step))
+        rasters = [k for k in (args.only or COLLECTIONS) if k in COLLECTIONS]
+        if rasters:
+            products = fetch_all(args.out, args.hirise_step, args.dry_run, rasters)
+            if not args.dry_run:
+                print("\nmanifest:", write_manifest(args.out, products, args.hirise_step))
+        if not args.dry_run and (not args.only or "waypoints" in args.only):
+            fetch_waypoints(args.out)
 
 
 if __name__ == "__main__":

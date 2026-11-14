@@ -24,6 +24,7 @@ Rulare (mediul .venv-pipeline, după fetch_stac.py):
 import argparse
 import json
 import math
+import os
 import sys
 import warnings
 from pathlib import Path
@@ -47,26 +48,54 @@ UNSAFE_SLOPE_DEG = 35.0  # ROL1: „unde nu există FOM, din pantă > 35°”
 FEATHER_M = 100.0  # lățimea tranziției HiRISE -> CTX (presupunere)
 DOSE_RATE_USV_H = 26.7  # RAD, doză echivalentă (Hassler et al. 2014); = scenario.DOSE_RATE_USV_H
 
-# Locul de aterizare Perseverance (Octavia E. Butler Landing). NASA/JPL. de verificat
-LANDING_LATLON = (18.4447, 77.4508)
+# Locul de aterizare Perseverance (Octavia E. Butler Landing): primul punct din waypoint-urile
+# oficiale ale roverului (sol 13, fără deplasare). NASA/JPL, M20_waypoints.json
+LANDING_LATLON = (18.44463, 77.45089)
 HABITAT_SEARCH_CELLS = 15  # căutăm terenul cel mai plat pe o rază de 300 m
 TARGET_SNAP_CELLS = 25  # o țintă se poate muta cel mult 500 m până la o celulă accesibilă
 
-# Ținte reale (coordonate planetocentrice, longitudine est). Pozițiile sunt aproximative, după
-# traversa Perseverance și harta geologică USGS SIM 3464. de verificat pe Mars Trek
+# Ținte reale (coordonate planetocentrice, longitudine est). Poziția = mediana pozițiilor roverului
+# Perseverance din campania respectivă (`rover_sols`, din M20_waypoints.json), adică locul unde a
+# lucrat efectiv; `lat`/`lon` sunt fallback-ul dacă fișierul de waypoint-uri lipsește.
 # `name` și `note` apar în UI și pe Survival Guide, deci sunt în engleză (regula echipei).
 TARGETS = [
-    {"id": "clay_delta", "name": "Clay, delta front (Hawksbill Gap / Three Forks area)", "kind": "clay",
-     "lat": 18.453, "lon": 77.402, "science_value": 10, "dwell_min": 30, "image": None,
-     "note": "Clay-bearing mudstone at the base of the delta front; sampled by Perseverance during the delta campaign"},
+    {"id": "clay_delta", "name": "Clay, delta front (Hawksbill Gap)", "kind": "clay",
+     "lat": 18.4514, "lon": 77.4049, "rover_sols": (500, 599), "science_value": 10, "dwell_min": 30, "image": None,
+     "note": "Clay-bearing mudstone at the base of the delta front, studied by Perseverance during the delta campaign"},
     {"id": "carbonate_rim", "name": "Carbonates, crater margin unit", "kind": "carbonate",
-     "lat": 18.505, "lon": 77.378, "science_value": 7, "dwell_min": 20, "image": None,
-     "note": "Carbonates detected by CRISM in the crater margin unit"},
+     "lat": 18.4826, "lon": 77.3648, "rover_sols": (800, 899), "science_value": 7, "dwell_min": 20, "image": None,
+     "note": "Carbonate-bearing margin unit along the inner crater rim, explored by Perseverance"},
     {"id": "olivine_floor", "name": "Olivine, Séítah (crater floor)", "kind": "olivine",
-     "lat": 18.432, "lon": 77.437, "science_value": 4, "dwell_min": 15, "image": None,
+     "lat": 18.4335, "lon": 77.4422, "rover_sols": (200, 299), "science_value": 4, "dwell_min": 15, "image": None,
      "note": "Olivine-rich cumulate (Séítah formation), sampled by Perseverance"},
 ]
-TARGET_SOURCE = "to verify (Perseverance traverse, USGS SIM 3464)"
+
+# Hardware NASA și repere reale din pătrat: puncte de interes statice (POI), NU intră în rutare.
+# `type`: recovery_target / landmark / historical_hardware / hazard_debris. `caution_radius_m` e
+# doar pentru afișare (cerc de precauție pe hartă). `rover_sols`: poziția vine din waypoint-urile
+# roverului (verificat); altfel `lat`/`lon` sunt aproximative (status "to verify").
+ARTIFACTS = [
+    {"id": "three_forks_depot", "name": "Three Forks Sample Depot (10 sample tubes)", "type": "recovery_target",
+     "lat": 18.4530, "lon": 77.4084, "rover_sols": (652, 686), "caution_radius_m": 0,
+     "note": "Ten titanium tubes with rock cores and atmosphere, left on the surface by Perseverance (Dec 2022 - Jan 2023) for Mars Sample Return."},
+    {"id": "landing_site", "name": "Octavia E. Butler Landing (Perseverance touchdown)", "type": "landmark",
+     "lat": 18.44463, "lon": 77.45089, "rover_sols": (13, 13), "caution_radius_m": 0,
+     "note": "Where Perseverance touched down on 18 February 2021."},
+    {"id": "descent_stage", "name": "Mars 2020 Descent Stage (sky crane) crash site", "type": "hazard_debris",
+     "lat": 18.4510, "lon": 77.4460, "caution_radius_m": 150,
+     "note": "Sharp metal debris and possible hydrazine residue: keep clear."},
+    {"id": "backshell_parachute", "name": "Backshell and supersonic parachute", "type": "hazard_debris",
+     "lat": 18.4700, "lon": 77.4500, "caution_radius_m": 100,
+     "note": "Backshell and parachute on the surface: risk of snagging on cables and fabric."},
+    {"id": "heat_shield", "name": "Mars 2020 heat shield", "type": "historical_hardware",
+     "lat": 18.4267, "lon": 77.4697, "caution_radius_m": 50,
+     "note": "Carbon-composite heat shield with ablative cork, ~1.5 km southeast of the landing site."},
+    {"id": "ingenuity_final", "name": "Ingenuity Mars Helicopter (final location)", "type": "historical_hardware",
+     "lat": 18.4850, "lon": 77.3820, "caution_radius_m": 30,
+     "note": "First aircraft to fly on another planet: 72 flights, last flight on 18 January 2024."},
+]
+ROVER_SOURCE = "NASA/JPL Perseverance localization waypoints (M20_waypoints.json)"
+APPROX_SOURCE = "approximate, to verify on the NASA location map"
 
 
 # ---------------------------------------------------------------------------------------------
@@ -210,6 +239,101 @@ def snap_to_reachable(reach: np.ndarray, cell: tuple[int, int], radius: int) -> 
     return cand[0][1], cand[0][2]
 
 
+def rover_position(waypoints: list[dict], sols: tuple[int, int] | None) -> tuple[float, float] | None:
+    """Mediana pozițiilor roverului în intervalul de soluri (inclusiv), sau None."""
+    if not sols or not waypoints:
+        return None
+    pts = [w for w in waypoints if sols[0] <= w["sol"] <= sols[1]]
+    if not pts:
+        return None
+    return float(np.median([w["lat"] for w in pts])), float(np.median([w["lon"] for w in pts]))
+
+
+def rover_traverse(waypoints: list[dict], n: int = N) -> list[list[int]]:
+    """Traseul roverului în celule, în ordinea solurilor, doar în pătrat, fără celule repetate consecutiv."""
+    path: list[list[int]] = []
+    for w in waypoints:
+        r, c = latlon_to_cell(w["lat"], w["lon"])
+        if 0 <= r < n and 0 <= c < n and (not path or path[-1] != [r, c]):
+            path.append([r, c])
+    return path
+
+
+def vertical_offset_vs_rover(elevation: np.ndarray, waypoints: list[dict]) -> dict | None:
+    """Decalajul DTM − altitudinea măsurată de rover (față de areoid), pe punctele din pătrat."""
+    d = []
+    for w in waypoints:
+        r, c = latlon_to_cell(w["lat"], w["lon"])
+        if 0 <= r < elevation.shape[0] and 0 <= c < elevation.shape[1] and w.get("elev_geoid") is not None:
+            d.append(float(elevation[r, c]) - float(w["elev_geoid"]))
+    if len(d) < 10:
+        return None
+    d = np.array(d)
+    med = float(np.median(d))
+    return {"n_points": int(d.size), "offset_m": round(med, 2),
+            "mean_abs_dev_m": round(float(np.mean(np.abs(d - med))), 2),
+            "p95_abs_dev_m": round(float(np.percentile(np.abs(d - med), 95)), 2)}
+
+
+# Teren din THEMIS IR de noapte (proxy pentru inerția termică: roca rămâne caldă noaptea și apare
+# luminoasă, nisipul fin se răcește repede și apare întunecat) + rugozitatea din DTM-ul HiRISE.
+# Pragurile sunt presupuneri (percentile în sit), declarate în meta.json.
+THEMIS_SAND_MAX = 0.25  # IR noapte normalizat sub acest prag + pantă mică -> nisip
+THEMIS_ROCK_MIN = 0.75  # peste acest prag -> rocă la vedere
+ROCK_SLOPE_DEG = 20.0  # pe pante mari, roca e la vedere indiferent de THEMIS
+SAND_MAX_SLOPE_DEG = 12.0
+BOULDER_ROUGHNESS_DEG = 12.0  # panta maximă la 4 m minus panta la 20 m: relief mărunt (bolovani)
+
+
+def normalize_percentiles(a: np.ndarray, lo: float = 2, hi: float = 98) -> np.ndarray:
+    v = a[np.isfinite(a)]
+    if v.size == 0:
+        return np.full(a.shape, 0.5, dtype=np.float32)
+    p0, p1 = np.percentile(v, [lo, hi])
+    return np.clip((np.nan_to_num(a, nan=float(np.median(v))) - p0) / max(p1 - p0, 1e-9), 0, 1).astype(np.float32)
+
+
+def terrain_from_themis(nir: np.ndarray | None, slope: np.ndarray, elevation: np.ndarray) -> np.ndarray:
+    """0 rocă, 1 regolit, 2 nisip, 3 bolovani. Fără THEMIS: doar din pantă și rugozitate."""
+    roughness = slope - slope_deg(elevation, CELL_M)
+    terrain = np.ones(slope.shape, dtype=np.uint8)  # regolit
+    if nir is not None:
+        n = normalize_percentiles(nir)
+        terrain[(n < THEMIS_SAND_MAX) & (slope < SAND_MAX_SLOPE_DEG)] = 2
+        terrain[n > THEMIS_ROCK_MIN] = 0
+    terrain[slope > ROCK_SLOPE_DEG] = 0
+    terrain[roughness > BOULDER_ROUGHNESS_DEG] = 3
+    return terrain
+
+
+def minerals_from_units(elevation: np.ndarray, waypoints: list[dict], habitat: tuple[int, int],
+                        targets: list[dict], log=print) -> tuple[np.ndarray, list[dict]]:
+    """Stratul `minerals` din unitățile din manual_units.py; țintele primesc clasa lor (5×5)."""
+    import manual_units as mu
+
+    minerals = np.zeros(elevation.shape, dtype=np.uint8)
+    r0, c0 = habitat
+    floor = float(np.median(elevation[max(0, r0 - 25) : r0 + 26, max(0, c0 - 25) : c0 + 26]))
+    used = []
+    for u in mu.UNITS:
+        if u["method"] == "dem_delta":
+            mask = mu.delta_mask(elevation, latlon_to_cell(*u["seed_latlon"]), floor, u["min_rise_m"], reachable_from)
+        else:
+            pts = [latlon_to_cell(w["lat"], w["lon"]) for w in waypoints if u["rover_sols"][0] <= w["sol"] <= u["rover_sols"][1]]
+            pts = [(r, c) for r, c in pts if 0 <= r < N and 0 <= c < N]
+            mask = mu.disk_mask(pts, u["buffer_m"] / CELL_M, elevation.shape) if pts else np.zeros(elevation.shape, bool)
+        minerals[mask] = u["class"]
+        used.append({"id": u["id"], "class": u["class"], "name": u["name"], "source": u["source"],
+                     "cells_pct": round(float(mask.mean() * 100), 2)})
+        log(f"Unitate {u['id']:<22} clasa {u['class']}: {mask.mean():.1%} din sit")
+    kind_class = {"clay": 1, "carbonate": 2, "olivine": 3}
+    for t in targets:
+        cls = kind_class.get(t["kind"])
+        if cls:
+            minerals[max(0, t["row"] - 2) : t["row"] + 3, max(0, t["col"] - 2) : t["col"] + 3] = cls
+    return minerals, used
+
+
 def provisional_terrain(slope: np.ndarray) -> np.ndarray:
     """Teren provizoriu din pantă (capitolul 5 îl înlocuiește cu THEMIS / harta geologică)."""
     terrain = np.ones(slope.shape, dtype=np.uint8)  # regolit
@@ -335,7 +459,46 @@ def build_ortho(manifest: dict, raw: Path) -> np.ndarray:
 # ---------------------------------------------------------------------------------------------
 
 
-def place_sites(slope: np.ndarray, unsafe: np.ndarray, log=print) -> tuple[tuple[int, int], list[dict]]:
+def load_waypoints(raw: Path = RAW) -> list[dict]:
+    """Pozițiile roverului Perseverance (sol, lat, lon, elev_geoid), ordonate după sol; [] dacă lipsesc."""
+    path = raw / fs.WAYPOINTS_FILE
+    if not path.exists():
+        return []
+    feats = json.loads(path.read_text(encoding="utf-8"))["features"]
+    pts = [{"sol": int(f["properties"]["sol"]), "lat": float(f["properties"]["lat"]), "lon": float(f["properties"]["lon"]),
+            "elev_geoid": f["properties"].get("elev_geoid"), "i": i} for i, f in enumerate(feats)]
+    return sorted(pts, key=lambda w: (w["sol"], w["i"]))
+
+
+def locate(item: dict, waypoints: list[dict]) -> tuple[float, float, str]:
+    """(lat, lon, sursa): din pozițiile roverului dacă `rover_sols` există și avem date, altfel fallback."""
+    pos = rover_position(waypoints, item.get("rover_sols"))
+    if pos:
+        a, b = item["rover_sols"]
+        return pos[0], pos[1], f"{ROVER_SOURCE}, sols {a}-{b}" if a != b else f"{ROVER_SOURCE}, sol {a}"
+    return item["lat"], item["lon"], APPROX_SOURCE
+
+
+def place_artifacts(waypoints: list[dict], log=print) -> list[dict]:
+    """Hardware-ul NASA din pătrat, ca POI (row/col + lat/lon + sursă). Cele din afara pătratului se sar."""
+    out = []
+    for a in ARTIFACTS:
+        lat, lon, source = locate(a, waypoints)
+        r, c = latlon_to_cell(lat, lon)
+        if not (0 <= r < N and 0 <= c < N):
+            log(f"Artefact {a['id']}: în afara pătratului, sărit")
+            continue
+        out.append({"id": a["id"], "name": a["name"], "type": a["type"], "row": r, "col": c,
+                    "lat": round(lat, 5), "lon": round(lon, 5), "caution_radius_m": a["caution_radius_m"],
+                    "note": a["note"], "source": source,
+                    "status": "verified" if source.startswith(ROVER_SOURCE) else "to verify"})
+        log(f"Artefact {a['id']:<20} ({r}, {c}) {out[-1]['status']}")
+    return out
+
+
+def place_sites(slope: np.ndarray, unsafe: np.ndarray, waypoints: list[dict] | None = None,
+                log=print) -> tuple[tuple[int, int], list[dict]]:
+    waypoints = waypoints or []
     habitat = flattest_near(slope, latlon_to_cell(*LANDING_LATLON), HABITAT_SEARCH_CELLS)
     walk = (slope <= MAX_SLOPE_DEG) & ~unsafe
     reach = reachable_from(walk, habitat)
@@ -343,9 +506,10 @@ def place_sites(slope: np.ndarray, unsafe: np.ndarray, log=print) -> tuple[tuple
 
     targets = []
     for t in TARGETS:
-        want = latlon_to_cell(t["lat"], t["lon"])
+        t_lat, t_lon, source = locate(t, waypoints)
+        want = latlon_to_cell(t_lat, t_lon)
         if not (0 <= want[0] < N and 0 <= want[1] < N):
-            raise SystemExit(f"Ținta {t['id']} ({t['lat']}, {t['lon']}) e în afara pătratului de 10×10 km.")
+            raise SystemExit(f"Ținta {t['id']} ({t_lat}, {t_lon}) e în afara pătratului de 10×10 km.")
         got = snap_to_reachable(reach, want, TARGET_SNAP_CELLS)
         if got is None:
             raise SystemExit(f"Ținta {t['id']}: nicio celulă accesibilă pe o rază de {TARGET_SNAP_CELLS * CELL_M:.0f} m.")
@@ -355,23 +519,33 @@ def place_sites(slope: np.ndarray, unsafe: np.ndarray, log=print) -> tuple[tuple
         targets.append({"id": t["id"], "name": t["name"], "kind": t["kind"], "row": int(got[0]), "col": int(got[1]),
                         "science_value": t["science_value"], "dwell_min": t["dwell_min"], "image": t["image"],
                         "lat": round(lat, 5), "lon": round(lon, 5), "snapped_m": round(moved),
-                        "note": t["note"], "source": TARGET_SOURCE})
+                        "note": t["note"], "source": source})
     return habitat, targets
 
 
-def layer_labels(manifest: dict, elev_info: dict) -> dict:
+def layer_labels(manifest: dict, elev_info: dict, themis: bool = False, units: list[dict] | None = None) -> dict:
     """Etichetele de proveniență pentru fiecare strat (misiune, instrument, produse)."""
     dtm_ids = elev_info["hirise_ids"] + elev_info["ctx_ids"]
     topo = {"data_type": "topographic", "mission": "MRO", "instrument": "HiRISE + CTX", "source": "nasa",
             "product_id": ", ".join(dtm_ids)}
+    themis_ids = ", ".join(p["item_id"] for p in manifest["products"] if p["kind"] == "themis_ir")
+    terrain = ({"data_type": "thermal", "mission": "Mars Odyssey + MRO", "instrument": "THEMIS night IR + HiRISE roughness",
+                "source": "nasa", "product_id": themis_ids,
+                "derived": "classes from thermal-inertia proxy and DTM roughness; thresholds are assumptions"}
+               if themis else
+               {"data_type": "thermal", "mission": "MRO", "instrument": "HiRISE slope and roughness (no THEMIS)",
+                "source": "assumption"})
+    minerals = {"data_type": "spectral", "mission": "Mars 2020 Perseverance + MRO",
+                "instrument": "rover-confirmed units (PIXL/SHERLOC) + delta outline from HiRISE/CTX DTM",
+                "source": "assumption",
+                "derived": "approximate unit outlines; CRISM not available in USGS STAC",
+                "units": units or []}
     # Textele apar în UI (popup-ul de la click pe hartă), deci sunt în engleză.
     return {
         "elevation": {**topo, "analog_of": None},
         "slope": {**topo, "derived": f"max slope of {FINE_M:.0f} m pixels"},
-        "terrain": {"data_type": "thermal", "mission": "—", "instrument": "provisional: from slope (THEMIS pending)",
-                    "source": "assumption"},
-        "minerals": {"data_type": "spectral", "mission": "—", "instrument": "provisional: none (CRISM / USGS SIM 3464 pending)",
-                     "source": "assumption"},
+        "terrain": terrain,
+        "minerals": minerals,
         "radiation": {"data_type": "radiation", "mission": "MSL Curiosity", "instrument": "RAD (altitude model)",
                       "source": "assumption"},
         "unsafe": {**topo, "derived": f"slope > {UNSAFE_SLOPE_DEG:.0f}° at {FINE_M:.0f} m (FOM legend not published)"},
@@ -393,6 +567,17 @@ def build(raw: Path = RAW, log=print) -> tuple[dict[str, np.ndarray], dict]:
         elevation = np.nan_to_num(elevation, nan=float(np.nanmean(elevation)))
     unsafe = block_nanmax(np.where(np.isfinite(slope_fine), slope_fine, 0), FINE) > UNSAFE_SLOPE_DEG
 
+    # Calibrarea verticală pe adevărul de la sol: altitudinile măsurate de Perseverance (față de
+    # areoid) în punctele lui de localizare. Scădem decalajul median (panta nu se schimbă).
+    waypoints = load_waypoints(raw)
+    rover_check = vertical_offset_vs_rover(elevation, waypoints)
+    if rover_check:
+        elevation = elevation - rover_check["offset_m"]
+        after = vertical_offset_vs_rover(elevation, waypoints)
+        rover_check = {**after, "applied_shift_m": -rover_check["offset_m"]}
+        log(f"Calibrare pe rover: {after['n_points']} puncte, decalaj corectat {rover_check['applied_shift_m']:+.2f} m, "
+            f"abatere medie rămasă {after['mean_abs_dev_m']} m")
+
     layers = {
         "elevation": elevation.astype(np.float32),
         "slope": slope.astype(np.float32),
@@ -401,11 +586,21 @@ def build(raw: Path = RAW, log=print) -> tuple[dict[str, np.ndarray], dict]:
         "radiation": radiation_model(elevation),
         "unsafe": unsafe,
     }
-    habitat, targets = place_sites(layers["slope"], unsafe, log)
+    habitat, targets = place_sites(layers["slope"], unsafe, waypoints, log)
+
+    # Capitolul 5: terenul din THEMIS IR de noapte + rugozitate, mineralele din unitățile ancorate.
+    nir_products = [p for p in manifest["products"] if p["kind"] == "themis_ir" and p["item_id"].endswith("_nir")]
+    nir = warp_to_grid(raw / nir_products[0]["file"], (N, N), "bilinear") if nir_products else None
+    layers["terrain"] = terrain_from_themis(nir, layers["slope"], layers["elevation"])
+    layers["minerals"], units = minerals_from_units(layers["elevation"], waypoints, habitat, targets, log)
+    for k, name in enumerate(("bedrock", "regolith", "sand", "boulders")):
+        log(f"Teren {name:<9} {np.mean(layers['terrain'] == k):.1%}")
+    artifacts = place_artifacts(waypoints, log)
+    traverse = rover_traverse(waypoints)
     hirise_cells = block_nanmean(info["hirise_fine"].astype(np.float32), FINE)
 
     contract = json.loads((ROOT / "shared" / "contracts" / "meta.json").read_text(encoding="utf-8"))
-    labels = layer_labels(manifest, info)
+    labels = layer_labels(manifest, info, themis=bool(nir_products), units=units)
     meta = {
         **contract,
         "site_id": "jezero",
@@ -415,6 +610,13 @@ def build(raw: Path = RAW, log=print) -> tuple[dict[str, np.ndarray], dict]:
         "center": {"lat": fs.CENTER_LAT, "lon": fs.CENTER_LON},
         "habitat": {"row": int(habitat[0]), "col": int(habitat[1])},
         "targets": targets,
+        "artifacts": artifacts,
+        "rover_traverse": {
+            "name": "Perseverance traverse (inside this map)",
+            "source": f"{ROVER_SOURCE}: {fs.WAYPOINTS_URL}",
+            "sols": [min(w["sol"] for w in waypoints), max(w["sol"] for w in waypoints)] if waypoints else None,
+            "path": traverse,
+        } if traverse else None,
         "layers": {name: {**spec, **{k: v for k, v in labels[name].items() if v is not None}}
                    for name, spec in contract["layers"].items()},
         "provenance": {
@@ -425,6 +627,7 @@ def build(raw: Path = RAW, log=print) -> tuple[dict[str, np.ndarray], dict]:
             "themis": [p["item_id"] for p in manifest["products"] if p["kind"] == "themis_ir"],
             "vertical_bias_m": info["biases_m"],
             "vertical_datum": f"areoid (HiRISE DTEEC); CTX shifted by {info['datum_shift_m']:+.2f} m",
+            "rover_vertical_check": rover_check,
             "hirise_coverage_pct": round(float(hirise_cells.mean() * 100), 1),
             "fine_resolution_m": FINE_M,
             "license": "CC0-1.0 (USGS Astrogeology ARD)",
@@ -444,7 +647,13 @@ def write(layers: dict[str, np.ndarray], meta: dict, out: Path = OUT) -> None:
     ortho = meta.pop("_ortho")
     meta.pop("_hirise_cells", None)
     for name, grid in layers.items():
-        np.save(out / f"{name}.npy", grid)
+        # Scriere atomică: backendul care pornește în timpul build-ului nu citește un .npy pe jumătate.
+        tmp = out / f".{name}.{os.getpid()}.tmp.npy"
+        try:
+            np.save(tmp, grid)
+            os.replace(tmp, out / f"{name}.npy")
+        finally:
+            tmp.unlink(missing_ok=True)
     fs.atomic_write_text(out / "meta.json", json.dumps(meta, ensure_ascii=False, indent=2))
 
     elev, slope = layers["elevation"], layers["slope"]

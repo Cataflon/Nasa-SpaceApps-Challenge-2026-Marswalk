@@ -27,6 +27,8 @@ Câmpul `image` din `targets` e opțional (`null` sau URL către imaginea Persev
 > | `site.json` → `layers[]` | `mission`, `instrument`, `data_type`, `source`, `analog_of`, `product_id` | text | pipeline (rolul 1), trimise deja de `/api/site` | etichetele straturilor, popup-ul de la click |
 > | `GET /api/point` | `sources` | `{"slope": {"mission": "MRO", "instrument": "HiRISE", "data_type": "topographic"}, …}` | rolul 3 | click pe hartă: „pantă 12° · HiRISE · MRO” |
 > | `live_messages.json` → `decision` | `compute_ms` | `48.2` | rolul 3 (măsurat doar pentru afișare) | „copilotul a decis în 0,05 s” |
+> | `site.json`, `meta.json` | 🆕 `artifacts` | `[{"id", "name", "type": "recovery_target \| landmark \| historical_hardware \| hazard_debris", "row", "col", "lat"?, "lon"?, "caution_radius_m", "note", "source", "status": "verified \| to verify \| synthetic"}]` (**deja în mock-uri**) | pipeline (rolul 1), trimis de `/api/site` | stratul „NASA hardware” pe hartă (POI, nu intră în rutare) |
+> | `site.json`, `meta.json` | 🆕 `rover_traverse` | `{"name", "source", "sols": [a, b], "path": [[row, col], …]}` sau `null` (situl sintetic) | pipeline (rolul 1), din waypoint-urile NASA ale roverului | traseul real Perseverance pe hartă |
 > | `GET /api/benchmark` | `headline` | `{"copilot_safe_pct": X, "plan_safe_pct": Y, "n_scenarios": 100}` (procente 0-100; cifrele reale vin din benchmark) | rolul 2 → rolul 3 | numărul de titlu pe slide și în UI |
 
 ## Convenții

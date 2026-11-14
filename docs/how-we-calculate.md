@@ -22,5 +22,11 @@ Source for the in-app "How we calculate" screen and for the slides. Every number
 | EVA start time | 09:00 local true solar time (LTST); one Mars hour = 61.65 min | Mars24 (sol length) | assumption |
 | Earth–Mars delay | ~3–22 min one way, depending on planetary positions; value for the demo date: TODO | JPL Horizons / NASA | to verify |
 | Weather and radiation scenarios | see `backend/app/live/scenario.py` (each constant has its source in a comment) | Perseverance MEDA, Curiosity REMS and RAD | to verify |
+| Terrain elevation | HiRISE DTMs (read at 4 m) over CTX DTMs, areoid datum, calibrated on 306 Perseverance localizations (mean residual 5.2 m) | USGS Astrogeology STAC (MRO HiRISE, CTX); NASA M20 waypoints | source |
+| Slope per 20 m cell | maximum of the 4 m slopes inside the cell (small obstacles are kept) | derived from the DTM | source |
+| Unsafe cells | slope > 35° at 4 m (the HiRISE FOM legend is not published) | derived from the DTM | assumption |
+| Terrain classes | THEMIS night IR (thermal-inertia proxy): darkest 25% on gentle slopes = sand, brightest 25% = bedrock; slope > 20° = bedrock; 4 m vs 20 m slope difference > 12° = boulders | Mars Odyssey THEMIS; thresholds chosen by us | assumption |
+| Mineral units | delta deposits (clays) = plateau > 50 m above the crater floor; clays, olivine and carbonates within 250-500 m of where Perseverance studied them | HiRISE/CTX DTM; NASA M20 waypoints; Goudge 2015, Liu 2022, Horgan 2020 | assumption |
+| Target and hardware positions | median rover position during each campaign (Three Forks depot: sols 652-686) | NASA M20 waypoints | source |
 
 > TODO (role 1, P1): one row for **every** constant in `core/` (budget, cost, validator, hazards, decision) and in `scenario.py`.

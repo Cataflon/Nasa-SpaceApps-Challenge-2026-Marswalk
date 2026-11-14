@@ -74,6 +74,9 @@ def site(response: Response):
         "habitat": meta["habitat"],
         "max_slope_deg": meta["max_slope_deg"],
         "targets": meta["targets"],
+        # Hardware NASA ca POI (rolul 1) + traseul real al roverului Perseverance (doar pe Jezero).
+        "artifacts": meta.get("artifacts", []),
+        "rover_traverse": meta.get("rover_traverse"),
         "layers": [
             {"id": name, "label": LAYER_LABELS.get(name, name), "png": f"/static/layers/{name}.png", "unit": spec["unit"],
              # Etichetele de proveniență scrise de pipeline (rolul 1), dacă există.
