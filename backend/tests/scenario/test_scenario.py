@@ -68,7 +68,8 @@ def test_baseline_ranges_calibrated():
         assert all(0 <= v <= 25 for v in series(s, "wind_ms"))
         assert all(-90 <= v <= -10 for v in series(s, "temp_c"))
         assert all(650 <= v <= 790 for v in series(s, "pressure_pa"))
-        assert all(8 <= v <= 12 for v in series(s, "dose_rate_usv_h"))
+        # RAD: 0,64 mSv/zi doză echivalentă ≈ 26,7 µSv/h (Hassler et al. 2014)
+        assert all(22 <= v <= 32 for v in series(s, "dose_rate_usv_h"))
 
 
 def test_temperature_has_diurnal_cycle():

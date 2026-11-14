@@ -95,6 +95,13 @@ def test_check_detects_stale_site(tmp_path, layers):
     assert mss.check(tmp_path) == 1
 
 
+def test_radiation_is_rad_dose_equivalent(layers):
+    """RAD: 0,64 mSv/zi doză echivalentă ≈ 26,7 µSv/h (Hassler et al. 2014)."""
+    rad = layers["radiation"]
+    assert 24 < float(rad.mean()) < 29
+    assert float(rad.min()) > 0
+
+
 def test_deterministic():
     a, b = mss.build(seed=7), mss.build(seed=7)
     for name in a:

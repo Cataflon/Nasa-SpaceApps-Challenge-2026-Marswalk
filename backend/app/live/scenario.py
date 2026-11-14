@@ -77,9 +77,10 @@ PRESSURE_RANGE = (550.0, 900.0)
 
 # Doza. RAD la Gale: 0,21 mGy/zi doză absorbită ≈ 8,8 µGy/h; doza echivalentă 0,64 mSv/zi ≈ 27 µSv/h
 # (Hassler et al. 2014, Science, „Mars' surface radiation environment measured with the Mars Science
-# Laboratory's Curiosity rover”). Folosim ~10 µSv/h, ca stratul radiation.npy și restul echipei;
-# vezi notele rolului 1, unde e decizia de luat.
-DOSE_RATE_USV_H = 10.0
+# Laboratory's Curiosity rover”). Unitatea e µSv/h (Sievert = doză ECHIVALENTĂ), deci folosim
+# 0,64 mSv/zi / 24 h = 26,7 µSv/h. Decizia echipei (14.11.2026). de verificat
+# Același fond îl folosește și stratul radiation.npy (pipeline/make_synthetic_site.py).
+DOSE_RATE_USV_H = 26.7
 DOSE_SIGMA_FRAC = 0.03  # presupunere
 DOSE_TAU_MIN = 60.0
 # Doza scade când presiunea crește (Rafkin et al. 2014, JGR Planets, variația diurnă a dozei RAD).

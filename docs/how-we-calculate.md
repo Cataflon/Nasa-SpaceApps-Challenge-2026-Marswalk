@@ -11,7 +11,7 @@ Sursa pentru ecranul „Cum calculăm” din aplicație și pentru slide-uri. Fi
 | Rezervă O₂ la sosire | 30% | — | presupunere |
 | Pantă maximă | 25° | studii NASA de ieșiri umane | de verificat |
 | Marjă față de apus | 30 min | — | presupunere |
-| Doza la suprafață | ~10 µSv/h (ordin de mărime) | Curiosity RAD | de verificat |
+| Doza la suprafață | 26,7 µSv/h doză echivalentă (0,64 mSv/zi; doza absorbită e 0,21 mGy/zi) | Curiosity RAD, Hassler et al. 2014, Science | de verificat |
 | Limita de doză pe ieșire | 1 mSv | — | presupunere |
 | Apusul | Mars24 | NASA GISS | de verificat |
 | Apus efectiv cu praf | `apus − max(0, τ − 0,5)·30` min | — | presupunere |

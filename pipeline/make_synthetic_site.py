@@ -27,7 +27,11 @@ CELL_M = 20.0
 MAX_SLOPE_DEG = 25.0
 UNSAFE_SLOPE_DEG = 35.0  # înlocuitor pentru FOM-ul HiRISE
 # v1: schelet inițial. v2: front de deltă abrupt (pereți de netrecut + rampe), etichete pe straturi.
-GENERATOR_VERSION = 2
+# v3: radiația în doză echivalentă RAD (~26,7 µSv/h în loc de ~10).
+GENERATOR_VERSION = 3
+# Doza echivalentă la suprafață: RAD 0,64 mSv/zi = 26,7 µSv/h (Hassler et al. 2014, Science).
+# Aceeași valoare ca scenario.DOSE_RATE_USV_H (backend/app/live/scenario.py).
+DOSE_RATE_USV_H = 26.7
 DEFAULT_OUT = ROOT / "data" / "synthetic"
 
 # Etichetele fiecărui strat: ce tip de date e și ce instrument NASA imită în situl real.
@@ -123,8 +127,10 @@ def build(seed: int) -> dict[str, np.ndarray]:
         minerals[t["row"] - 2 : t["row"] + 3, t["col"] - 2 : t["col"] + 3] = cls
 
     # Radiație la suprafață (µSv/h): mai mică la altitudine joasă (mai multă atmosferă deasupra).
-    # Ordinul de mărime ~10 µSv/h e cel raportat de Curiosity RAD; variația e o presupunere.
-    radiation = (10.0 * np.exp((elev - elev.mean()) / 11000.0) + 0.2 * smooth_noise(rng, 3.0)).astype(np.float32)
+    # Fondul e doza echivalentă RAD (DOSE_RATE_USV_H); variația cu altitudinea (scala ~11 km, cât
+    # înălțimea de scară a atmosferei) și zgomotul sunt presupuneri.
+    radiation = (DOSE_RATE_USV_H * np.exp((elev - elev.mean()) / 11000.0)
+                 + 0.5 * smooth_noise(rng, 3.0)).astype(np.float32)
 
     unsafe = slope > UNSAFE_SLOPE_DEG  # înlocuitor pentru masca FOM din datele reale
 
