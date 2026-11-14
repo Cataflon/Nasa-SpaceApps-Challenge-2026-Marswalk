@@ -66,3 +66,12 @@ def test_100_scenarios_under_2_minutes(site):
     result = run_benchmark(100, seed=42, site=site)
     assert time.perf_counter() - started < 120.0
     assert result["n"] == 100 and len(result["per_scenario"]) == 100
+
+
+def test_headline_exists_and_percentages_are_in_range(three):
+    """`headline` (README „Noutăți”, ROL2 sarcina 11): doar forma și intervalele, fără un rezultat forțat."""
+    h = three["headline"]
+    assert set(h) == {"copilot_safe_pct", "plan_safe_pct", "n_scenarios"}
+    assert h["n_scenarios"] == 3
+    assert 0.0 <= h["copilot_safe_pct"] <= 100.0 and 0.0 <= h["plan_safe_pct"] <= 100.0
+    assert h["copilot_safe_pct"] == three["copilot"]["safe_pct"] and h["plan_safe_pct"] == three["plan_only"]["safe_pct"]

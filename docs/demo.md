@@ -30,7 +30,7 @@ Who presents: one person drives the app, one person speaks. The lines in *italic
 
 | Number | Value | Source |
 |---|---|---|
-| Benchmark headline | copilot 81% safe, fixed plan 51% (100 scenarios, seed 42, Jezero) | `core/benchmark.run_benchmark`, measured on 14.11.2026; re-measure after any change in role 2's code |
+| Benchmark headline | copilot 81% safe, fixed plan 51% (100 scenarios, seed 42, Jezero) | `data/processed/jezero/benchmark.json` (`pipeline/run_benchmark.py`, which calls `core/benchmark.run_benchmark`); re-run after any change in role 2's code or the site data |
 | Benchmark details | 30 scenarios rescued, 0 made worse; science 41% vs 100%; mean dose 0.045 vs 0.072 mSv | same run |
 | Route | 5.9 km, 148 min, O₂ 100 → 71.4%, 0.069 mSv, GO | `plan_route(jezero, habitat, ["clay_delta"], "safe")` |
 | Return by | 11:56 local true solar time (min 243); sunset 18:16 | EVA start 08:00 LTST (`scenario.EVA_START_LTST_H`, Mars24) |

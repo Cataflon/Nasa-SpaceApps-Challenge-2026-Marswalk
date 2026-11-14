@@ -69,3 +69,41 @@
 - Implemented equipment dashboard: six illustrated modules, central concept suit with selectable points, responsive dashed connectors, selected-module inspector/trend and separate equipment demo. No measured accuracy or hardware health is fabricated for the mission feed. Optional sensor_health adapter documented in frontend/design/equipment-assets.md.
 - Added rugged EVA watch case, strap, dual north-up compass dials and route playback controls. Habitat bearing uses current position independently of the route; mission dial uses the live remaining path or selected preview. Added decorative watch to suit illustration only, without adding a sensor or hotspot. Built-in ImageGen asset and prompt documented in frontend/design/equipment-assets.md.
 - Validation: build passes; 12 navigation assertions pass. Native desktop preview verified independent changing habitat/route bearings, distances and suit illustration. Existing large Three.js chunk warning remains.
+
+## Verificarea notelor celorlalte roluri — 2026-11-14
+
+Au fost verificate toate cele patru fișiere Markdown din docs/roles/notes.
+
+- Rolul 1, cererea explicită pentru MissionSheet: fallback-ul eva_start_ltst_h a fost corectat de la 9 la 8. Valoarea din /api/site continuă să aibă prioritate; return_by_min din tick suprascrie bugetul planificat.
+- Rolul 1, proveniența straturilor: adăugat panou pliabil Planning data sources în fișa misiunii. Afișează mission, instrument, data_type, source, analog_of și product_id când sunt furnizate. Sursele assumption/synthetic/to verify sunt etichetate distinct; lipsa metadatelor nu devine o sursă inventată. Panoul distinge straturile de planificare de relieful CTX împachetat pentru vizualizarea 3D.
+- Rolul 3, start și WebSocket: deja implementat și verificat în cod. useLive deschide abonarea după planificare, butonul Start apelează POST /api/live/control; motorul livrează tick-uri după start și ultimul tick la o nouă abonare. Reluarea nu retrimite route_id. Viteza implicită este 10 minute simulate / secundă reală, trimisă explicit prin control.
+- Rolul 2: nu există cereri directe pentru rolul 4 în notele sale. Cererile pentru backend, pipeline și deciziile de calibrare ale echipei rămân la autorii respectivi; nu au fost schimbate constantele sau algoritmii acestora.
+- Reamintirea esbuild: build-ul este verificat separat; nu se modifică aprobările scripturilor npm dacă build-ul funcționează.
+- Validare pentru această integrare: npm.cmd run build reușit; distribuția Windows portabilă actualizată. Avertismentul existent pentru dimensiunea chunk-ului Three.js rămâne, fără erori de compilare.
+
+- Logo-ul furnizat de utilizator: copiate toate cele patru PNG-uri în frontend/public/images fără modificarea originalelor. Actualizate marca din navigare, ecranul de încărcare, faviconul și iconul ferestrei Electron. Distribuția release rămâne exclusă intenționat prin frontend/.gitignore; instrucțiuni pentru generarea locală și distribuirea întregului folder în frontend/desktop/README.md.
+
+- Adăugat frontend/PORNIRE.md: instalare inițială Windows, două terminale pentru backend/Electron, actualizare după pull, Jezero/sintetic, Ollama opțional, build local și depanare. Comenzile au fost verificate față de package.json, config.py și scripturile curente; nu s-au reinstalat dependențe pentru o schimbare exclusiv de documentație.
+- Iconiță nouă: pătrat rotunjit negru-maro cu logo-ul alb și elementele portocalii centrate, generat cu ImageGen din artwork-ul furnizat. Salvat în frontend/public/images/marswalk-app-icon.png, folosit de fereastra Electron și favicon. Build și actualizare pachet desktop reușite; promptul este în frontend/design/equipment-assets.md.
+
+- Curățată imaginea costumului cu ceas prin ImageGen: eliminate resturile semitransparente din colțuri, păstrate proporțiile, poziția și dimensiunea 1024×1536. Dashboardul folosește eva-suit-watch-clean.png; verificarea canalului alpha confirmă transparență zero în cele 64 de probe din colțuri, față de valori semitransparente în imaginea veche.
+
+## Mission Terrain Explorer
+
+### Actualizare: planificare și operațiuni separate
+
+- Follow-up UX: meniu persistent inclusiv în layout compact, waypointuri mutate deasupra hărții, itinerar ordonat cu rutare locală prin punctele salvate și întoarcere opțională la habitat. Tripul poate fi parcurs în preview pe hartă, tracker FPV și ceas.
+- Senzorii au acum o singură sursă la nivel App: clock, selecție Mission feed/Equipment demo, stări warning/fault, istoric și valori comune în Sensors și Simulation. O₂ din dispozitive și O₂/vânt din instrumente folosesc aceleași citiri. Defectul nu mai cade înapoi pe o valoare veche.
+- FPV netezește direcția înainte relativ la ochi, nu o țintă fixă ce poate rămâne în urmă. Preview-ul păstrează progresul inclusiv la trasee închise cu segmente suprapuse. Spații mai mari între hartă și dispozitive. Build/pachet reușite, 15 teste trecute și verificare nativă pentru trip, pas, senzor defect comun și meniu la scroll.
+- Cerere pentru rolul 3: API-ul /api/route acceptă doar stops ca ID-uri din catalog. Pentru waypointuri în misiuni live este necesar suport pentru coordonate/opririle personalizate, validate pe grila site-ului și păstrate în contextul replanificării. Frontendul oferă deja traseu local și preview, dar nu inventează bugete sau verdict GO pentru aceste opriri.
+
+- Trei pagini în aplicația Electron: Planning, Simulation și Sensors. Planning are hartă mare, layere în drawer, legendă, profil de altitudine, catalog științific, planner, buget și puncte cu tag salvate local. Aceeași hartă devine mini-fereastră la scroll. Site Overview și Reference nu mai apar în interfață.
+- Simulation afișează harta în stânga și trackerul FPV plus ceasul simultan în dreapta. Poziție comună pentru toate; preview, pas înainte/înapoi și reset sincronizate. Telemetrie sumar sub ele, buton către Sensors și copilot doar în Simulation.
+- Limită API păstrată explicit: motorul live nu are seek/reverse. Pașii sunt disponibili în preview; live folosește start/pause/reset/speed și evenimentele existente. Tagurile sunt adnotări locale, nu ID-uri de opriri acceptate de backend.
+- Optimizări: cache pentru datele terenului/habitatului, index de distanță reutilizat, obiect de traseu stabil în preview, randare la schimbări și animații, rezoluții adaptate, fără workers de rutare în scenele de tracking/FPV. Nu s-a modificat grila USGS.
+- Validare: build reușit, 13 teste Node trecute, verificare nativă Electron pentru PiP, plan, pas sincronizat, reset, start/pauză demo, sumar/detalii senzori, adăugare/eliminare punct și layere. Backend real și Playwright nu au fost verificate end-to-end în această sesiune. Detalii în frontend/design/planning-and-operations.md.
+
+- Implementată cerința atașată: layout cu trei coloane, overview/straturi în stânga, relief central și știință/analiză în dreapta; secțiuni pliabile, toolbar flotant, fit al camerei, reset/follow/fullscreen, marcaje compacte cu ocluzie, scară proiectată și nord orientat după cameră.
+- Straturi reale de elevație și pantă derivată din CTX, pericole din tick; minerale/dificultate dezactivate explicit fără raster aliniat. Mesh-ul și grila USGS nu au fost schimbate.
+- Profil de altitudine din interpolarea exactă pe triunghiurile reliefului, legat interactiv de un punct pe traseu; rute existente colorate și alternative estompate; detaliile țintelor și preselectarea în planner păstrate. Fără date de risc/O₂ inventate.
+- Validare: build reușit, 12 teste Node trecute, verificări native desktop pentru relief, selecție, top/perspectivă, Slope și profil sincronizat. Playwright indisponibil, fără script lint. Detalii, fișiere și limite în frontend/design/terrain-explorer.md.

@@ -7,7 +7,7 @@
   "crs": "local",
   "center": { "lat": 18.44, "lon": 77.45 },
   "habitat": { "row": 300, "col": 200 },
-  "max_slope_deg": 25,
+  "max_slope_deg": 20,
   "layers": {
     "elevation": { "file": "elevation.npy", "dtype": "float32", "unit": "m" },
     "slope": { "file": "slope.npy", "dtype": "float32", "unit": "deg" },

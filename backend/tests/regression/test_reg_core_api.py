@@ -174,3 +174,10 @@ def test_frontend_terrain_cells_are_20_m_on_ground(audit):
     std_par = float(grid["geoKeys"].get("ProjStdParallel1GeoKey", 0.0))
     ground_ew = grid["cell_size_m"] * math.cos(math.radians(grid["center"]["lat"])) / math.cos(math.radians(std_par))
     assert ground_ew == pytest.approx(20.0, rel=0.01)
+
+
+@pytest.mark.xfail(strict=True, reason="AUDIT-037: un număr care devine Infinity (1e400) produce 500 la serializarea erorii 422")
+def test_route_with_infinite_number_is_422_not_500(client):
+    """Un număr în afara domeniului float (1e400 -> inf) e respins cu 422, nu 500 (API: niciodată 500 pe intrări aberante)."""
+    body = '{"start": {"row": 1e400, "col": 1}, "stops": ["clay_delta"]}'
+    assert client.post("/api/route", content=body, headers={"Content-Type": "application/json"}).status_code == 422

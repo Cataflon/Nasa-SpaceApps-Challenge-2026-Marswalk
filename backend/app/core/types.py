@@ -11,7 +11,9 @@ class Limits:
 
     o2_reserve_pct: float = 30.0
     sunset_margin_min: float = 30.0
-    max_slope_deg: float = 25.0
+    # A [S26]: 20°, conceptul NASA de operațiuni EVA pe Lună (registrul §4.1); decizia D1 a echipei.
+    # Aceeași valoare ca meta.json (max_slope_deg), deci harta de cost și validatorul nu se contrazic.
+    max_slope_deg: float = 20.0
     max_dose_msv: float = 1.0
 
 

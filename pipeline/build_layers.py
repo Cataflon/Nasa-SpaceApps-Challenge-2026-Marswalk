@@ -8,13 +8,14 @@ Pași:
      față de CTX (mediana diferenței) și le îmbinăm cu tranziție lină la margini (fără trepte false).
   3. Panta la rezoluția fină, apoi agregare la 20 m păstrând MAXIMUL din celulă (obstacolele mici
      nu dispar). Elevația la 20 m = media celor 5×5 pixeli.
-  4. `unsafe` = pantă > 35° la rezoluția fină. FOM-ul HiRISE din STAC e o vizualizare RGB fără
-     legendă publicată, deci nu îi interpretăm culorile; îl folosim doar ca mască de proveniență.
+  4. FOM-ul HiRISE = calitatea corelației stereo a DTM-ului (legenda: README-urile DTM ale echipei
+     HiRISE). Celulele în care altitudinea HiRISE e majoritar nesigură (suspect, interpolat, saturat,
+     umbră) rămân pe CTX. `unsafe` = pantă > 35° la rezoluția fină: FOM nu descrie pericolul terenului.
   5. Radiația: același model ca situl sintetic (doza RAD după altitudine), declarat presupunere.
      Terenul și mineralele: provizorii aici (din pantă), înlocuite de capitolul 5 (THEMIS, CRISM
      sau harta geologică USGS SIM 3464 în pipeline/manual_units.py).
   6. Habitatul pe cel mai plat teren de lângă locul de aterizare Perseverance; țintele reale,
-     mutate pe cea mai apropiată celulă accesibilă din habitat (≤ 25°).
+     mutate pe cea mai apropiată celulă accesibilă din habitat (≤ 20°).
   7. Scrie .npy + meta.json (același format ca make_synthetic_site.py) + PNG-urile.
 
 Rulare (mediul .venv-pipeline, după fetch_stac.py):
@@ -43,8 +44,8 @@ N = fs.GRID_N
 CELL_M = fs.GRID_CELL_M
 FINE = 5  # pixeli fini pe latura unei celule: 20 m / 5 = 4 m (= rezoluția de citire HiRISE)
 FINE_M = CELL_M / FINE
-MAX_SLOPE_DEG = 25.0
-UNSAFE_SLOPE_DEG = 35.0  # ROL1: „unde nu există FOM, din pantă > 35°”
+MAX_SLOPE_DEG = 20.0  # = make_synthetic_site.MAX_SLOPE_DEG (registrul §4.1 [S26], decizia echipei 14.11)
+UNSAFE_SLOPE_DEG = 35.0  # pantă > 35° = teren periculos (FOM HiRISE măsoară calitatea DTM-ului, nu pericolul)
 FEATHER_M = 100.0  # lățimea tranziției HiRISE -> CTX (presupunere)
 DOSE_RATE_USV_H = 28.0  # RAD, doză echivalentă 0,67 mSv/zi (Hassler, SwRI 2013); = scenario.DOSE_RATE_USV_H
 
@@ -82,14 +83,14 @@ ARTIFACTS = [
      "lat": 18.44463, "lon": 77.45089, "rover_sols": (13, 13), "caution_radius_m": 0,
      "note": "Where Perseverance touched down on 18 February 2021."},
     {"id": "descent_stage", "name": "Mars 2020 Descent Stage (sky crane) crash site", "type": "hazard_debris",
-     "lat": 18.4510, "lon": 77.4460, "caution_radius_m": 150,
+     "lat": 18.4524, "lon": 77.4425, "caution_radius_m": 150,
      "note": "Sharp metal debris and possible hydrazine residue: keep clear."},
     {"id": "backshell_parachute", "name": "Backshell and supersonic parachute", "type": "hazard_debris",
-     "lat": 18.4700, "lon": 77.4500, "caution_radius_m": 100,
+     "lat": 18.4523, "lon": 77.4345, "caution_radius_m": 100,
      "note": "Backshell and parachute on the surface: risk of snagging on cables and fabric."},
     {"id": "heat_shield", "name": "Mars 2020 heat shield", "type": "historical_hardware",
-     "lat": 18.4267, "lon": 77.4697, "caution_radius_m": 50,
-     "note": "Carbon-composite heat shield with ablative cork, ~1.5 km southeast of the landing site."},
+     "lat": 18.4538, "lon": 77.4721, "caution_radius_m": 50,
+     "note": "Carbon-composite heat shield with ablative cork, ~1.3 km east-northeast of the landing site."},
     # Epava Ingenuity (zborul 72, Airfield Chi, 18,4973°N 77,3225°E) e la ~2 km VEST de pătrat, deci
     # pe hartă punem locul primului zbor (Wright Brothers Field), care e lângă locul de aterizare.
     {"id": "ingenuity_first_flight", "name": "Wright Brothers Field (Ingenuity's first flight)", "type": "historical_hardware",
@@ -99,7 +100,12 @@ ARTIFACTS = [
 ]
 ROVER_SOURCE = "NASA/JPL Perseverance localization waypoints (M20_waypoints.json)"
 HELI_SOURCE = "NASA/JPL Ingenuity flight log (m20_heli_waypoints.json)"
-APPROX_SOURCE = "approximate, to verify on the NASA location map"
+# Pozițiile treptei de coborâre, parașutei și scutului termic: măsurate pe imaginea HiRISE oficială
+# etichetată (ESP_068294_1985, University of Arizona: uahirise.org/releases/perseverance/m2020-hardware-labels.jpg),
+# nord în sus, scara și rotația potrivite pe două cratere, ancorate pe locul de aterizare (waypoint-ul
+# de la sol 13). Incertitudine ~±150 m: NASA nu publică coordonatele lor, deci rămân „to verify”.
+APPROX_SOURCE = ("measured on the labelled HiRISE image ESP_068294_1985 (University of Arizona), "
+                 "anchored on the landing site; about ±150 m, no official coordinates published")
 
 
 # ---------------------------------------------------------------------------------------------
@@ -197,6 +203,92 @@ def weighted_median(values: list[float], weights: list[float]) -> float:
         if acc >= total / 2:
             return float(values[i])
     return float(values[order[-1]])
+
+
+# Legenda FOM HiRISE (README-urile DTM ale echipei HiRISE + FOM_MAP_LEGEND.JPG, University of Arizona):
+# culoarea fiecărei categorii a „figure of merit” SOCET SET. FOM = CALITATEA corelației stereo a
+# DTM-ului în fiecare punct, NU pericolul terenului. Culorile din fișierele USGS sunt amestecate cu
+# relieful umbrit de dedesubt, deci se compară DIRECȚIA culorii după scoaterea componentei gri.
+FOM_LEGEND = {  # clasă: (culoarea din legendă, categoria)
+    1: ((143, 188, 145), "good correlation"),
+    2: ((255, 255, 1), "low end of the good correlation range"),
+    3: ((1, 255, 255), "manually edited / interpolated"),
+    4: ((255, 105, 52), "suspicious (edge, corner, did not correlate, seed DTM)"),
+    5: ((255, 1, 1), "interpolated / extrapolated from neighbours"),
+    6: ((255, 203, 205), "saturated in the source images"),
+    7: ((1, 0, 138), "shadow"),
+}
+FOM_NO_DATA = 0
+FOM_TRUSTED = {1, 2, 3}  # corelație bună sau editare manuală de echipa HiRISE
+FOM_MIN_CHROMA = 12.0  # sub atât culoarea e aproape gri: categoria nu se poate citi -> o considerăm de încredere
+FOM_BAD_CELL_FRAC = 0.5  # o celulă de 20 m cade pe CTX dacă cel puțin jumătate din pixelii ei HiRISE sunt nesiguri
+DELTA_FILL_PASSES = 200  # câte inele de celule poate traversa interpolarea diferenței HiRISE − CTX într-un gol
+
+
+def fom_classes(rgb: np.ndarray) -> np.ndarray:
+    """Clasa FOM (0 = fără date, 1..7 = FOM_LEGEND) pentru fiecare pixel al unei hărți FOM RGB (3, H, W)."""
+    px = rgb.reshape(3, -1).T.astype(np.float64)
+    no_data = px.max(axis=1) < 20
+    centered = px - px.mean(axis=1, keepdims=True)
+    chroma = np.linalg.norm(centered, axis=1)
+    legend = np.array([c for c, _ in FOM_LEGEND.values()], dtype=np.float64)
+    legend -= legend.mean(axis=1, keepdims=True)
+    legend /= np.linalg.norm(legend, axis=1, keepdims=True)
+    cls = (centered / np.maximum(chroma, 1e-9)[:, None] @ legend.T).argmax(axis=1) + 1
+    cls[chroma < FOM_MIN_CHROMA] = 1
+    cls[no_data] = FOM_NO_DATA
+    return cls.reshape(rgb.shape[1:]).astype(np.uint8)
+
+
+def untrusted_cells(bad_fine: np.ndarray, k: int, frac: float = FOM_BAD_CELL_FRAC) -> np.ndarray:
+    """Masca fină a celulelor k×k în care fracția de pixeli nesiguri (1) e ≥ frac; NaN = fără FOM."""
+    cell = block_nanmean(bad_fine.astype(np.float32), k)
+    bad_cell = np.isfinite(cell) & (cell >= frac)
+    return np.repeat(np.repeat(bad_cell, k, axis=0), k, axis=1)
+
+
+def delta_fill(top: np.ndarray, base: np.ndarray, holes: np.ndarray, k: int, passes: int = DELTA_FILL_PASSES,
+               transition_px: int = 5) -> np.ndarray:
+    """Golurile din `top` umplute cu `base` + diferența locală top − base („delta surface fill”).
+
+    Tehnica standard de umplere a golurilor dintr-un DEM (Grohman et al. 2006, SRTM): în gol se pune
+    sursa secundară (CTX), mutată pe verticală cu diferența față de sursa principală (HiRISE) din jurul
+    golului. Diferența se calculează pe celule k×k (20 m) din pixelii de încredere și se propagă în gol
+    prin medii ale vecinilor; astfel golul se potrivește cu HiRISE din jur și nu apar trepte (pante false).
+    """
+    out = top.copy()
+    if not holes.any():
+        return out
+    diff = np.where(np.isfinite(top) & np.isfinite(base) & ~holes, top - base, np.nan)
+    cell = block_nanmean(diff.astype(np.float32), k)
+    for _ in range(passes):
+        missing = np.isnan(cell)
+        if not missing.any():
+            break
+        pad = np.pad(cell, 1, constant_values=np.nan)
+        neigh = np.stack([pad[:-2, 1:-1], pad[2:, 1:-1], pad[1:-1, :-2], pad[1:-1, 2:]])
+        have = np.isfinite(neigh)
+        n = have.sum(axis=0)
+        avg = np.where(n > 0, np.where(have, neigh, 0.0).sum(axis=0) / np.maximum(n, 1), np.nan)
+        cell = np.where(missing & (n > 0), avg, cell)
+    offset = upsample_bilinear(np.nan_to_num(cell), k)  # lin, nu în blocuri: blocurile ar face trepte false
+    filled = base + offset
+    # Tranziție scurtă în afara golului: detaliul HiRISE trece lin în suprafața CTX aliniată (altfel la
+    # marginea golului apar pante false, între relieful fin HiRISE și cel mai neted CTX).
+    w = feather(~holes, transition_px)
+    near = ~holes & np.isfinite(top) & np.isfinite(filled)
+    out[near] = w[near] * top[near] + (1 - w[near]) * filled[near]
+    out[holes] = filled[holes]
+    return out
+
+
+def upsample_bilinear(cell: np.ndarray, k: int) -> np.ndarray:
+    """Valori pe celule (centrele lor) -> grila fină de k ori mai deasă, prin interpolare liniară."""
+    n_r, n_c = cell.shape
+    fine_r = (np.arange(n_r * k) + 0.5) / k - 0.5  # poziția pixelului fin în coordonate de celulă
+    fine_c = (np.arange(n_c * k) + 0.5) / k - 0.5
+    rows = np.stack([np.interp(fine_c, np.arange(n_c), cell[r]) for r in range(n_r)])
+    return np.stack([np.interp(fine_r, np.arange(n_r), rows[:, c]) for c in range(n_c * k)], axis=1)
 
 
 def blend_onto(base: np.ndarray, top: np.ndarray, width_px: int) -> np.ndarray:
@@ -374,6 +466,28 @@ def warp_to_grid(path: Path, shape: tuple[int, int], resampling: str = "bilinear
     return dst
 
 
+def warp_fom_untrusted(path: Path, shape: tuple[int, int]) -> tuple[np.ndarray, dict[int, int]]:
+    """Harta FOM pe grila fină: 1 = pixel HiRISE nesigur, 0 = de încredere, NaN = fără FOM.
+
+    Clasificarea se face în pixelii originali (are nevoie de toate 3 benzile), apoi masca se
+    reproiectează cu vecinul cel mai apropiat (categoriile nu se interpolează).
+    """
+    import rasterio
+    from rasterio.crs import CRS
+    from rasterio.enums import Resampling
+    from rasterio.transform import from_bounds
+    from rasterio.warp import reproject
+
+    with rasterio.open(path) as ds:
+        cls = fom_classes(ds.read([1, 2, 3]))
+        src = np.where(cls == FOM_NO_DATA, np.nan, (~np.isin(cls, list(FOM_TRUSTED))).astype(np.float32))
+        dst = np.full(shape, np.nan, dtype=np.float32)
+        reproject(src.astype(np.float32), dst, src_transform=ds.transform, src_crs=ds.crs, src_nodata=np.nan,
+                  dst_transform=from_bounds(*fs.grid_bounds(), shape[1], shape[0]),
+                  dst_crs=CRS.from_string(fs.local_proj4()), dst_nodata=np.nan, resampling=Resampling.nearest)
+    return dst, {int(c): int(n) for c, n in zip(*np.unique(cls, return_counts=True))}
+
+
 def load_manifest(raw: Path) -> dict:
     path = raw / "manifest.json"
     if not path.exists():
@@ -412,20 +526,36 @@ def build_elevation(manifest: dict, raw: Path, log=print) -> dict:
     log(f"CTX: {len(used)} DTM-uri, acoperire {np.isfinite(base).mean():.1%}, decalaje {biases}")
 
     # HiRISE: de la cel mai slab la cel mai bun, fiecare peste ce e dedesubt (cel mai bun câștigă).
-    has_fom = {p["item_id"] for p in _products(manifest, "hirise_dtm", "fom")}
+    fom_files = {p["item_id"]: p["file"] for p in _products(manifest, "hirise_dtm", "fom")}
+    has_fom = set(fom_files)
     hirise = sorted(_products(manifest, "hirise_dtm", "dtm"), key=lambda p: hirise_priority(p, has_fom))
     elev = base.copy()
     weights: list[tuple[float, float]] = []
     hirise_mask = np.zeros(fine_shape, dtype=bool)
     width = int(round(FEATHER_M / FINE_M))
+    fom_report: dict[str, dict] = {}
     for p in reversed(hirise):
         h = warp_to_grid(raw / p["file"], fine_shape, "bilinear")
         b = vertical_bias(h, base)
         biases[p["item_id"]] = round(b, 2)
         h -= b
+        holes = None
+        if p["item_id"] in fom_files:
+            # FOM: unde corelația stereo HiRISE e nesigură, rămâne CTX (doar celulele majoritar nesigure).
+            bad_fine, counts = warp_fom_untrusted(raw / fom_files[p["item_id"]], fine_shape)
+            holes = untrusted_cells(bad_fine, FINE) & np.isfinite(h)
+            total = sum(n for c, n in counts.items() if c != FOM_NO_DATA)
+            fom_report[p["item_id"]] = {
+                "pct_by_class": {FOM_LEGEND[c][1]: round(100 * counts.get(c, 0) / max(total, 1), 2) for c in FOM_LEGEND},
+                "cells_replaced_by_ctx": int(holes[::FINE, ::FINE].sum()),
+            }
+        if holes is not None:
+            h = delta_fill(h, elev, holes, FINE)  # golul: ce e dedesubt (CTX sau alt HiRISE), aliniat local
         elev = blend_onto(elev, h, width)
-        hirise_mask |= np.isfinite(h)
-        log(f"HiRISE {p['item_id']}: acoperire {np.isfinite(h).mean():.1%}, decalaj față de CTX {b:+.2f} m")
+        used_h = np.isfinite(h) if holes is None else np.isfinite(h) & ~holes
+        hirise_mask |= used_h
+        log(f"HiRISE {p['item_id']}: acoperire {np.isfinite(h).mean():.1%}, decalaj față de CTX {b:+.2f} m"
+            + (f", {fom_report[p['item_id']]['cells_replaced_by_ctx']} celule nesigure (FOM) umplute din stratul de dedesubt" if holes is not None else ""))
         weights.append((b, float(np.isfinite(h).mean())))
 
     # Referința verticală: HiRISE DTEEC („E” = elevații față de areoid) e cu ~20-40 m sub CTX-ul USGS
@@ -436,7 +566,8 @@ def build_elevation(manifest: dict, raw: Path, log=print) -> dict:
     log(f"Referință verticală: areoid (HiRISE), deplasare {datum_shift:+.2f} m față de CTX")
 
     return {"elev_fine": elev, "hirise_fine": hirise_mask, "biases_m": biases, "datum_shift_m": round(datum_shift, 2),
-            "ctx_ids": used, "hirise_ids": [p["item_id"] for p in hirise], "has_fom": sorted(has_fom)}
+            "ctx_ids": used, "hirise_ids": [p["item_id"] for p in hirise], "has_fom": sorted(has_fom),
+            "fom_quality": dict(sorted(fom_report.items()))}
 
 
 def build_ortho(manifest: dict, raw: Path) -> np.ndarray:
@@ -564,7 +695,7 @@ def layer_labels(manifest: dict, elev_info: dict, themis: bool = False, units: l
         "minerals": minerals,
         "radiation": {"data_type": "radiation", "mission": "MSL Curiosity", "instrument": "RAD (altitude model)",
                       "source": "assumption"},
-        "unsafe": {**topo, "derived": f"slope > {UNSAFE_SLOPE_DEG:.0f}° at {FINE_M:.0f} m (FOM legend not published)"},
+        "unsafe": {**topo, "derived": f"slope > {UNSAFE_SLOPE_DEG:.0f}° at {FINE_M:.0f} m (the HiRISE FOM measures DTM quality, not hazard; it decides where HiRISE is replaced by CTX)"},
     }
 
 
@@ -623,6 +754,7 @@ def build(raw: Path = RAW, log=print) -> tuple[dict[str, np.ndarray], dict]:
         "name": "Jezero crater, delta front (Perseverance landing site)",
         "source": "nasa",
         "crs": fs.local_proj4(),
+        "max_slope_deg": MAX_SLOPE_DEG,  # 20°, peste valoarea din contract (decizia echipei, 14.11)
         "center": {"lat": fs.CENTER_LAT, "lon": fs.CENTER_LON},
         "habitat": {"row": int(habitat[0]), "col": int(habitat[1])},
         "targets": targets,
@@ -639,6 +771,7 @@ def build(raw: Path = RAW, log=print) -> tuple[dict[str, np.ndarray], dict]:
             "stac_api": manifest["stac_api"],
             "hirise_dtms": info["hirise_ids"],
             "hirise_with_fom": info["has_fom"],
+            "fom_quality": info["fom_quality"],
             "ctx_dtms": info["ctx_ids"],
             "themis": [p["item_id"] for p in manifest["products"] if p["kind"] == "themis_ir"],
             "vertical_bias_m": info["biases_m"],
@@ -657,6 +790,23 @@ def build(raw: Path = RAW, log=print) -> tuple[dict[str, np.ndarray], dict]:
     return layers, meta
 
 
+def attach_stop_images(targets: list[dict], out: Path) -> list[dict]:
+    """targets[].image = "/static/layers/stops/<id>.jpg" + image_source, din png/stops/stops.json.
+
+    Imaginile le aduce pipeline/fetch_stop_images.py (rulat o dată, cere internet); aici doar se
+    leagă, ca un build offline să le păstreze. O țintă fără imagine rămâne cu image = None.
+    """
+    path = out / "png" / "stops" / "stops.json"
+    sources = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    result = []
+    for t in targets:
+        src = sources.get(t["id"])
+        if src and (out / "png" / "stops" / f"{t['id']}.jpg").exists():
+            t = {**t, "image": f"/static/layers/stops/{t['id']}.jpg", "image_source": src}
+        result.append(t)
+    return result
+
+
 def write(layers: dict[str, np.ndarray], meta: dict, out: Path = OUT) -> None:
     out.mkdir(parents=True, exist_ok=True)
     (out / "png").mkdir(exist_ok=True)
@@ -670,6 +820,7 @@ def write(layers: dict[str, np.ndarray], meta: dict, out: Path = OUT) -> None:
             os.replace(tmp, out / f"{name}.npy")
         finally:
             tmp.unlink(missing_ok=True)
+    meta["targets"] = attach_stop_images(meta["targets"], out)
     fs.atomic_write_text(out / "meta.json", json.dumps(meta, ensure_ascii=False, indent=2))
 
     elev, slope = layers["elevation"], layers["slope"]
@@ -697,7 +848,7 @@ def main() -> None:
     write(layers, meta, args.out)
     fp = meta["fingerprint"]
     print(f"\nSit Jezero scris în {args.out}")
-    print(f"  elevație medie {fp['elevation_mean_m']} m, interzis (>25°) {fp['forbidden_pct']}%, unsafe {fp['unsafe_pct']}%,"
+    print(f"  elevație medie {fp['elevation_mean_m']} m, interzis (>{MAX_SLOPE_DEG:.0f}°) {fp['forbidden_pct']}%, unsafe {fp['unsafe_pct']}%,"
           f" HiRISE pe {meta['provenance']['hirise_coverage_pct']}% din celule")
 
 

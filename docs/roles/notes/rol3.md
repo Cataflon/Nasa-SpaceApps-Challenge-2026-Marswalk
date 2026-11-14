@@ -34,17 +34,31 @@
 
 **Pentru rolul 4 (chat):** citește răspunsul linie cu linie (`fetch` + `ReadableStream`). `tool_call` → etichetă „Planning route…”, `route` → desenezi traseul pe hartă (are `route_id`, deci „Start EVA” îl poate porni), `token` → text adăugat, `done` → final.
 
+### Sesiunea din 14.11: cererile rolului 2 aplicate în API și în motor (făcut de rolul 2, cu acordul utilizatorului)
+
+- Cererea „Rolul 1: când `scenario.generate` e gata”: **rezolvat** (verificat în această sesiune):
+  `engine.load` folosește `scenario.generate(seed, 720, demo_events(site_id))`, iar senzorii vin din
+  scenariu.
+- `POST /api/route`: `plan_route` aruncă acum `ValueError` cu mesaje în engleză (start în afara grilei,
+  start sau țintă din care nu se ajunge la habitat), verificate din `cost_to_home` înainte de `astar`;
+  ruta le dă mai departe ca 422. `point_of_no_return` null rămâne null (test).
+- Motorul (`live/engine.py`): `alternatives.generate` se cheamă doar pentru un contact în ≤ 30 min
+  (`benchmark.REACT_WINDOW_MIN`). După o decizie RETURN traseul e definitiv (`committed_return`): fără
+  `generate`; o furtună „doar RETURN” apărută după aceea primește o decizie de confirmare RETURN pe
+  același drum (`_confirm_return`, validată; EMERGENCY dacă drumul nu mai respectă limitele).
+  EMERGENCY nu blochează replanificarea. Teste noi în `tests/live/test_engine.py` (3).
+- Lifespan: thread daemon de încălzire (`warm_up_core`: import OR-Tools, un `plan_route`, un
+  `generate`) și pornirea benchmark-ului. `GET /api/benchmark`: `api/bench_cache.py`, calculat o dată
+  într-un proces separat (pornit dintr-un thread), 503 + `Retry-After` până e gata, apoi din cache,
+  500 la eroare. `MARSWALK_WARMUP=0` / `MARSWALK_BENCHMARK_AT_STARTUP=0` le opresc. Teste:
+  `tests/api/test_core_integration.py`.
+- Scena demo are acum 4 decizii (30 REROUTE, 80 EMERGENCY, 90 RETURN `exit_zone`, 125 RETURN);
+  testul Jezero din `tests/scenario` e actualizat, plus unul nou pe situl sintetic.
+
 ## În lucru
 
 ## Cereri
 
-- **Rolul 2, ocolirile live (testat pe 14.11 după merge):** motorul folosește acum `alternatives.generate` real, dar pe situl sintetic decizia nu e niciodată REROUTE. Exemple (traseu real spre `clay_delta`, pericol injectat la minutul 5):
-  - `dust_devil` → toate alternativele au `HAZARD`, inclusiv `return` → EMERGENCY;
-  - `marsquake` → `detour_west` are `HAZARD` și doar +1 min față de traseul curent → RETURN;
-  - `local_storm` implicit (semiaxe 1,8 × 1,1 km) → nu se generează nicio ocolire.
-  Cauze probabile: (1) ocolirile din A\* spațiu-timp sunt aproape identice cu traseul curent (+1-3 min), deci trec tot prin pericol; (2) conul de predicție crește foarte repede (`SIGMA_REL` 0,35 → la un dust devil de 3 m/s semiaxele cresc cu 63 m/min, deci peste 10 min orice traseu din zonă „trece prin pericol”). Pentru demo avem nevoie de cel puțin un caz în care o ocolire e validă.
-
-- **Rolul 1:** când `scenario.generate` e gata, motorul îl folosește automat (`generate(seed, 720, None)`; `Scenario.events` înlocuiesc `DEMO_SCENARIO_EVENTS`).
 
 ## Presupuneri
 

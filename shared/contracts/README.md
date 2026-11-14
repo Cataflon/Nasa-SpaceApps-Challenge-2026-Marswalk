@@ -45,6 +45,6 @@ Câmpul `image` din `targets` e opțional (`null` sau URL către imaginea Persev
 Mesajele WebSocket au mereu un câmp `type`:
 
 - `tick`: starea la fiecare minut simulat (astronaut, senzori, pericole, traseu).
-- `decision`: o decizie nouă a regulii, cu alternativele și ce le-a eliminat validatorul. Câmpul `explanation` e `null`, pentru că explicația vine separat.
+- `decision`: o decizie nouă a regulii, cu alternativele și ce le-a eliminat validatorul. Câmpul `explanation` e `null`, pentru că explicația vine separat. Alternative.path = traseul rămas complet, de la poziția curentă până la habitat; la wait, doar [position].
 - `explanation`: textul explicației, legat prin `decision_id`. `source` e `llm` sau `template`.
 - `event`: un eveniment injectat sau din scenariu (furtună, furtună solară, scurgere în costum etc.).

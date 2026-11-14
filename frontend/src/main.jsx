@@ -10,3 +10,6 @@ createRoot(document.getElementById("root")).render(
   </React.StrictMode>,
 );
 import "./expedition.css";
+
+import "./explorer.css";
+import "./workflows.css";

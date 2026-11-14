@@ -3,15 +3,12 @@ import mockRoute from '@contracts/route_response.json';
 import mockSite from '@contracts/site.json';
 import mockChat from '@contracts/chat_stream.json';
 const clone = value => structuredClone(value);
-export async function loadHabitat() {
-  const response = await fetch('/terrain/habitat.glb');
-  if (!response.ok) throw new Error('Habitat model unavailable.');
-  return response.arrayBuffer();
+let habitatRequest,terrainRequest;
+export function loadHabitat(){
+  if(!habitatRequest)habitatRequest=fetch('/terrain/habitat.glb').then(response=>{if(!response.ok)throw Error('Habitat model unavailable.');return response.arrayBuffer();}).catch(error=>{habitatRequest=null;throw error;});return habitatRequest;
 }
-export async function loadTerrain() {
-  const [grid, model] = await Promise.all([fetch('/terrain/jezero.json'), fetch('/terrain/jezero.glb')]);
-  if (!grid.ok || !model.ok) throw new Error('Modelul Jezero nu este disponibil. Folosește vederea 2D.');
-  return { grid: await grid.json(), model: await model.arrayBuffer() };
+export function loadTerrain(){
+  if(!terrainRequest)terrainRequest=Promise.all([fetch('/terrain/jezero.json'),fetch('/terrain/jezero.glb')]).then(async([grid,model])=>{if(!grid.ok||!model.ok)throw Error('Jezero terrain is unavailable.');return {grid:await grid.json(),model:await model.arrayBuffer()};}).catch(error=>{terrainRequest=null;throw error;});return terrainRequest;
 }
 async function request(url, options = {}) {
   const controller = new AbortController();

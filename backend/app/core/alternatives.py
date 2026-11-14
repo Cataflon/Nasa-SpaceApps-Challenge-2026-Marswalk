@@ -1,12 +1,15 @@
 """Generatorul de alternative pentru un tick live în care traseul e afectat de pericol."""
 
+import math
+
 import numpy as np
 
 from app.core.budget import O2_PCT_PER_MIN_REST, minutes_grid, route_budget
-from app.core.costmap import static_cost
-from app.core.hazards import HAZARD_RESPONSES, HIT_THRESHOLD, Hazard, hazard_field, route_risk
+from app.core.costmap import hazard_cost, static_cost
+from app.core.hazards import (HAZARD_RESPONSES, HIT_THRESHOLD, Hazard, hazard_field, predict, route_hit,
+                              route_risk)
 from app.core.planner import home_tree, site_cache
-from app.core.routing import astar_spacetime, path_home
+from app.core.routing import astar, astar_spacetime, nearest_exit, path_home
 from app.core.site_data import Site
 from app.core.types import Alternative, Cell
 
@@ -19,6 +22,14 @@ DETOUR_DOWNSAMPLE = 5  # grila de 100 m pentru A* spațiu-timp (R2-9)
 MAX_HORIZON_MIN = 180
 HORIZON_STEP_MIN = 10
 WAIT_OPTIONS_MIN = tuple(range(5, 95, 5))  # 5, 10, …, 90
+# Ocolirile prin waypoint (D3). presupunere: marginea de 100 m (5 celule de 20 m) dincolo de semiaxa
+# mare a pericolului prezis; dacă waypoint-ul cade pe o celulă interzisă sau încă în pericol, se
+# îndepărtează de 1,25, 1,5, 2 ori.
+DETOUR_MARGIN_M = 100.0
+WAYPOINT_SCALES = (1.0, 1.25, 1.5, 2.0)
+# presupunere: două ocoliri sunt „aceeași variantă” de la 50 % celule comune (din traseul mai scurt,
+# până la țintă); a doua se elimină.
+MAX_DETOUR_OVERLAP = 0.5
 
 
 def generate(
@@ -36,8 +47,16 @@ def generate(
     """Toate variantele candidate, NEVALIDATE (validarea o face decision.choose).
 
     Ordinea: "current" (CONTINUE, traseul rămas), ocolirile "detour_<latură>" (REROUTE, sortate
-    după id), "wait" (WAIT, path = [position]), "return" (RETURN). `remaining_path` începe la
-    `position` și merge până la habitat; `path` în fiecare variantă e traseul rămas complet.
+    după id), "wait" (WAIT, path = [position]), "return" (RETURN) și, doar dacă astronautul e deja
+    în interiorul unui pericol, "exit_zone" (RETURN). `remaining_path` începe la `position` și
+    merge până la habitat; `path` în fiecare variantă e traseul rămas complet.
+
+    Start în pericol (D2): un pericol care acoperă deja celula de start (intensitate ≥
+    BLOCK_THRESHOLD acum) nu se mai tratează ca zonă blocată, ci ca termen finit de cost
+    (costmap.hazard_cost), altfel din celulă n-ar ieși niciun traseu. "exit_zone" = cea mai ieftină
+    ieșire din pericol (routing.nearest_exit, pe costul cu pericolul) + drumul spre casă; expunerea
+    la acel pericol pe porțiunea de ieșire nu se numără la risc (e inevitabilă), cea de după, da.
+    Celelalte pericole rămân blocate (inf) ca înainte.
 
     Cifrele vin din route_budget pe tot traseul până la habitat, pornind de la t_min, o2_pct și
     dose_msv. risk = hazards.route_risk; crosses_hazard = risk ≥ HIT_THRESHOLD. Excepție: pentru
@@ -85,15 +104,75 @@ def generate(
     arrival_current = current_numbers[0].eta_min[-1]
     current = make("current", "CONTINUE", current_path, current_numbers, 0.0)
 
-    blocked_at = _memo_blocked(hazards, site)
-    horizon = _horizon(blocked_at, current_path, t_min)
+    # Pericolele care conțin deja poziția: cost finit în loc de blocare (D2).
+    enclosing = _enclosing(hazards, position, t_min, cell)
+    blocking = [h for h in hazards if not any(h is e for e in enclosing)]
+    inside_field = hazard_field(enclosing, t_min, site.shape, cell) if enclosing else None
+
+    def cost_for(p: str) -> np.ndarray:
+        base = static_cost(site, p)  # doar pentru citire: suma face un tablou nou
+        return base if inside_field is None else base + hazard_cost(inside_field, p)
+
+    blocked_at = _memo_blocked(blocking, site)
     minutes = site_cache(site, "minutes", lambda: minutes_grid(site))
-    detours = _detours(site, position, current_path, stop_cells, t_min, blocked_at, minutes, horizon,
-                       preset, evaluate, make, arrival_current)
+    if blocking and all(HAZARD_RESPONSES.get(h.kind) == {"RETURN"} for h in blocking):
+        # Doar pericole „doar RETURN” (furtuna regională, pe toată harta): nicio ocolire nu e un
+        # răspuns permis, iar A* spațiu-timp ar calcula degeaba ~180 de câmpuri pe toată grila (~1 s).
+        horizon, detours = float(HORIZON_STEP_MIN), []
+    else:
+        horizon = _horizon(blocked_at, current_path, t_min)
+        detours = _detours(site, position, current_path, stop_cells, t_min, blocked_at, minutes, horizon,
+                           preset, evaluate, make, arrival_current, cost_for, blocking,
+                           current_numbers[0].eta_min)
     wait = _wait(position, current_path, current_numbers, hazards, t_min, o2_pct, dose_msv, radiation,
                  cell, evaluate, make)
-    ret = _return(site, position, hazards, t_min, minutes, horizon, preset, evaluate, make)
-    return [current] + detours + [wait, ret]
+    ret = _return(site, position, hazards, t_min, minutes, horizon, preset, evaluate, make, cost_for, enclosing)
+    out = [current] + detours + [wait, ret]
+    if enclosing:
+        exit_alt = _exit_zone(site, position, hazards, enclosing, inside_field, cost_for, preset, evaluate, make)
+        if exit_alt is not None:
+            out.append(exit_alt)
+    return out
+
+
+def _enclosing(hazards: list[Hazard], position: Cell, t_min: float, cell: float) -> list[Hazard]:
+    """Pericolele în interiorul cărora e deja astronautul (celula lui ar fi blocată pentru ocoliri).
+
+    Nu intră pericolele al căror singur răspuns e RETURN (furtuna regională acoperă toată harta:
+    nu are o ieșire, iar întoarcerea le ignoră oricum, vezi _return).
+    """
+    return [h for h in hazards if HAZARD_RESPONSES.get(h.kind) != {"RETURN"}
+            and route_risk([position], [t_min], [h], cell) >= BLOCK_THRESHOLD]
+
+
+def _exit_zone(site, position, hazards, enclosing, inside_field, cost_for, preset, evaluate,
+               make) -> Alternative | None:
+    """Ieșirea din pericol pe drumul cel mai ieftin (cost static + w_hazard × câmp), apoi acasă.
+
+    Ieșirea = prima celulă cu intensitate < BLOCK_THRESHOLD acum (câmpul la t_min; presupunere:
+    ieșirea durează puțin față de mișcarea pericolului). Riscul: celelalte pericole pe tot traseul,
+    pericolele care îl conțin doar de la ieșire încolo. None dacă nu există ieșire sau drum spre casă.
+    """
+    outside = inside_field < BLOCK_THRESHOLD
+    exit_path = nearest_exit(cost_for(preset), position, outside)
+    if exit_path is None:
+        return None
+    # Spre casă fără să reintre în pericol: drumul din cache dacă rămâne afară, altfel A* cu
+    # pericolul blocat (aceeași regulă ca pentru ocoliri).
+    _, parent = home_tree(site, preset)
+    home = path_home(parent, exit_path[-1])
+    if not home or not all(outside[c] for c in home):
+        blocked_cost = np.where(outside, static_cost(site, preset), np.inf)
+        home = astar(blocked_cost, exit_path[-1], site.habitat) or home
+    if not home:
+        return None
+    path = exit_path + home[1:]
+    others = [h for h in hazards
+              if not any(h is e for e in enclosing) and HAZARD_RESPONSES.get(h.kind) != {"RETURN"}]
+    numbers = evaluate(path, risk_hazards=others)
+    k = len(exit_path) - 1
+    after_exit = route_risk(path[k:], numbers[0].eta_min[k:], enclosing, site.cell_size_m)
+    return make("exit_zone", "RETURN", path, numbers, 0.0, risk=max(numbers[1], after_exit))
 
 
 def _visited_stops(path: list[Cell], stops: list[str], stop_cells: list[Cell]) -> dict[str, int]:
@@ -162,9 +241,88 @@ def _side(position: Cell, target: Cell, head: list[Cell]) -> str:
     return "east" if (cross > 0) == (drow > 0) else "west"
 
 
+def _remove_loops(path: list[Cell]) -> list[Cell]:
+    """Taie buclele: dacă o celulă reapare, tot ce e între cele două treceri se elimină."""
+    out: list[Cell] = []
+    seen: dict[Cell, int] = {}
+    for c in path:
+        if c in seen:
+            for dropped in out[seen[c] + 1:]:
+                del seen[dropped]
+            del out[seen[c] + 1:]
+        else:
+            seen[c] = len(out)
+            out.append(c)
+    return out
+
+
+def _overlap(a: list[Cell], b: list[Cell]) -> float:
+    """Suprapunerea a două trasee: celule comune / celulele traseului mai scurt (0..1)."""
+    sa, sb = set(a), set(b)
+    return len(sa & sb) / max(1, min(len(sa), len(sb)))
+
+
+def _waypoint_heads(site, position, target, current_path, current_eta, blocking, cost, preset):
+    """Ocolirile prin waypoint (D3): câte una pe fiecare latură a pericolului care atinge primul traseul.
+
+    Waypoint-ul e pe perpendiculara pe direcția poziție → țintă, dus prin centrul prezis al
+    pericolului la minutul contactului, la semiaxa mare + DETOUR_MARGIN_M (de 1, 1,25, 1,5, 2 ori,
+    până cade pe o celulă permisă și liberă). Traseul: astar(poziție → waypoint) + astar(waypoint →
+    țintă), pe costul preset-ului plus pericolul de la contact ca termen finit (hazard_cost).
+    Întoarce [(waypoint, traseu până la țintă)], cel mult două.
+    """
+    if not blocking or position == target:
+        return []
+    cell = site.cell_size_m
+    contacts = []
+    for h in blocking:
+        hit, t_hit = route_hit(current_path, current_eta, [h], cell)
+        if hit:
+            contacts.append((t_hit, h.id, h))
+    if not contacts:
+        return []
+    t_hit, _, hazard = min(contacts, key=lambda c: (c[0], c[1]))
+    at = predict(hazard, t_hit)
+    cy, cx = at.center_m
+    reach = max(at.axes_m) + DETOUR_MARGIN_M
+    dy, dx = (target[0] - position[0]) * cell, (target[1] - position[1]) * cell
+    norm = math.hypot(dy, dx)
+    ny, nx = -dx / norm, dy / norm  # perpendiculara (y spre sud, x spre est)
+    field = hazard_field(blocking, t_hit, site.shape, cell)
+    cost_wp = cost + hazard_cost(field, preset)
+    rows, cols = site.shape
+
+    out = []
+    for sign in (1.0, -1.0):
+        waypoint = None
+        for scale in WAYPOINT_SCALES:
+            wy, wx = cy + sign * ny * reach * scale, cx + sign * nx * reach * scale
+            r = int(min(max(math.floor(wy / cell), 0), rows - 1))
+            c = int(min(max(math.floor(wx / cell), 0), cols - 1))
+            if np.isfinite(cost[r, c]) and field[r, c] < BLOCK_THRESHOLD:
+                waypoint = (r, c)
+                break
+        if waypoint is None or waypoint in (position, target):
+            continue
+        first, second = astar(cost_wp, position, waypoint), astar(cost_wp, waypoint, target)
+        if first is None or second is None:
+            continue
+        out.append((waypoint, _remove_loops(first + second[1:])))
+    return out
+
+
 def _detours(site, position, current_path, stop_cells, t_min, blocked_at, minutes, horizon, preset,
-             evaluate, make, arrival_current) -> list[Alternative]:
-    """Ocolirile: poziție → următoarea oprire (A* spațiu-timp, câte un preset), apoi restul traseului."""
+             evaluate, make, arrival_current, cost_for=None, blocking=(), current_eta=None) -> list[Alternative]:
+    """Ocolirile: poziție → următoarea oprire, apoi restul traseului.
+
+    Candidații: (1) câte o ocolire prin waypoint pe fiecare latură a pericolului (_waypoint_heads,
+    preset-ul cerut); (2) A* spațiu-timp cu fiecare preset. Se păstrează, în ordinea riscului (la
+    egalitate, în ordinea de mai sus), doar candidații care se suprapun cu fiecare candidat deja
+    păstrat în mai puțin de MAX_DETOUR_OVERLAP din celulele până la țintă; duplicatele dispar.
+    Id-ul: `detour_<latură>` după semnul produsului vectorial (waypoint-ul, respectiv abaterea
+    medie a traseului, față de dreapta poziție → țintă); la a doua cu aceeași latură se adaugă
+    sursa (`_wp`) sau preset-ul.
+    """
     target = stop_cells[0] if stop_cells else site.habitat
     rest: list[Cell] = []
     if stop_cells:
@@ -175,27 +333,32 @@ def _detours(site, position, current_path, stop_cells, t_min, blocked_at, minute
             _, parent = home_tree(site, preset)
             rest = path_home(parent, target)[1:]
 
-    found = []  # (preset, traseu, staționări, cifre)
+    cost_for = cost_for or (lambda p: static_cost(site, p))
+    found = []  # (latură, sufix, traseu până la țintă, traseu complet, cifre)
+    if current_eta is not None:
+        for waypoint, head in _waypoint_heads(site, position, target, current_path, current_eta,
+                                              list(blocking), cost_for(preset), preset):
+            path = head + rest
+            found.append((_side(position, target, [waypoint]), "wp", head, path, evaluate(path)))
     for p in DETOUR_PRESETS:
-        timed = astar_spacetime(static_cost(site, p), position, target, t_min, blocked_at, minutes,
+        timed = astar_spacetime(cost_for(p), position, target, t_min, blocked_at, minutes,
                                 horizon, DETOUR_DOWNSAMPLE)
         if timed is None:
             continue
         head, dwell = _collapse_waits(timed)
         path = head + rest
-        found.append((p, head, path, evaluate(path, extra_dwell=dwell)))
+        found.append((_side(position, target, head), p, head, path, evaluate(path, extra_dwell=dwell)))
 
-    # Traseele identice se elimină: rămâne cel mai sigur (la egalitate, primul preset).
-    unique: dict[tuple, tuple] = {}
-    for item in sorted(found, key=lambda x: (x[3][1], DETOUR_PRESETS.index(x[0]))):
-        unique.setdefault(tuple(item[2]), item)
-    survivors = sorted(unique.values(), key=lambda x: DETOUR_PRESETS.index(x[0]))
+    kept = []
+    for _, item in sorted(enumerate(found), key=lambda x: (round(x[1][4][1], 6), x[0])):
+        if all(_overlap(item[2], k[2]) < MAX_DETOUR_OVERLAP for k in kept):
+            kept.append(item)
 
     out, used = [], set()
-    for p, head, path, numbers in survivors:
-        alt_id = f"detour_{_side(position, target, head)}"
+    for side, suffix, head, path, numbers in kept:
+        alt_id = f"detour_{side}"
         if alt_id in used:
-            alt_id = f"{alt_id}_{p}"
+            alt_id = f"{alt_id}_{suffix}"
         used.add(alt_id)
         out.append(make(alt_id, "REROUTE", path, numbers, numbers[0].eta_min[-1] - arrival_current))
     return sorted(out, key=lambda a: a.id)
@@ -219,15 +382,22 @@ def _wait(position, current_path, current_numbers, hazards, t_min, o2_pct, dose_
     return make("wait", "WAIT", [position], numbers, float(chosen), risk=risk)
 
 
-def _return(site, position, hazards, t_min, minutes, horizon, preset, evaluate, make) -> Alternative:
-    """Ruta din reverse_dijkstra; dacă trece prin pericol, A* spațiu-timp spre habitat."""
+def _return(site, position, hazards, t_min, minutes, horizon, preset, evaluate, make, cost_for=None,
+            enclosing=()) -> Alternative:
+    """Ruta din reverse_dijkstra; dacă trece prin pericol, A* spațiu-timp spre habitat.
+
+    Pericolele care conțin deja poziția (`enclosing`) intră în căutarea spațiu-timp ca cost finit
+    (prin `cost_for`), nu ca zonă blocată; riscul variantei le numără în continuare.
+    """
+    cost_for = cost_for or (lambda p: static_cost(site, p))
     escape = [h for h in hazards if HAZARD_RESPONSES.get(h.kind) != {"RETURN"}]
+    escape_blocking = [h for h in escape if not any(h is e for e in enclosing)]
     _, parent = home_tree(site, preset)
     path = path_home(parent, position)
     numbers = evaluate(path, risk_hazards=escape) if path else None
     if numbers is None or numbers[1] >= HIT_THRESHOLD:
-        timed = astar_spacetime(static_cost(site, preset), position, site.habitat, t_min,
-                                _memo_blocked(escape, site), minutes, horizon, DETOUR_DOWNSAMPLE)
+        timed = astar_spacetime(cost_for(preset), position, site.habitat, t_min,
+                                _memo_blocked(escape_blocking, site), minutes, horizon, DETOUR_DOWNSAMPLE)
         if timed is not None:
             path, dwell = _collapse_waits(timed)
             numbers = evaluate(path, risk_hazards=escape, extra_dwell=dwell)

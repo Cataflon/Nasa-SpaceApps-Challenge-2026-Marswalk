@@ -24,7 +24,9 @@ from pngio import categorical, hillshade, ramp, write_png
 ROOT = Path(__file__).resolve().parents[1]
 N = 500
 CELL_M = 20.0
-MAX_SLOPE_DEG = 25.0
+# Panta maximă de mers în costum: 20° (conceptul NASA de operațiuni EVA pe Lună, registrul §4.1 [S26];
+# decizia echipei, 14.11.2026). Se scrie explicit în meta.json, peste valoarea din contract.
+MAX_SLOPE_DEG = 20.0
 UNSAFE_SLOPE_DEG = 35.0  # înlocuitor pentru FOM-ul HiRISE
 # v1: schelet inițial. v2: front de deltă abrupt (pereți de netrecut + rampe), etichete pe straturi.
 # v3: radiația în doză echivalentă RAD (~26,7 µSv/h în loc de ~10).
@@ -32,7 +34,9 @@ UNSAFE_SLOPE_DEG = 35.0  # înlocuitor pentru FOM-ul HiRISE
 # v5: `artifacts` (hardware NASA ca POI) și `rover_traverse` (None pe situl sintetic).
 # v6: Ingenuity = Wright Brothers Field (primul zbor); epava e în afara hărții Jezero.
 # v7: doza de fond 28 µSv/h (0,67 mSv/zi, RAD), ca scenario.DOSE_RATE_USV_H.
-GENERATOR_VERSION = 7
+# v8: panta maximă 20° (în loc de 25°), scrisă explicit în meta.json.
+# v9: relief: creastă cu șa între habitat și carbonate_rim, front de deltă mai abrupt (zone de 12-18°).
+GENERATOR_VERSION = 9
 # Doza echivalentă la suprafață: RAD 0,64 mSv/zi = 26,7 µSv/h (Hassler et al. 2014, Science).
 # Aceeași valoare ca scenario.DOSE_RATE_USV_H (backend/app/live/scenario.py).
 DOSE_RATE_USV_H = 28.0
@@ -80,6 +84,41 @@ TARGETS = [
 ]
 DELTA_APEX_M = (1200.0, 0.0)  # (y, x)
 DELTA_RADIUS_M = 3600.0
+# Lățimea frontului deltei (logistica), variabilă cu unghiul: între 12 și 102 m. Panta maximă ≈
+# înălțime / (4 · lățime): ~55 m pe 12 m -> pereți de netrecut; 45-65 m -> zone de 12-18°; 100 m -> ~8°.
+# presupunere: geometrie de demo, nu măsurată (frontul real al deltei Jezero e pe DTM, nu aici).
+DELTA_FRONT_MIN_WIDTH_M = 12.0
+DELTA_FRONT_WIDTH_RANGE_M = 90.0
+
+# Creasta (v9): segment între două celule, profil gaussian transversal, înălțime variabilă pe lungime.
+# presupunere: toate valorile sunt alese pentru demo. Panta maximă a flancului ≈ atan(0,607 · H / σ)
+# = atan(0,607 · 80 / 160) ≈ 17°, deci zone de 12-18° fără celule peste 20° din creastă.
+RIDGE_A = (195, 185)  # (row, col), capătul de vest
+RIDGE_B = (230, 330)  # capătul de est
+RIDGE_HEIGHT_M = 80.0
+RIDGE_SIGMA_M = 160.0  # lățimea flancului (deviația standard a profilului transversal)
+RIDGE_SADDLE_U = 0.75  # poziția șei pe creastă (0 = vest, 1 = est)
+RIDGE_SADDLE_DEPTH = 0.7  # șaua coboară creasta cu 70 % (≈ 24 m, flancuri ≈ 5°)
+RIDGE_SADDLE_WIDTH_M = 300.0
+RIDGE_TAPER_M = 400.0  # creasta coboară lin spre capete, pe 400 m
+
+
+def _smoothstep(v: np.ndarray) -> np.ndarray:
+    v = np.clip(v, 0.0, 1.0)
+    return v * v * (3.0 - 2.0 * v)
+
+
+def ridge_elevation(y: np.ndarray, x: np.ndarray) -> np.ndarray:
+    """Înălțimea adăugată de creastă (m) în fiecare punct (y, x în metri, y spre sud)."""
+    ay, ax = RIDGE_A[0] * CELL_M, RIDGE_A[1] * CELL_M
+    vy, vx = (RIDGE_B[0] - RIDGE_A[0]) * CELL_M, (RIDGE_B[1] - RIDGE_A[1]) * CELL_M
+    length = float(np.hypot(vy, vx))
+    u = np.clip(((y - ay) * vy + (x - ax) * vx) / length**2, 0.0, 1.0)
+    s = u * length  # distanța pe creastă, de la capătul de vest
+    d = np.hypot(y - (ay + u * vy), x - (ax + u * vx))  # distanța față de linia crestei
+    saddle = 1.0 - RIDGE_SADDLE_DEPTH * np.exp(-(((s - RIDGE_SADDLE_U * length) / RIDGE_SADDLE_WIDTH_M) ** 2))
+    taper = _smoothstep(s / RIDGE_TAPER_M) * _smoothstep((length - s) / RIDGE_TAPER_M)
+    return RIDGE_HEIGHT_M * saddle * taper * np.exp(-(d**2) / (2.0 * RIDGE_SIGMA_M**2))
 
 
 def smooth_noise(rng: np.random.Generator, beta: float = 3.0) -> np.ndarray:
@@ -101,14 +140,20 @@ def build(seed: int) -> dict[str, np.ndarray]:
     elev = -2540.0 - 0.003 * (x + y - 10000) + 6.0 * smooth_noise(rng, 3.2)
 
     # Delta: un evantai din NV cu un front abrupt. Lățimea frontului variază cu unghiul,
-    # deci frontul are pereți de netrecut (>25°, ~1/4 din front) și rampe pe unde se poate urca.
+    # deci frontul are pereți de netrecut (>20°, ~1/4 din front) și rampe pe unde se poate urca.
     # Panta maximă a logisticei ≈ înălțime / (4 · lățime): la 12 m -> ~55°, la 170 m -> ~6°.
     dy, dx = y - DELTA_APEX_M[0], x - DELTA_APEX_M[1]
     r = np.hypot(dy, dx)
     theta = np.arctan2(dy, dx)
-    front_width = 12.0 + 160.0 * (0.5 + 0.5 * np.sin(5 * theta + 0.7))
+    front_width = DELTA_FRONT_MIN_WIDTH_M + DELTA_FRONT_WIDTH_RANGE_M * (0.5 + 0.5 * np.sin(5 * theta + 0.7))
     delta_mask = 1.0 / (1.0 + np.exp(np.clip(-(DELTA_RADIUS_M - r) / front_width, -60, 60)))
     elev += delta_mask * (55.0 + 20.0 * np.clip(1 - r / DELTA_RADIUS_M, 0, 1))
+
+    # Creasta dintre habitat și carbonate_rim (deterministă, fără numere aleatoare: restul sitului
+    # rămâne identic). Flancurile au 12-18°, sub limita de 20°, iar o șa mai joasă spre est dă o
+    # trecere mai lină. Preset-urile aleg diferit: `safe` (penalizează panta de 6×) ocolește prin
+    # șa sau pe la capăt, `fast` urcă direct.
+    elev += ridge_elevation(y, x)
 
     # Cratere mici, departe de habitat și de ținte.
     keep_clear = [HABITAT] + [(t["row"], t["col"]) for t in TARGETS]
@@ -216,7 +261,7 @@ def write(layers: dict[str, np.ndarray], out: Path, seed: int) -> None:
 
     contract = json.loads((ROOT / "shared" / "contracts" / "meta.json").read_text(encoding="utf-8"))
     slope = layers["slope"]
-    meta = {**contract, "source": "synthetic", "seed": seed, "targets": TARGETS,
+    meta = {**contract, "max_slope_deg": MAX_SLOPE_DEG, "source": "synthetic", "seed": seed, "targets": TARGETS,
             "habitat": {"row": HABITAT[0], "col": HABITAT[1]},
             "artifacts": ARTIFACTS, "rover_traverse": None,
             "layers": labeled_layers(contract["layers"], "synthetic"),

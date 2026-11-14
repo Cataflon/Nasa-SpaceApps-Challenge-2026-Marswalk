@@ -26,7 +26,7 @@ async function start() {
   });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   const origin = `http://127.0.0.1:${server.address().port}`;
-  const window = new BrowserWindow({ width:1440, height:950, minWidth:720, minHeight:600, title:'Marswalk Copilot', backgroundColor:'#090909', autoHideMenuBar:true, webPreferences:{ nodeIntegration:false, contextIsolation:true, sandbox:true } });
+  const window = new BrowserWindow({ width:1440, height:950, minWidth:720, minHeight:600, title:'Marswalk Copilot', icon:path.join(__dirname,'../dist/images/marswalk-app-icon.png'), backgroundColor:'#090909', autoHideMenuBar:true, webPreferences:{ nodeIntegration:false, contextIsolation:true, sandbox:true } });
   window.webContents.setWindowOpenHandler(()=>({action:'deny'}));
   window.webContents.on('will-navigate',(event,url)=>{ if(new URL(url).origin !== origin) event.preventDefault(); });
   await window.loadURL(origin);

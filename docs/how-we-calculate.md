@@ -21,7 +21,7 @@ Source numbers [S1]…[S34] follow the team's parameter registry (`docs/roles/PA
 | Mars gravity correction (`MARS_G_FACTOR`) | 1.0 (not applied on purpose: the suit limits speed, not gravity; a second correction would count it twice) | — | assumption |
 | Mars gravity (`G_MARS`) | 3.71 m/s² | physical constant | source |
 | Rest metabolic rate in suit (`P_REST_W`) | 176 W (600 BTU/h, light activity) | [S31] | source |
-| Astronaut + suit mass (`M_TOTAL_KG`) | 196 kg (Mars-equivalent weights 583-927 N ÷ 3.71) | [S24] [S34] | to verify |
+| Astronaut + suit mass (`M_TOTAL_KG`) | 196 kg: the mean "Mars equivalent (with human)" weight of four suits, 728 N (583-927 N), divided by Mars gravity 3.71 m/s² | NASA ICES-2026 "Mars Mass" table (NTRS 20260005410) [S24] [S34] | source |
 | Walking cost (`C_LEVEL`) | 0.59 J/(kg·m), calibrated so that 3 km/h on flat ground = 272 W (the Apollo average) | [S28] | source |
 | Climbing efficiency (`ETA_UP`) | 0.22 (typical muscle efficiency 0.20-0.25) | not calibrated on [S32] | assumption |
 | Metabolic power on a segment | `P = P_rest + M·(C_level·v + g·max(0, v_vertical) / η_up)` | registry §4.2 | source |
@@ -45,7 +45,7 @@ Source numbers [S1]…[S34] follow the team's parameter registry (`docs/roles/PA
 | Quantity | Value | Source | Status |
 |---|---|---|---|
 | Maximum walking slope, planning (`PLANNER_LIMITS`) | 20° (NASA lunar EVA concept of operations; Apollo 15 crossed ~17°) | [S26] | source |
-| Maximum slope, map and live validator (`Limits.max_slope_deg`, `meta.max_slope_deg`) | 25° (the team was asked to lower it to 20°) | — | assumption |
+| Maximum slope (`meta.max_slope_deg`, `planner.PLANNER_LIMITS`, `Limits.max_slope_deg`) | 20°: steeper cells are forbidden on the map (2.05% of Jezero) and in every route | NASA concept of operations for lunar EVAs: 20° maximum walking slope; Apollo 15 crossed ~17° [S26] | source |
 | Margin before sunset (`Limits.sunset_margin_min`) | 30 min | — | assumption |
 | Dose limit per EVA (`Limits.max_dose_msv`) | 1 mSv (a 5-8 h EVA gets ~0.13-0.22 mSv, so this limit is rarely reached: on Mars, radiation matters over a whole mission, not one EVA) | — | assumption |
 | Verdict NO-GO | the validator finds any violation | — | source |
@@ -90,7 +90,7 @@ Source numbers [S1]…[S34] follow the team's parameter registry (`docs/roles/PA
 | Dust devils at Jezero (reference) | 1.3-3.4 per km² per sol, median diameter 25 m (5-135 m), peak at 12-13 h local time, internal wind up to 25 m/s | [S16] [S17] | source |
 | Shelter wait (`DEFAULT_WAIT_MIN`) | 30 min per WAIT decision | — | assumption |
 | Default injected hazards (`HAZARD_DEFAULTS`) | dust devil 130 m across at 4 m/s · local storm = storm front 30 × 5 km at 15 m/s, starting 9 km away · regional storm 60 km, static · marsquake 300 m | sizes and speeds from [S16] [S17] [S18] [S19] | assumption |
-| Real dust storm scale (reference) | storm cells 20-40 km, winds 20-45 m/s, regional storms visible from orbit days ahead | [S18] [S19] [S21] | source |
+| Real dust storm scale (reference) | storm cells 20-40 km, winds over the cells up to 140 km/h (~39 m/s); regional storms grow bigger than the United States and are tracked from orbit by MARCI, which gives rovers advance notice | ESA 2022 [S20] (Icarus [S18]); NASA/JPL [S21] | source |
 
 ## 7. Weather and radiation scenarios (`backend/app/live/scenario.py`)
 
@@ -98,20 +98,28 @@ Simulated, seeded series ("simulated scenarios, calibrated on MEDA, REMS and RAD
 
 | Quantity | Value | Source | Status |
 |---|---|---|---|
-| Air temperature | daily cycle −83 °C before dawn to −23 °C at midday (peak 12:30 local time), noise ±2.5 K | Munguira et al. 2023 [S3] [S10] | source |
-| Dust reduces the daily temperature swing | factor 1 / (1 + 0.35·(τ − 0.5)) | observed in Jezero storms (Lemmon et al. 2022); factor chosen by us | assumption |
-| Pressure | 720 Pa ± 12 Pa thermal tide, maximum around 08:00 | Sánchez-Lavega et al. 2023 [S5] [S6] | source |
-| Wind: distribution | Weibull: each minute is drawn from it; gusts come from its tail, not from a sine wave. Turbulence correlated over ~3 min | Viúdez-Moreiras et al. 2022 [S7] | source |
-| Wind: parameters | shape k = 2; mean 3 m/s in the morning, 6 m/s at the 14:00 peak (to fit on MEDA data) | [S7] | to verify |
-| Dust opacity τ, quiet season | 0.5; rises only during dust events | Savijärvi et al. [S8] | source |
-| Surface dose rate | 28 µSv/h dose equivalent (0.67 mSv/day, galactic cosmic rays, Aug 2012 - Jun 2013; absorbed dose 0.21 mGy/day) | Hassler, SwRI release of 9 Dec 2013 [S11] (checked on the page); Hassler et al. 2014 [S12] | source |
+| Sol length (`SOL_MIN`, `MARS_HOUR_MIN`) | 1479.6 min (24 h 39 min 35 s); a Mars hour = 1/24 of a sol = 61.65 min | NASA GISS Mars24; NASA Mars Fact Sheet [S2] | source |
+| Air temperature (`TEMP_MEAN_C`, `TEMP_AMP_C`, `TEMP_PEAK_LTST_H`) | daily cycle −83 °C before dawn to −23 °C at midday (mean −53 °C, amplitude 30 °C), peak at 12:30 local time | Munguira et al. 2023 [S3] [S4] | source |
+| Temperature noise (`TEMP_SIGMA_C`, `TEMP_TAU_MIN`) | ±2.5 K, correlated over 20 min | ±2.5 K: midday fluctuations [S10]; correlation time chosen by us | assumption |
+| Dust reduces the daily temperature swing (`TEMP_DUST_DAMPING`) | factor 1 / (1 + 0.35·(τ − 0.5)) | observed in Jezero storms (Lemmon et al. 2022); factor chosen by us | assumption |
+| Pressure (`PRESSURE_MEAN_PA`, `PRESSURE_DIURNAL_PA`, `PRESSURE_PEAK_LTST_H`) | 720 Pa ± 12 Pa thermal tide, maximum around 08:00 (first reading at Jezero: 718 Pa; seasonal maximum 761 Pa) | Sánchez-Lavega et al. 2023 [S5] [S6] | source |
+| Pressure noise (`PRESSURE_SIGMA_PA`, `PRESSURE_TAU_MIN`) | ±1 Pa, correlated over 60 min | — | assumption |
+| Wind: distribution | Weibull: each minute is drawn from it; gusts come from its tail, not from a sine wave | Viúdez-Moreiras et al. 2022 [S7] | source |
+| Wind: parameters (`WIND_WEIBULL_BY_LTST`) | MEDA fits by time of day: morning 07-10 h c = 3.02 m/s, k = 2.01 (mean 2.7 m/s) · midday 10-15 h c = 5.28, k = 2.16 (mean 4.7) · afternoon 15-18 h c = 6.80, k = 3.02 (mean 6.1) · evening and night 1.2-3.0 m/s. Linear interpolation between the slot midpoints is our choice | Viúdez-Moreiras et al. 2022, Table 1 (full text, NTRS 20230001086) [S7]; also in `data/processed/jezero/wind_stats.json` | source |
+| Wind turbulence (`WIND_TAU_MIN`) | wind noise correlated over 3 min (reference: turbulence intensity σ/mean over 10 min is 36 ± 10% by day, 22 ± 10% by night; around dust devils peaks reach 9.2 × the background wind) | intensities: same paper, sections 4-5; the 3 min is our choice | assumption |
+| Dust opacity τ, quiet season (`TAU_MEAN`) | 0.5; rises only during dust events | Lemmon et al. 2022 [S8] (NASA NTRS record) | to verify |
+| Dust opacity noise (`TAU_SIGMA`, `TAU_TAU_MIN`) | ±0.05, correlated over 120 min, on a day without a storm | — | assumption |
+| Physical bounds (`TAU_RANGE`, `WIND_RANGE`, `TEMP_RANGE`, `PRESSURE_RANGE`) | τ 0.1-10 (τ > 8 was measured at Gale in the 2018 global storm) · wind 0-40 m/s · temperature −110 to +10 °C · pressure 550-900 Pa | τ: Guzewich et al. 2019; the other bounds chosen by us | assumption |
+| Surface dose rate (`DOSE_RATE_USV_H`) | 28 µSv/h dose equivalent (0.67 mSv/day, galactic cosmic rays, Aug 2012 - Jun 2013; absorbed dose 0.21 mGy/day) | NASA news release of 9 Dec 2013 [S11] (checked on the page); Hassler et al. 2014 [S12] | source |
 | Dose daily cycle (`DOSE_DIURNAL_FRAC`) | ±11% (180-225 µGy/day), lowest when pressure is highest; tied to the pressure tide by us | Hassler et al. 2014, Rafkin et al. 2014 [S12] | to verify |
-| Solar particle event | dose × 2.5, rising over 2 h, peak until 4 h, then decaying over ~36 h (largest SPE seen on the surface, Sept 2017: × 2-3). The live engine takes these numbers from the scenario (`SOLAR_DOSE_MULTIPLIER`, `SOLAR_DURATION_MIN`) | Zeitlin et al. 2018 [S14] [S15] | to verify |
-| Storm front (demo `local_storm`) | τ +2.0 and wind +15 m/s at full intensity; passage time = 2 × the ellipse's extent along its motion ÷ speed (a 30 × 5 km front at 15 m/s passes in ~6 min) | Lemmon et al. 2022; sizes [S18] [S19] | assumption |
-| Regional storm (demo) | τ rises to 3.0 over 120 min and stays there | Guzewich et al. 2019 | assumption |
-| Dust devil passing (demo) | τ +0.5, wind +15 m/s, pressure −3 Pa for 2-5 min | [S1] [S17] | source |
-| Demo scene (`DEMO_SCENARIO_EVENTS`, `JEZERO_DEMO_EVENTS`) | min 30: large dust devil (130 m, 3 m/s with the wind) crosses the route ahead → REROUTE · min 80: storm front 30 × 5 km at 15 m/s reaches the astronaut at the clay target → nothing avoids it → immediate return · min 125: regional storm warning from orbit → RETURN. Real sizes and speeds; dust devils are rarer at 08:30 than at midday (a demo choice) | registry §3 [S16] [S17] [S18] [S19] [S21] | assumption |
-| Earth-Mars light delay on the demo date | 11.0 min one way (1.319 AU on 2026-11-14); help from Houston = 2 × 11 + 5 min reaction time ≈ 27 min | JPL approximate Keplerian elements (Standish); reaction time chosen by us | source |
+| Dose noise (`DOSE_SIGMA_FRAC`, `DOSE_TAU_MIN`) | ±3%, correlated over 60 min | — | assumption |
+| Solar particle event (`SOLAR_PARTICLE_EVENT`) | dose × 2.5, rising over 2 h, peak until 4 h, then decaying over ~2 days (largest SPE seen on the surface, Sept 2017: × 2-3; NASA/JPL: "more than double any previously measured", "the high readings lasted more than two days"). The live engine takes these numbers from the scenario (`SOLAR_DOSE_MULTIPLIER`, `SOLAR_DURATION_MIN`) | Zeitlin et al. 2018 [S14]; NASA/JPL 2017 [S15] | to verify |
+| Storm front (`LOCAL_STORM`, demo `local_storm`) | τ +2.0 and wind +15 m/s at full intensity (default intensity 0.7, rise 8 min); passage time = 2 × the ellipse's extent along its motion ÷ speed (a 30 × 5 km front at 15 m/s passes in ~6 min) | Lemmon et al. 2022; sizes [S18] [S19] | assumption |
+| Regional storm (`REGIONAL_STORM`) | τ rises to 3.0 over 120 min and stays there; wind +10 m/s (default intensity 0.9) | Guzewich et al. 2019 | assumption |
+| Dust devil passing (`DUST_DEVIL`) | τ +0.5, wind +15 m/s, pressure −3 Pa for about 3 min (default intensity 0.5) | [S1] [S17] | source |
+| Demo scene (`DEMO_SCENARIO_EVENTS`, `JEZERO_DEMO_EVENTS`, `DEMO_EVENTS_BY_SITE`) | min 30: large dust devil (130 m, 3 m/s with the wind) crosses the route ahead → REROUTE · min 80: storm front 30 × 5 km at 15 m/s reaches the astronaut at the clay target → nothing avoids it → immediate return · min 125: regional storm warning from orbit → RETURN. Real sizes and speeds; dust devils are rarer at 08:30 than at midday (a demo choice) | registry §3 [S16] [S17] [S18] [S19] [S21] | assumption |
+| Fallback sensors (`BASELINE`) | the values used if a scenario cannot be generated: τ 0.5, wind 2.5 m/s (MEDA mean at 08:00), −40 °C, 720 Pa, 28 µSv/h | same sources as the rows above | assumption |
+| Earth-Mars light delay on the demo date (`DEMO_DATE_UTC`, `EARTH_ONE_WAY_DELAY_MIN`, `MISSION_CONTROL_REACTION_MIN`, `EARTH_ROUND_TRIP_MIN`, `EARTH_DELAY_SOURCE`) | 11.0 min one way (1.319 AU on 2026-11-14, with `AU_KM` = 149 597 870.7 km and `C_KM_S` = 299 792.458 km/s); help from Houston = 2 × 11 + 5 min reaction time ≈ 27 min | JPL approximate Keplerian elements (Standish); IAU constants; reaction time chosen by us | source |
 
 ## 8. The map (`pipeline/fetch_stac.py`, `pipeline/build_layers.py`)
 
@@ -120,7 +128,8 @@ Simulated, seeded series ("simulated scenarios, calibrated on MEDA, REMS and RAD
 | Map | 10 × 10 km around 18.44° N, 77.45° E (the Perseverance landing site), 500 × 500 cells of 20 m, local equirectangular projection with true scale at 18.44° | USGS STAC; Mars 2015 sphere, R = 3,396,190 m | source |
 | Terrain elevation | HiRISE DTMs (read at 4 m) over CTX DTMs, areoid datum, calibrated on 306 Perseverance localizations (mean residual 5.2 m) | USGS Astrogeology STAC (MRO HiRISE, CTX); NASA M20 waypoints | source |
 | Slope per 20 m cell | maximum of the 4 m slopes inside the cell (small obstacles are kept) | derived from the DTM | source |
-| Unsafe cells | slope > 35° at 4 m (the HiRISE FOM legend is not published) | derived from the DTM | assumption |
+| Unsafe cells (`UNSAFE_SLOPE_DEG`) | slope > 35° at 4 m. The HiRISE figure-of-merit map measures how reliable the DTM is, not how dangerous the ground is, so it is not used here | derived from the DTM | assumption |
+| Unreliable HiRISE elevation (`FOM_TRUSTED`, `FOM_BAD_CELL_FRAC`) | where at least half of a 20 m cell's HiRISE posts are "suspicious", interpolated, saturated or in shadow on the FOM map, that cell uses the CTX surface instead, shifted to the local HiRISE level (delta surface fill) with a 20 m transition. At Jezero: 2 388 cells (~1% of the map); slopes and routes unchanged where it matters | HiRISE team DTM README and FOM legend (University of Arizona); delta surface fill: Grohman et al. 2006 | source |
 | Radiation layer | surface dose × exp((elevation − mean) / 11 km): slightly more dose where there is less atmosphere above | RAD background [S11]; altitude scaling chosen by us | assumption |
 | Terrain classes | THEMIS night IR (thermal-inertia proxy): darkest 25% on gentle slopes = sand, brightest 25% = bedrock; slope > 20° = bedrock; 4 m vs 20 m slope difference > 12° = boulders | Mars Odyssey THEMIS; thresholds chosen by us | assumption |
 | Mineral units | delta deposits (clays) = plateau > 90 m above the crater floor; clays, olivine and carbonates within 250-700 m of where Perseverance studied them | HiRISE/CTX DTM; NASA M20 waypoints; Goudge 2015, Liu 2022, Horgan 2020 | assumption |
@@ -129,6 +138,6 @@ Simulated, seeded series ("simulated scenarios, calibrated on MEDA, REMS and RAD
 
 ## References
 
-[S1] Rodriguez-Manfredi et al. 2023, *Nature Geoscience*, Jezero meteorology over the first 250 sols · [S3] [S4] Munguira et al. 2023, *JGR Planets*, near-surface temperatures at Jezero (MEDA) · [S5] [S6] Sánchez-Lavega et al. 2023, *JGR Planets*, pressure at Jezero · [S7] Viúdez-Moreiras et al. 2022, winds at the Mars 2020 landing site (NTRS 20230001086) · [S8] Savijärvi et al., Jezero dust opacity · [S10] Munguira et al., EGU 2023, Jezero temperature fluctuations · [S11] SwRI release of 9 Dec 2013 (Hassler): 0.67 mSv/day · [S12] Hassler et al. 2014, *Science*, doi:10.1126/science.1244797 · [S14] [S15] Zeitlin et al. 2018, *GRL*, doi:10.1029/2018GL077760 · [S16] Toledo et al. 2023, *JGR Planets*, dust devils at Jezero · [S17] Hueso et al. 2023, *JGR Planets*, convective vortices at Jezero · [S18] [S19] Sánchez-Lavega et al., dust storm cells · [S21] NASA JPL, back-to-back regional storms · [S22] Apollo walking speeds · [S24] NASA ICES-2026 "Mars Mass" (NTRS 20260005410) · [S26] NASA EVA Lunar Surface Concept of Operations · [S27] The Walkback Test (NASA JSC, ICES 2007) · [S28] NASA NTRS 19910001262, EVA metabolic rates · [S29] NASA TN D-7883, *Apollo Experience Report: Assessment of Metabolic Expenditures* (NTRS 19750010199) · [S31] *Aerospace Medicine and Human Performance* 90(2), EVA simulation parameters · [S32] NASA NTRS 20220009964 · [S33] DTIC ADA386372, caloric equivalent of oxygen · Tobler 1993, hiking function · Mars24, NASA GISS · Standish, "Keplerian Elements for Approximate Positions of the Major Planets", JPL.
+[S1] Rodriguez-Manfredi et al. 2023, *Nature Geoscience*, Jezero meteorology over the first 250 sols · [S3] [S4] Munguira et al. 2023, *JGR Planets*, near-surface temperatures at Jezero (MEDA) · [S5] [S6] Sánchez-Lavega et al. 2023, *JGR Planets*, pressure at Jezero · [S7] Viúdez-Moreiras et al. 2022, winds at the Mars 2020 landing site (NTRS 20230001086) · [S8] Lemmon et al. 2022, *GRL*, dust in Jezero (doi:10.1029/2022GL100126, NASA NTRS) · [S10] Munguira et al., EGU 2023, Jezero temperature fluctuations (doi:10.5194/egusphere-egu23-5885) · [S11] NASA news release of 9 Dec 2013: 0.67 mSv/day · [S12] Hassler et al. 2014, *Science*, doi:10.1126/science.1244797 · [S14] [S15] Zeitlin et al. 2018, *GRL*, doi:10.1029/2018GL077760 · [S16] Toledo et al. 2023, *JGR Planets*, dust devils at Jezero · [S17] Hueso et al. 2023, *JGR Planets*, convective vortices at Jezero · [S18] [S19] Sánchez-Lavega et al., dust storm cells · [S21] NASA JPL, back-to-back regional storms · [S22] Apollo walking speeds · [S24] NASA ICES-2026 "Mars Mass" (NTRS 20260005410) · [S26] NASA EVA Lunar Surface Concept of Operations · [S27] The Walkback Test (NASA JSC, ICES 2007) · [S28] NASA NTRS 19910001262, EVA metabolic rates · [S29] NASA TN D-7883, *Apollo Experience Report: Assessment of Metabolic Expenditures* (NTRS 19750010199) · [S31] *Aerospace Medicine and Human Performance* 90(2), EVA simulation parameters · [S32] NASA NTRS 20220009964 · [S33] DTIC ADA386372, caloric equivalent of oxygen · Tobler 1993, hiking function · Mars24, NASA GISS · Standish, "Keplerian Elements for Approximate Positions of the Major Planets", JPL.
 
 Full links: `docs/roles/PARAMETRI_REFERINTA.md` (team registry) and `docs/sources.md`.

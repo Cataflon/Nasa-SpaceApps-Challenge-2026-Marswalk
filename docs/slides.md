@@ -1,6 +1,6 @@
 # Slides
 
-Eleven slides, about 3 minutes plus the 2-minute live demo ([demo.md](demo.md)). Each slide names the judging criterion it serves. One idea per slide, big numbers, few words. Numbers were measured on 14.11.2026 on the Jezero site; the benchmark must be re-measured after any change to role 2's code (`GET /api/benchmark`, field `headline`).
+Eleven slides, about 3 minutes plus the 2-minute live demo ([demo.md](demo.md)). Each slide names the judging criterion it serves. One idea per slide, big numbers, few words. Numbers were measured on 14.11.2026 on the Jezero site. The benchmark numbers come from `data/processed/jezero/benchmark.json` (`python pipeline/run_benchmark.py`, ~30 s); re-run it after any change to role 2's algorithms or to the site data, and a test checks that these slides still quote it.
 
 ---
 

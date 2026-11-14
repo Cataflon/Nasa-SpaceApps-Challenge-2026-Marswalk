@@ -1,0 +1,44 @@
+{
+  "clay_delta": {
+    "imageid": "ZL0_0647_0724373849_519EBY_N0311710ZCAM08646_1100LMJ",
+    "sol": 647,
+    "instrument": "MCZ_LEFT",
+    "filter": "ZCAM_L0_RGB",
+    "credit": "NASA/JPL-Caltech/ASU",
+    "date_taken_utc": "2022-12-15T11:06:44.916",
+    "link": "https://mars.nasa.gov/mars2020/multimedia/raw-images/ZL0_0647_0724373849_519EBY_N0311710ZCAM08646_1100LMJ",
+    "url": "https://mars.nasa.gov/mars2020-raw-images/pub/ods/surface/sol/00647/ids/edr/browse/zcam/ZL0_0647_0724373849_519EBY_N0311710ZCAM08646_1100LMJ01_1200.jpg",
+    "mast_el_deg": -1.4,
+    "mast_az_deg": -63.8,
+    "rover_waypoint_sol": 647,
+    "rover_to_target_m": 9
+  },
+  "carbonate_rim": {
+    "imageid": "ZL0_0843_0741775190_348EBY_N0401608ZCAM08848_1100LMJ",
+    "sol": 843,
+    "instrument": "MCZ_LEFT",
+    "filter": "ZCAM_L0_RGB",
+    "credit": "NASA/JPL-Caltech/ASU",
+    "date_taken_utc": "2023-07-04T20:51:24.094",
+    "link": "https://mars.nasa.gov/mars2020/multimedia/raw-images/ZL0_0843_0741775190_348EBY_N0401608ZCAM08848_1100LMJ",
+    "url": "https://mars.nasa.gov/mars2020-raw-images/pub/ods/surface/sol/00843/ids/edr/browse/zcam/ZL0_0843_0741775190_348EBY_N0401608ZCAM08848_1100LMJ01_1200.jpg",
+    "mast_el_deg": -10.2,
+    "mast_az_deg": 55.5,
+    "rover_waypoint_sol": 843,
+    "rover_to_target_m": 90
+  },
+  "olivine_floor": {
+    "imageid": "ZL0_0204_0685052331_206ECM_N0071716ZCAM08228_110085J",
+    "sol": 204,
+    "instrument": "MCZ_LEFT",
+    "filter": "ZCAM_L0_RGB",
+    "credit": "NASA/JPL-Caltech/ASU",
+    "date_taken_utc": "2021-09-16T08:22:57.954",
+    "link": "https://mars.nasa.gov/mars2020/multimedia/raw-images/ZL0_0204_0685052331_206ECM_N0071716ZCAM08228_110085J",
+    "url": "https://mars.nasa.gov/mars2020-raw-images/pub/ods/surface/sol/00204/ids/edr/browse/zcam/ZL0_0204_0685052331_206ECM_N0071716ZCAM08228_110085J01_1200.jpg",
+    "mast_el_deg": -11.4,
+    "mast_az_deg": 300.0,
+    "rover_waypoint_sol": 204,
+    "rover_to_target_m": 4
+  }
+}
