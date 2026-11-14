@@ -1,0 +1,124 @@
+{
+  "version": 1,
+  "site_id": "jezero",
+  "fingerprint": {
+    "forbidden_pct": 0.86,
+    "unsafe_pct": 0.13,
+    "elevation_mean_m": -2558.7
+  },
+  "grid": {
+    "crs_proj4": "+proj=eqc +lat_ts=18.44 +lat_0=18.44 +lon_0=77.45 +R=3396190 +units=m +no_defs +type=crs",
+    "shape": [
+      500,
+      500
+    ],
+    "cell_size_m": 20.0,
+    "geotransform": [
+      -5000.0,
+      20.0,
+      0.0,
+      5000.0,
+      0.0,
+      -20.0
+    ],
+    "cell_center_m": "x = (col + 0.5) * cell - width/2 (east), y = height/2 - (row + 0.5) * cell (north)",
+    "cell_center_latlon": "lat = lat0 + deg(y / R), lon = lon0 + deg(x / (R cos lat0)), R = 3396190 m",
+    "center": {
+      "lat": 18.44,
+      "lon": 77.45
+    },
+    "corner_cell_centers_latlon": {
+      "nw": [
+        18.524184,
+        77.361259
+      ],
+      "ne": [
+        18.524184,
+        77.538741
+      ],
+      "sw": [
+        18.355816,
+        77.361259
+      ],
+      "se": [
+        18.355816,
+        77.538741
+      ]
+    },
+    "row_axis": "south",
+    "col_axis": "east"
+  },
+  "elevation": {
+    "file": "elevation.npy",
+    "unit": "m",
+    "dtype": "float32",
+    "nodata": null,
+    "datum": "areoid (HiRISE DTEEC); CTX shifted by -32.97 m",
+    "rover_vertical_check": {
+      "n_points": 306,
+      "offset_m": 0.0,
+      "mean_abs_dev_m": 5.16,
+      "p95_abs_dev_m": 17.77,
+      "applied_shift_m": -5.76
+    },
+    "products": "DTEEC_023524_1985_023379_1985_U01, DTEEC_045994_1985_046060_1985_U01, DTEEC_048842_1985_048908_1985_U01, DTEEC_022680_1985_022746_1985_A01, DTEEC_002387_1985_003798_1985_A01, J03_045994_1986_XN_18N282W__J03_046060_1986_XN_18N282W, J10_048842_1986_XN_18N282W__J11_048908_1986_XN_18N282W, K13_058574_1983_XN_18N282W__K13_058640_1983_XN_18N282W"
+  },
+  "to_frontend_terrain": {
+    "file": "frontend/public/terrain/jezero.json",
+    "source": "USGS Mars 2020 CTX TRN DTM",
+    "source_url": "https://planetarymaps.usgs.gov/mosaic/mars2020_trn/CTX/JEZ_ctx_B_soc_008_DTM_MOLAtopography_DeltaGeoid_20m_Eqc_latTs0_lon0.tif",
+    "their_crs": "equirectangular, Mars 2000 sphere R = 3396190 m, lat_ts = 0, lon_0 = 0 (x = R·lon, y = R·lat, radians)",
+    "their_origin_m": [
+      4585823.250853,
+      1098033.140188
+    ],
+    "their_resolution_m": [
+      20.0,
+      -20.0
+    ],
+    "formula": {
+      "their_row": "(R * lat - 1098033.140188) / -20.0 - 0.5",
+      "their_col": "(R * lon - 4585823.250853) / 20.0 - 0.5",
+      "with": "lat, lon of our cell centre (grid.cell_center_latlon), in radians",
+      "approx": "their_row ≈ row + 0.39; their_col ≈ 249.5 + (col - 249.5) / cos(18.44°) + 0.1"
+    },
+    "corners_in_their_pixels": {
+      "nw": [
+        0.39,
+        -13.4
+      ],
+      "ne": [
+        0.39,
+        512.61
+      ],
+      "sw": [
+        499.39,
+        -13.4
+      ]
+    },
+    "measured": {
+      "covered_pct": 94.6,
+      "elevation_ours_minus_theirs_m": {
+        "median": -6.75,
+        "mad": 4.31
+      },
+      "slope_correlation": {
+        "same_cells_assumed": 0.332,
+        "exact_transform": 0.623,
+        "with_residual_shift": 0.673
+      },
+      "residual_shift": {
+        "their_rows": -2.0,
+        "their_cols": -0.5,
+        "north_m": 40.0,
+        "east_m_ground": -9.5,
+        "note": "between two different DTM products (USGS CTX TRN mosaic vs our HiRISE/CTX controlled DTMs); not applied, reported for alignment"
+      },
+      "our_grid_in_their_pixels": {
+        "cols_span": 527.0,
+        "rows_span": 500.0,
+        "cell_m": 20.0
+      }
+    }
+  }
+}

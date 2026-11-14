@@ -174,11 +174,26 @@ Verificată rulând motorul cu alternativele reale ale rolului 2: test `test_dem
   - Slide-ul despre limite e onest: 33 de constante cu sursă, 36 de presupuneri, 4 de verificat.
 - **README §8** e actualizat cu scena nouă și cifrele reale. Am corectat „5 misiuni” → **4** (MRO, Mars Odyssey, Mars 2020, MSL; MGS și MAVEN apar doar ca context în `sources.md`).
 
+### Răspuns la cererile din notele celorlalte roluri (14.11, doar în `pipeline/` și `data/`)
+- **Rolul 4: alinierea reliefului 3D.** Fișier nou **`data/processed/jezero/grid.json`**, generat de `pipeline/grid_alignment.py`. Conține georeferențierea grilei (proj4, geotransform GDAL, formula centrului de celulă, colțurile în lat/lon), datumul elevației (areoid, corecția pe rover −5,76 m, NoData: niciunul) și blocul `to_frontend_terrain` cu transformarea exactă spre `frontend/public/terrain/jezero.json`.
+  - **Grilele NU se suprapun celulă cu celulă.** Relieful vostru e în proiecția nativă a mozaicului USGS (echirectangulară, `lat_ts = 0`), al nostru e echirectangular local (`lat_ts = 18,44°`). Centrul e același; rândurile coincid (`their_row ≈ row + 0,39`), dar pe est-vest `their_col ≈ 249,5 + (col − 249,5) / cos 18,44° + 0,1`. Cele 500 de coloane ale noastre acoperă 527 de pixeli la voi, deci la margini diferența ajunge la ~13 pixeli (~260 m).
+  - **Măsurat**, cu corelația pantelor: 0,33 dacă tratați grilele ca identice, 0,62 cu transformarea exactă, 0,67 cu un decalaj rezidual de **~40 m spre nord** (diferența dintre mozaicul CTX TRN și DTM-urile noastre HiRISE/CTX; e raportat, nu aplicat). Altitudinile noastre sunt cu **6,75 m mai jos** (mediană; MAD 4,3 m), pentru că sunt calibrate pe cele 306 puncte ale roverului.
+  - Pentru suprapuneri (traseu, habitat, ținte, hardware NASA): treceți fiecare celulă `(row, col)` prin formula din `grid.json`.
+- **Rolul 2: zgomotul furtunilor cu sursă.** Fișier nou **`data/processed/jezero/wind_stats.json`**, generat de `pipeline/meda_winds.py`. Sursa e [S7] = Viúdez-Moreiras et al. 2022 (NTRS 20230001086), **citit în textul complet**. Conține:
+  - Weibull pe intervale orare: dimineața 07-10 h c = 3,02 m/s, k = 2,01 (media 2,68); prânz 10-15 h c = 5,28, k = 2,16 (media 4,67); după-amiază 15-18 h c = 6,80, k = 3,02 (media 6,08); totalul c = 3,57, k = 1,49;
+  - **intensitatea turbulenței TI = σv / v: 36 ± 10 % ziua, 22 ± 10 % noaptea**; σv = 1,85 ± 0,57 m/s ziua;
+  - la vârtejuri: c crește cu 65 %, vârfurile ajung la 9,2 × vântul de fond.
+
+  Vârtejurile merg cu vântul de fond, deci zgomotul relativ de viteză din `storms.py` (acum 15 %) poate fi TI-ul de zi, cu 36 % ca limită de sus. Articolul nu dă o cifră pentru variabilitatea direcției. Transcrierea e verificată: din (c, k) din Tabelul 1 se reobțin media și percentilele 95/99 % din Tabelul 2 (`pipeline/tests/test_meda_winds.py`).
+- **Rolul 2: straturile sunt sigure pentru harta de cost.** Radiația are minimul 27,5 µSv/h (fără 0, fără NaN), niciun strat nu are NaN, iar habitatul și țintele sunt pe celule permise (pantă ≤ 7,4°, sub 20°). Testul `test_layers_safe_for_costmap` păzește asta în CI. Doza (cererea veche cu ≈ 10 → 28) e rezolvată din capitolul 8.
+
 ## În lucru
 
 ## Cereri
 
 - **Pentru rolurile 2 + 3 (benchmark în UI):** `GET /api/benchmark` întoarce încă 501, iar `run_benchmark` nu are `headline`. Pe Jezero, `run_benchmark()` durează ~30 s, deci trebuie calculat o dată și ținut în cache, nu la fiecare cerere. Cifrele din slide-uri sunt măsurate pe 14.11; dacă se schimbă algoritmul, trebuie remăsurate.
+- **Pentru rolul 2:** cifrele cerute pentru zgomotul din `storms.py` sunt acum în `data/processed/jezero/wind_stats.json` (vezi mai sus). După ce le preluați, `calibrate_sigma_v` dă un `SIGMA_REL` cu sursă.
+- **Pentru rolul 4:** folosiți `data/processed/jezero/grid.json` ca să puneți traseul și punctele pe relieful 3D (grilele diferă pe est-vest cu factorul 1 / cos 18,44°).
 - **Pentru rolul 2 (de discutat):** furtunile din benchmark (`storms.py`) au propriul model, separat de scenariul demo. Registrul (§3) cere mărimi reale: front de zeci de km, vârtejuri ≤ 135 m. Merită verificat dacă `storms.py` le respectă.
 - **Pentru rolul 4:** interfața are încă texte în română (`utils.js`: „Furtună locală”…, butoanele „Trimite”, „Ceas”, „Apus”…). Regula echipei cere engleză pentru tot ce vede juriul.
 
