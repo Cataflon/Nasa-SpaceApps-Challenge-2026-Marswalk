@@ -45,7 +45,7 @@ export function useLive(route) {
       setState(r.data.state); setSpeed(nextSpeed);
     } catch (e) { setError(e.message); } finally { setBusy(false); }
   }
-  async function event(type) { setBusy(true); setError(''); try { await injectEvent(type, mock); } catch (e) { setError(e.message); } finally { setBusy(false); } }
+  async function event(type, params = {}) { setBusy(true); setError(''); try { await injectEvent(type, mock, params); } catch (e) { setError(e.message); } finally { setBusy(false); } }
   return { ...data, status, state, speed, busy, error, control, event, mock };
 }
 export function usePosition(tick, speed, paused) {

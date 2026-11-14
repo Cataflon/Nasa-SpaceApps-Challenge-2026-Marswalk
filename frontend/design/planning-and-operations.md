@@ -1,5 +1,16 @@
 # Planning and operations
 
+## Latest layout and rendering pass
+
+- Waypoint rows have separate selection, trip membership and deletion actions. Itinerary rows use numbered stops, reorder and remove controls. Mission plan lists custom waypoints as well as catalog targets; custom selection uses local preview until the backend contract extension is implemented.
+- Planning has one Open simulation action. The user can collapse the desktop sidebar. An active floating map reserves a gutter beside the dashboard on desktop/tablet; compact layouts reserve bottom space. Fullscreen layers live inside MapView and are suppressed in the small PiP viewport.
+- Analytic layers snapshot and restore the original material and color attribute. This fixes the dark surface after disabling Slope. Labels project each active frame; expensive terrain occlusion is throttled independently. No hardware FPS claim is made.
+- Simulation puts the terrain/devices first, a compact copilot status above them and controls/event configuration below. Chat was removed. Event parameters match the existing engine fields and use explicit coordinates, meters, degrees and m/s; recorded demo events remain presets.
+- Shared sensor source is a labeled select, with one receive timestamp per telemetry block. Sensor illustrations use SVG viewBox cropping and preserveAspectRatio instead of stretching sprite tiles.
+- Native Electron checks covered waypoint membership/reorder layout, manual sidebar collapse, fullscreen layers, Slope on/off color restoration, map rotation, PiP gutter, custom stop selection in Mission plan, simulation section order/event fields and sensor illustration proportions. Full real-backend E2E and Playwright were not run.
+- Integration handoff: [Frontend / backend / algorithm contract](../contracts/FRONTEND_BACKEND_ALGORITHM.md). The proposed wire extension is explicitly separate from current runtime support.
+- Final validation: 18 Node tests pass and the Electron package is updated. The existing Three.js chunk-size warning remains. JSON fixtures were parsed and cross-checked against required keys and event serialization; a full external JSON Schema validator and real-backend E2E were not run.
+
 ## Follow-up: shared instruments and waypoint trips
 
 - Navigation remains fixed on desktop and sticky at the top of compact layouts. Native Electron QA with increased UI zoom verified that it stays accessible during scrolling.

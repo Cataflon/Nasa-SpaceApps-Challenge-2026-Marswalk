@@ -1,0 +1,7 @@
+# Consistent line endings across Windows, Linux and GitHub Actions.
+# Git detects binary assets automatically and leaves their bytes unchanged.
+* text=auto eol=lf
+
+# Windows command scripts use CRLF in the working tree.
+*.bat text eol=crlf
+*.cmd text eol=crlf

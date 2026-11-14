@@ -1,0 +1,21 @@
+{
+  "status": "Proposed integration examples; not a claim of deployed backend support",
+  "capabilities": {
+    "schema_version": "1.1", "site_id": "jezero", "terrain_revision": "ctx20m-revision-1",
+    "custom_stops": true, "ordered_stops": true, "event_parameters": true,
+    "sensor_health": false, "live_seek": false, "live_reverse": false,
+    "event_kinds": ["local_storm", "regional_storm", "dust_devil", "marsquake", "solar_particle_event", "suit_leak", "fatigue"]
+  },
+  "route_request": {
+    "schema_version": "1.1", "site_id": "jezero", "terrain_revision": "ctx20m-revision-1", "client_request_id": "plan-request-001",
+    "start": {"row": 300, "col": 200}, "stops": ["clay_delta", "note_ridge_01"],
+    "custom_stops": [{"id": "note_ridge_01", "name": "Ridge checkpoint", "row": 220, "col": 260, "tag": "waypoint", "dwell_min": 5}],
+    "stop_order": "request", "return_to_habitat": true, "preset": "safe", "start_time_min": 0, "max_duration_min": 300
+  },
+  "spatial_event": {"event": "local_storm", "params": {"center": {"row": 220, "col": 260}, "axes_m": [15000, 2500], "angle_deg": 90, "intensity": 0.7, "velocity_ms": [0, 15]}},
+  "solar_event": {"event": "solar_particle_event", "params": {"dose_rate_multiplier": 2.5, "duration_min": 240}},
+  "leak_event": {"event": "suit_leak", "params": {"leak_pct_per_min": 0.15}},
+  "fatigue_event": {"event": "fatigue", "params": {"speed_factor": 0.8}},
+  "sensor_health": {"o2_pct": {"state": "warning", "message": "Reference cross-check failed", "accuracy": null}, "pressure_pa": {"state": "fault", "message": "Transducer self-test failed", "accuracy": null}},
+  "error": {"error": {"code": "CUSTOM_STOP_OUT_OF_BOUNDS", "message": "The waypoint is outside this terrain.", "field": "custom_stops[0].row", "client_request_id": "plan-request-001", "retryable": false}}
+}

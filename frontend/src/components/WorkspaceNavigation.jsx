@@ -1,10 +1,10 @@
 ﻿import Icon from './Icon';
 const pages=[['mission','map','Planning'],['simulation','compass','Simulation'],['sensors','activity','Sensors']];
-export default function WorkspaceNavigation({page,onNavigate,mock,offline,site}) {
+export default function WorkspaceNavigation({page,onNavigate,mock,offline,site,collapsed,onToggle}) {
   return <>
     <header className="field-masthead">
       <a className="field-wordmark" href="#mission" onClick={e=>{e.preventDefault();onNavigate('mission');}}><img className="app-brand-logo" src="/images/marswalk_logo_512.png" alt="Marswalk" width="512" height="262"/></a>
-      <nav aria-label="Application views">{pages.map(([id,icon,label])=><button key={id} aria-label={label} title={label} className={`field-tab ${page===id?'current':''}`} onClick={()=>onNavigate(id)} aria-current={page===id?'page':undefined}><Icon name={icon} size={18}/><span>{label}</span></button>)}</nav>
+      <button className="nav-collapse" onClick={onToggle} aria-label={collapsed?'Expand sidebar':'Collapse sidebar'} aria-expanded={!collapsed} title={collapsed?'Expand sidebar':'Collapse sidebar'}><Icon name="chevron" size={15}/></button><nav aria-label="Application views">{pages.map(([id,icon,label])=><button key={id} aria-label={label} title={label} className={`field-tab ${page===id?'current':''}`} onClick={()=>onNavigate(id)} aria-current={page===id?'page':undefined}><Icon name={icon} size={18}/><span>{label}</span></button>)}</nav>
       <div className="field-link-status"><i className={offline?'offline':''}/><span>{offline?'Connection interrupted':mock?'Demo data':'Connected'}</span></div>
     </header>
     <div className="field-context"><div><span>Jezero</span><span className="context-divider">/</span><b>{pages.find(([id])=>id===page)?.[2]}</b></div><span className="field-coordinates">{Number.isFinite(site?.center?.lat)?site.center.lat.toFixed(2):'—'}° N · {Number.isFinite(site?.center?.lon)?site.center.lon.toFixed(2):'—'}° E</span></div>

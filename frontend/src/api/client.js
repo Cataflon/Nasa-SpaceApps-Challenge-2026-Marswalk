@@ -80,9 +80,9 @@ export async function controlLive(data, mock = false) {
   if (data.speed) demo.speed = data.speed;
   runDemo(); tick(); return { data: { ok: true, state: demo.state, t_min: demo.t }, mock: true };
 }
-export async function injectEvent(event, mockOrParams = false) {
+export async function injectEvent(event, mockOrParams = false, customParams = {}) {
   const mock = mockOrParams === true;
-  const params = mockOrParams && typeof mockOrParams === 'object' ? mockOrParams : {};
+  const params = mockOrParams && typeof mockOrParams === 'object' ? mockOrParams : customParams;
   if (!mock) return post('/api/live/event', { event, params });
   demoEvent(event); return { data: { ok: true }, mock: true };
 }

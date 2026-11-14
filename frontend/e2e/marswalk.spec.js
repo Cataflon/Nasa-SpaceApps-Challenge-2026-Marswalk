@@ -5,7 +5,7 @@ async function simulation(page){
   await page.goto(BASE);
   await page.getByRole('button',{name:'Generate mission route',exact:true}).click();
   await expect(page.locator('.verdict')).toHaveText(/GO|CAUTION|NO-GO/);
-  await page.getByRole('button',{name:'Continue to simulation',exact:true}).click();
+  await page.getByRole('button',{name:'Open simulation',exact:true}).click();
   await expect(page.getByLabel('Simulation controls')).toBeVisible();
 }
 test('planning keeps operations separate and floats the map on scroll',async({page})=>{
