@@ -33,7 +33,8 @@ from app.core import hazards as core_hazards
 from app.core import modes as core_modes
 from app.core import replanner as core_replanner
 from app.core.benchmark import REACT_WINDOW_MIN
-from app.core.budget import O2_PCT_PER_MIN_PER_WATT, O2_PCT_PER_MIN_REST, EffectWindow, tobler_speed_ms
+from app.core import budget as core_budget
+from app.core.budget import O2_PCT_PER_MIN_REST, EffectWindow, tobler_speed_ms
 from app.core.daylight import sunrise_sunset_min
 from app.core.planner import SOL_START_UTC
 from app.core.decision import choose
@@ -48,8 +49,19 @@ from app.llm.summary import build_summary
 log = logging.getLogger(__name__)
 
 # --- Presupuneri (de documentat de rolul 1 în docs/how-we-calculate.md) ---
-WALK_WATTS = 220.0  # putere metabolică suplimentară la mers în costum
-O2_PCT_PER_MIN_WALK = O2_PCT_PER_MIN_REST + O2_PCT_PER_MIN_PER_WATT * WALK_WATTS
+# O₂ la mers: același model ca planificatorul (core.budget._walk: puterea din viteza Tobler și din
+# urcare), aplicat pe bucata de drum parcursă efectiv în fiecare minut. Înainte motorul folosea 220 W
+# fix (0,281 %/min), iar planificatorul ~0,19 %/min pe plat: după ~15 min un plan cu marjă mică primea
+# RETURN pe O2_RESERVE fără niciun pericol (notele rolului 2, 14.11).
+
+
+def walk_rate_pct_per_min(fatigue: float = 1.0) -> float:
+    """O₂ consumat pe minut de mers pe teren plat (%/min), după modelul planificatorului."""
+    minutes, o2 = core_budget._walk(100.0, 0.0, fatigue)
+    return float(o2 / minutes)
+
+
+O2_PCT_PER_MIN_WALK = walk_rate_pct_per_min()  # ≈ 0,19 %/min pe plat, fără oboseală
 SUIT_LEAK_PCT_PER_MIN = 0.15
 FATIGUE_SPEED_FACTOR = 0.8
 FATIGUE_O2_FACTOR = 1.15
@@ -307,8 +319,9 @@ class LiveEngine:
         sensors = self._sensors(t)
         moving = self._advance_minute()
         speed = self._speed_ms() if moving else 0.0
-        walk = O2_PCT_PER_MIN_WALK * self._o2_factor()
-        self.o2_pct -= (walk if moving else O2_PCT_PER_MIN_REST) + self.leak_pct_per_min
+        walk_min, walk_o2 = self._minute_walk
+        rest_min = max(0.0, 1.0 - walk_min)
+        self.o2_pct -= walk_o2 * self._o2_factor() + O2_PCT_PER_MIN_REST * rest_min + self.leak_pct_per_min
         self.dose_msv += sensors["dose_rate_usv_h"] / 60.0 / 1000.0
         self._expire_hazards(t)
 
@@ -329,20 +342,44 @@ class LiveEngine:
         return float(self._meta.get("cell_size_m", 20))
 
     def _speed_ms(self) -> float:
+        """Viteza pe segmentul curent (de la poziția reală, nu de la celula rotunjită: rotunjirea
+        cădea uneori chiar pe celula următoare, panta ieșea 0 și astronautul urca cu viteza de pe plat)."""
         slope_tan = 0.0
-        if self._site is not None and self.remaining and "elevation" in self._site.layers:
-            elev = self._site.layers["elevation"]
-            a, b = _cell(self.pos), self.remaining[0]
-            d = _dist(a, b) * self.cell_size_m
+        if self.remaining:
+            d = _dist(self.pos, self.remaining[0]) * self.cell_size_m
             if d > 0:
-                slope_tan = float(elev[b] - elev[a]) / d
+                slope_tan = (self._z(self.remaining[0]) - self._z(self.pos)) / d
         return tobler_speed_ms(slope_tan, self.fatigue)
 
     def _flat_speed_ms(self) -> float:
         return tobler_speed_ms(0.0, self.fatigue)
 
+    def _z(self, p) -> float:
+        """Altitudinea (m) într-un punct fracționar (row, col), interpolată biliniar; 0 fără sit."""
+        if self._site is None or "elevation" not in self._site.layers:
+            return 0.0
+        elev = self._site.layers["elevation"]
+        rows, cols = elev.shape
+        r = min(max(float(p[0]), 0.0), rows - 1.0)
+        c = min(max(float(p[1]), 0.0), cols - 1.0)
+        r0, c0 = min(int(r), rows - 2) if rows > 1 else 0, min(int(c), cols - 2) if cols > 1 else 0
+        r1, c1 = min(r0 + 1, rows - 1), min(c0 + 1, cols - 1)
+        fr, fc = r - r0, c - c0
+        top = elev[r0, c0] * (1 - fc) + elev[r0, c1] * fc
+        bottom = elev[r1, c0] * (1 - fc) + elev[r1, c1] * fc
+        return float(top * (1 - fr) + bottom * fr)
+
+    def _walk_piece(self, a, b) -> tuple[float, float]:
+        """(minute, O₂ %) pentru mersul de la a la b, cu modelul planificatorului (fără factori de stare)."""
+        d_m = _dist(a, b) * self.cell_size_m
+        if d_m <= 0:
+            return 0.0, 0.0
+        minutes, o2 = core_budget._walk(d_m, self._z(b) - self._z(a), self.fatigue)
+        return float(minutes), float(o2)
+
     def _advance_minute(self) -> bool:
         """Mută astronautul un minut pe traseu. Întoarce True dacă a mers."""
+        self._minute_walk = (0.0, 0.0)  # (minute de mers, O₂ %) în acest minut, citite de step()
         if self.wait_until is not None:
             if self.t_min <= self.wait_until:
                 return False
@@ -353,13 +390,18 @@ class LiveEngine:
         if not self.remaining:
             return False
 
-        budget = self._speed_ms() * 60.0 / self.cell_size_m  # celule în acest minut
-        while budget > 1e-9 and self.remaining:
+        # Un minut de mers, segment cu segment, fiecare cu viteza și O₂-ul după panta lui
+        # (core.budget._walk, exact ca planificatorul): timpul, nu distanța, e bugetul minutului.
+        time_left = 1.0  # minute
+        walked_min = walked_o2 = 0.0
+        while time_left > 1e-9 and self.remaining:
             target = self.remaining[0]
-            d = _dist(self.pos, target)
-            if d <= budget:
-                budget -= d
+            start = self.pos
+            need, o2 = self._walk_piece(start, target)
+            if need <= time_left:
+                time_left -= need
                 self.pos = (float(target[0]), float(target[1]))
+                walked_min, walked_o2 = walked_min + need, walked_o2 + o2
                 self.remaining.pop(0)
                 self.traveled.append(target)
                 stop = next((s for s in self.stops_left if s["cell"] == target), None)
@@ -370,24 +412,44 @@ class LiveEngine:
                     self.dwell_left = stop["dwell_min"]
                     break
             else:
-                f = budget / d
-                self.pos = (self.pos[0] + (target[0] - self.pos[0]) * f, self.pos[1] + (target[1] - self.pos[1]) * f)
-                budget = 0
+                f = time_left / need  # pe un segment panta e constantă: timp și O₂ proporționale
+                self.pos = (start[0] + (target[0] - start[0]) * f, start[1] + (target[1] - start[1]) * f)
+                walked_min, walked_o2 = walked_min + time_left, walked_o2 + o2 * f
+                time_left = 0.0
+        self._minute_walk = (walked_min, walked_o2)
         return True
+
+    def _remaining_walk(self) -> tuple[float, float]:
+        """(minute de mers, O₂ % de mers) pe traseul rămas, cu panta fiecărui segment (ca planificatorul)."""
+        pts = [self.pos] + self.remaining
+        walk_min = walk_o2 = 0.0
+        for a, b in zip(pts, pts[1:]):
+            m, o = self._walk_piece(a, b)
+            walk_min, walk_o2 = walk_min + m, walk_o2 + o
+        return walk_min, walk_o2
 
     def _remaining_minutes(self) -> tuple[float, float]:
         """(minute de mers, minute de oprire) până la capătul traseului curent."""
-        dist_m = _polyline_len([self.pos] + self.remaining) * self.cell_size_m
-        walk = dist_m / self._flat_speed_ms() / 60.0
+        walk, _ = self._remaining_walk()
         dwell = self.dwell_left + sum(s["dwell_min"] for s in self.stops_left)
         return walk, dwell
+
+    def _o2_at_end(self, extra_rest_min: float = 0.0) -> tuple[float, float, float]:
+        """(O₂ % la capătul traseului, minute de mers, minute de oprire) cu ritmul de acum."""
+        walk, walk_o2 = self._remaining_walk()
+        dwell = self.dwell_left + sum(s["dwell_min"] for s in self.stops_left) + extra_rest_min
+        return self._o2_after(walk, dwell, walk_o2), walk, dwell
 
     def _o2_factor(self) -> float:
         return _INJURED_O2 if self.injured else (FATIGUE_O2_FACTOR if self.fatigue < 1 else 1.0)
 
-    def _o2_after(self, walk_min: float, rest_min: float) -> float:
-        walk_rate = O2_PCT_PER_MIN_WALK * self._o2_factor()
-        return self.o2_pct - walk_rate * walk_min - O2_PCT_PER_MIN_REST * rest_min - self.leak_pct_per_min * (walk_min + rest_min)
+    def _o2_after(self, walk_min: float, rest_min: float, walk_o2: float | None = None) -> float:
+        """O₂ după `walk_min` de mers și `rest_min` de repaus. `walk_o2`: O₂-ul de mers calculat pe
+        traseu (cu pantă); lipsă = teren plat."""
+        if walk_o2 is None:
+            walk_o2 = walk_rate_pct_per_min(self.fatigue) * walk_min
+        return (self.o2_pct - walk_o2 * self._o2_factor() - O2_PCT_PER_MIN_REST * rest_min
+                - self.leak_pct_per_min * (walk_min + rest_min))
 
     # ------------------------------------------------------------------ senzori și evenimente
 
@@ -665,12 +727,10 @@ class LiveEngine:
 
     def _budget_broken(self, t: int) -> bool:
         """Nivelul 1 (buget): cu ritmul de acum (scurgere, oboseală incluse), traseul rămas mai ține?"""
-        walk, dwell = self._remaining_minutes()
-        if self.wait_until is not None:
-            dwell += max(0, self.wait_until - t)
+        waiting = max(0, self.wait_until - t) if self.wait_until is not None else 0
+        o2_end, walk, dwell = self._o2_at_end(waiting)
         arrival = t + walk + dwell
-        return (self._o2_after(walk, dwell) < self.limits.o2_reserve_pct
-                or arrival > self.sunset_min - self.limits.sunset_margin_min)
+        return o2_end < self.limits.o2_reserve_pct or arrival > self.sunset_min - self.limits.sunset_margin_min
 
     def _nearby(self, t: int) -> dict | None:
         """Nivelul 3 (proximitate): primul pericol nou ajuns la < PROXIMITY_M de astronaut."""
@@ -905,8 +965,7 @@ class LiveEngine:
             return self.dose_msv + dose_rate * minutes / 60.0 / 1000.0
 
         here = _cell(self.pos)
-        walk, dwell = self._remaining_minutes()
-        cont_o2 = self._o2_after(walk, dwell)
+        cont_o2, walk, dwell = self._o2_at_end()
         current = Alternative(
             id="current", kind="CONTINUE", path=[here] + list(self.remaining), extra_min=0,
             o2_end_pct=cont_o2, dose_msv=dose_after(walk + dwell), risk=0.8,
@@ -975,7 +1034,7 @@ class LiveEngine:
     # ------------------------------------------------------------------ mesaje
 
     def _tick_message(self, t: int, sensors: dict, speed: float) -> dict:
-        walk, dwell = self._remaining_minutes()
+        o2_end, _, _ = self._o2_at_end()
         budget = self.route.get("budget", {}) if self.route else {}
         msg = {
             "type": "tick",
@@ -996,7 +1055,7 @@ class LiveEngine:
             "remaining_path": [list(_cell(self.pos))] + [list(p) for p in self.remaining],
             "route_version": self.route_version,
             "budget": {
-                "o2_end_pct": round(self._o2_after(walk, dwell), 1),
+                "o2_end_pct": round(o2_end, 1),
                 "return_by_min": budget.get("return_by_min", self.sunset_min - self.limits.sunset_margin_min),
                 "sunset_min": self.sunset_min,
             },

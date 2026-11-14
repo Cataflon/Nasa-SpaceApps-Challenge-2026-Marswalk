@@ -360,3 +360,30 @@ def test_emergency_keeps_reevaluating(monkeypatch):
     ds = decisions(run(e, 12))
     assert ds[0]["decision"] == "EMERGENCY"
     assert len(calls) >= 2  # reevaluat după REEVAL_MIN
+
+
+def test_live_o2_matches_planner_budget():
+    """Fără pericole, O₂-ul consumat live pe un traseu în pantă = bugetul planificatorului (core.budget).
+    Înainte motorul folosea 220 W fix la mers și ajungea cu ~7 puncte sub plan."""
+    import sys
+    from pathlib import Path
+
+    from app.core.budget import route_budget
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "core"))
+    from grids import make_site
+
+    elevation = np.tile(np.arange(80, dtype=np.float32) * 2.0, (40, 1))  # urcare de 2 m pe celulă spre est
+    site = make_site(np.zeros((40, 80), dtype=np.float32), habitat=(20, 2), elevation=elevation,
+                     targets=[{"id": "t", "name": "T", "kind": "clay", "row": 20, "col": 60,
+                               "science_value": 10, "dwell_min": 10, "image": None}])
+    out = [(20, c) for c in range(2, 61)]
+    path = out + out[::-1][1:]
+    planned = route_budget(path, site.layers["elevation"], site.cell_size_m, 0.0, float("inf"), 0.0,
+                           dwell_min_at={58: 10.0})
+    route = {"path": [list(c) for c in path], "stops": [{"id": "t", "index_in_path": 58, "dwell_min": 10}],
+             "budget": {"sunset_min": 600}}
+    e = started(route, site_provider=lambda: site)
+    run(e, 200)
+    assert e.end_reason == "egress_complete"
+    assert e.o2_pct == pytest.approx(planned.o2_end_pct, abs=0.5)

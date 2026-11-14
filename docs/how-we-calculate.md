@@ -35,7 +35,7 @@ Source numbers [S1]…[S34] follow the team's parameter registry (`docs/roles/PA
 | O₂ per watt (`O2_PCT_PER_MIN_PER_WATT`) | 0.000711 %/min per W | derived from the two lines above | source |
 | O₂ at rest / waiting (`O2_PCT_PER_MIN_REST`) | 0.125 %/min (176 W) | derived | source |
 | O₂ walking on flat ground | 0.194 %/min (272 W) | derived | source |
-| Extra walking power in the live engine (`WALK_WATTS`) | 220 W above rest → 0.281 %/min | — | assumption |
+| Walking O₂ in the live engine | same model as the planner (`core.budget._walk`: Tobler speed and climb, per segment actually walked each minute) → 0.194 %/min on flat ground; live O₂ matches the plan within ~0.2 points with no hazards | derived | source |
 | O₂ reserve on arrival (`Limits.o2_reserve_pct`) | 30% | — | assumption |
 | Suit leak event (`SUIT_LEAK_PCT_PER_MIN`) | +0.15 %/min O₂ | — | assumption |
 | Fatigue event (`FATIGUE_SPEED_FACTOR`, `FATIGUE_O2_FACTOR`) | speed × 0.8, O₂ use × 1.15 | — | assumption |

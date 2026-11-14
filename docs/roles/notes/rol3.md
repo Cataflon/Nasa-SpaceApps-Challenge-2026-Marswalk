@@ -119,6 +119,24 @@
   `crewmate_injured`, `comm_loss`, `custom`.
 - `REPLAN_EVERY_MIN` și `PROXIMITY_M` au plecat din motor (K pe mod și `core_modes.PROXIMITY_M`).
 
+- **O₂ și viteza în motor = modelul planificatorului (15.11).** Rezolvă problema „de decis” din notele rolului 2: 220 W fix (0,281 %/min) față de ~0,194 %/min în planificator.
+  - **Cum se calculează acum:**
+    - motorul nu mai folosește `WALK_WATTS`;
+    - fiecare minut se parcurge segment cu segment, cu viteza Tobler și O₂-ul din `core.budget._walk`, după panta segmentului;
+    - bugetul unui minut e timpul (1 min), nu distanța;
+    - proiecțiile (`tick.budget.o2_end_pct`, watchdog-ul de buget) folosesc același model pe traseul rămas.
+  - **Reparat pe parcurs:** viteza se calcula de la celula rotunjită. Când rotunjirea cădea pe celula următoare, panta ieșea 0 și astronautul urca pantele cu viteza de pe teren plat.
+  - **Rezultat**, traseu spre `clay_delta`, fără pericole:
+
+    | Sit | Plan | Live |
+    |---|---|---|
+    | Jezero | 148 min, 71,4% O₂ | 149 min, 71,2% |
+    | sintetic | 145 min, 73,4% | 146 min, 73,3% |
+
+    Fără RETURN pe `O2_RESERVE` fără pericol.
+  - `O2_PCT_PER_MIN_WALK` rămâne exportat, ca rată pe teren plat a modelului nou (0,194 %/min).
+  - Test: `test_live_o2_matches_planner_budget`.
+
 ## În lucru
 
 ## Cereri
