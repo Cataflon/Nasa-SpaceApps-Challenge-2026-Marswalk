@@ -2,9 +2,60 @@
 
 ## Gata
 
-Teste: `python -m pytest tests/core` → 132 trecute
+Teste: `python -m pytest tests/core` → 150 trecute
 (`test_decision` 6, `test_grid` 14, `test_costmap` 27, `test_routing` 51, `test_budget` 11,
-`test_daylight` 9, `test_stops` 14).
+`test_daylight` 9, `test_stops` 14, `test_planner` 7, `test_hazards` 11).
+
+### R2-8: `hazards`
+
+- `from_contract(d, cell, t0, shape=None)`: centrul din row/col devine metri la centrul celulei,
+  `(row + 0,5) × cell`; valori implicite pentru `angle_deg`, `velocity_ms` și `id`. Un
+  `regional_storm` fără centru acoperă toată grila (centrul grilei, semiaxe = diagonala); fără
+  `shape` aruncă ValueError.
+- `predict`: centrul + viteza × Δ × 60. **Decizie: semiaxele cresc aditiv**, cu `SIGMA_V × 60 × Δ`.
+  Varianta multiplicativă veche (`UNCERTAINTY_GROWTH_PER_MIN`, +0,5 %/min) a rămas în fișier,
+  marcată nefolosită. Motive: exemplul din `live_messages.json` crește ambele semiaxe cu aceeași
+  valoare (+150 m în 10 min), iar fizic eroarea de poziție crește cu eroarea de viteză × timp.
+  `SIGMA_V = 0,25 m/s` (+15 m/min) reproduce exact exemplul; e nivel C, de calibrat în R2-11.
+- `hazard_field`: vectorizat, doar pe dreptunghiul care încadrează elipsa rotită; float32,
+  maximul peste pericole. Convenție pentru unghi: de la est, în sensul acelor de ceasornic pe
+  hartă (y spre sud).
+- `route_hit` și funcția nouă `route_risk` folosesc aceeași funcție internă (intensitatea în
+  fiecare punct la minutul sosirii, vectorizat), deci nu se pot contrazice; un test o verifică.
+- `to_contract`: forma exactă din `tick.hazards[]`. Testul reproduce prognoza din contract: col 30
+  → 105 la +10 min și → 180 la +20 min, cu semiaxe 1950×1250 și 2100×1400.
+
+### R2-7: `planner.plan_route` — gata pentru `POST /api/route`
+
+- Întoarce dict-ul cu exact cheile din `shared/contracts/route_response.json` (testul citește
+  fișierul). Numere rotunjite: minute și metri la întreg, procente la o zecimală, doza la 3
+  zecimale; `path` ca liste `[row, col]`; doar tipuri Python simple (`json.dumps` merge).
+- Etape: `static_cost` (cache) → `reverse_dijkstra` pe cost (cache per sit și preset; drumurile
+  habitat ↔ țintă vin din `path_home`) → la ≥ 2 ținte, `astar` țintă ↔ țintă o dată pe pereche
+  neordonată, timp și O₂ recalculate pe fiecare sens cu `route_budget` → `plan_stops` (plan B
+  `brute_force_stops`) → segmente lipite → `route_budget` cu staționările → punct de
+  neîntoarcere din `reverse_dijkstra` pe `o2_cost_grid` (cache per sit) → `validator.violations`
+  pe un `Alternative` construit din buget → verdict.
+- `ValueError` pentru ținte necunoscute (cu id-urile) sau inaccesibile: rolul 3 → 422.
+- Exemple pe situl sintetic: `["clay_delta"]` → GO, 145 min, O₂ final 73,2 %. Toate cele 3 ținte,
+  limită 480 min → ordinea `clay_delta`, `carbonate_rim`, `olivine_floor`; CAUTION, 337 min,
+  O₂ final 37,7 % (sub rezervă + 10).
+
+Timpul lui `plan_route` pe situl sintetic și defalcarea pe etape:
+
+| Caz / etapă | Timp |
+|---|---|
+| `plan_route(["clay_delta"])`, primul apel pe sit (rece) | 1,27 s (ținta: < 3 s) |
+| `plan_route` cu toate cele 3 ținte, rece | 1,55 s (ținta: < 3 s) |
+| același, al doilea apel pe același sit (cache cald) | 0,001 s (1 țintă) / 0,27 s (3 ținte) |
+| etapa: `static_cost` | 0,008 s |
+| etapa: `reverse_dijkstra` pe cost | 0,64 s, o dată per (sit, preset) |
+| etapa: `o2_cost_grid` + `reverse_dijkstra` pe O₂ | 0,66 s, o dată per sit |
+| etapa: `astar` țintă ↔ țintă, 3 perechi | 0,16 s |
+| etapa: `plan_stops`, 3 ținte | ≈ 0,1 s (diferența din cazul cald cu 3 ținte) |
+| etapa: `route_budget` + punct de neîntoarcere | ≈ 1 ms |
+
+Fără importul OR-Tools (0,75 s, o dată per proces, vezi „Cereri”).
 
 ### R2-6: `stops` (CP-SAT + forță brută)
 
@@ -161,6 +212,10 @@ Python 3.14.6, numpy 2.5.4; mediana din mai multe rulări.
 | `stops.plan_stops`, 6 / 15 ținte | 0,03 s / 0,93 s | 15 e peste țintă, doar informativ |
 | `stops.brute_force_stops`, 6 ținte (1957 de ordini) | 0,018 s | fără țintă proprie |
 | importul `ortools` (o dată per proces, la primul apel) | 0,75 s | de știut pentru primul `POST /api/route` |
+| `hazards.hazard_field`, 500×500, furtună locală + dust devil | 1,4 ms | < 50 ms pe tick |
+| `hazards.hazard_field`, 500×500, plus furtună regională (toată grila) | 7,7 ms (max 10,3 ms) | < 50 ms pe tick |
+| `hazards.route_hit` / `route_risk`, 241 de puncte, 3 pericole | 0,11 ms | < 50 ms pe tick |
+| `hazards.to_contract` (cu 8 pași de prognoză) | 0,04 ms | < 50 ms pe tick |
 
 Timpii lui `astar` sunt cu regula „fără tăierea colțurilor” și cu convenția D2 (media celor două
 celule). Față de R2-2, traseele spre ținte au rămas sub 65 ms; cazul colț la colț a crescut de
@@ -174,7 +229,7 @@ Pe situl sintetic: 1,34 % din celule sunt interzise. Costul finit e între 1,03 
 
 ## În lucru
 
-- Urmează R2-7 (`planner.plan_route`).
+- Urmează R2-9 (`routing.astar_spacetime`).
 - De preluat din `docs/roles/PARAMETRI_REFERINTA.md`, la pașii care le ating (constantele
   din `budget.py` sunt deja preluate la R2-4):
   - registrul `core/params.py` (un singur loc pentru constante, cu nivel A/B/C și sursă);
@@ -195,6 +250,17 @@ Pe situl sintetic: 1,34 % din celule sunt interzise. Costul finit e între 1,03 
   ieftină, înainte de a chema `astar` de la habitat: `cost_to_home[celulă] == inf` din
   `reverse_dijkstra` (calculat o dată per hartă). Pentru traseul de întoarcere nu e nevoie de
   `astar` deloc: `path_home(parent_index, celulă)` durează sub 0,1 ms.
+- **Pentru rolul 3: planner-ul e gata.** `POST /api/route` poate trece de pe mock pe
+  `planner.plan_route(site, start, stops, preset, start_time_min, max_duration_min,
+  return_to_habitat)`. Întoarce exact forma din `route_response.json`; `route_id` e mereu
+  `"plan_0"` (îl suprascrieți din stocul vostru). `ValueError` → 422 (ținte necunoscute sau
+  inaccesibile). `point_of_no_return` poate fi `null` dacă nici startul nu respectă rezerva.
+  Primul apel pe un sit durează ≈ 1,3-1,6 s (două Dijkstra, puse apoi în cache); următoarele,
+  sub 0,3 s. Un `plan_route` de încălzire la pornire mută costul acolo.
+- **Pentru oameni (pantă maximă):** validatorul din planner folosește 20° (registru, A [S26]);
+  `Limits` și `meta.json` au încă 25°. Harta de cost permite deci 20-25°, iar un traseu prin
+  asemenea pante iese NO-GO cu `SLOPE`. Pe situl sintetic nu se întâmplă (panta maximă pe
+  traseele spre ținte: 7,3°). Rezolvarea curată e `max_slope_deg = 20` în `meta.json` și `Limits`.
 - **Pentru rolul 3:** primul apel la `stops.plan_stops` dintr-un proces plătește importul
   OR-Tools (0,75 s). Dacă primul `POST /api/route` trebuie să fie rapid, un `import
   ortools.sat.python.cp_model` la pornirea backendului mută costul acolo.
@@ -260,7 +326,10 @@ Constante din `budget.py` care au nivel și sursă în registru (scrise și în 
 0,6 (B [S22][S24]), Tobler 6 km/h, −3,5, +0,05 (B, §4.1), `P_REST_W` 176 W (A [S31]),
 `M_TOTAL_KG` 196 kg (B [S24][S34], de confirmat), `G_MARS` 3,71 (A), `C_LEVEL` 0,59 J/(kg·m)
 (B [S28]), `O2_PCT_PER_MIN_PER_WATT` 0,000711 (B [S31][S33]), `O2_PCT_PER_MIN_REST` 0,125 (B).
-| `hazards` | `UNCERTAINTY_GROWTH_PER_MIN` | 0,005 | axele furtunii cresc cu 0,5 % pe minut de predicție |
+| `hazards` | `UNCERTAINTY_GROWTH_PER_MIN` | 0,005 | NEFOLOSITĂ din R2-8 (înlocuită de `SIGMA_V`); păstrată doar pentru compatibilitate |
+| `hazards` | `SIGMA_V` | 0,25 m/s | C: incertitudinea vitezei furtunii; semiaxele cresc aditiv cu 15 m/min, ca în exemplul din contract. De calibrat pe variabilitatea vântului MEDA (registru §3.1, [S7]) în R2-11 |
+| `hazards` | profilul intensității | `intensity × max(0, 1 − d²)` | C: formă parabolică, maxim în centru, zero pe marginea elipsei; din docstring-ul scheletului |
+| `hazards` | unghiul și centrul celulei | unghi de la est, în sensul acelor de ceasornic pe hartă; centrul celulei la `(row + 0,5) × cell` | C: convenții de coordonate |
 | `hazards` | `FORECAST_STEPS_MIN` | 10, 20, 30, 45, 60, 90, 120, 180 | orizonturile de predicție |
 | `decision` | `RISK_THRESHOLD` | 0,3 | sub acest risc, traseul curent continuă |
 | `decision` | `MIN_IMPROVEMENT` | 0,2 | histerezis: alternativa trebuie să fie cu ≥ 20 % mai bună |
@@ -273,6 +342,11 @@ formula declinației (A, registru §5), `MARS_HOUR_S` 3698,98 s (A, registru §5
 `TT_MINUS_UTC_S` 69,184 s (A, IERS: 32,184 s + 37 secunde intercalate; registrul nu o conține).
 | `stops.solver_params` | `random_seed` 42, `max_deterministic_time` 5,0 | CP-SAT | alegeri de determinism, nu fizică |
 | `stops` | scalarea la întregi | minute × 10, O₂ × 100, valoare × 100 | C: rezoluție 0,1 min, 0,01 % O₂, 0,01 valoare; o limită poate fi depășită cu cel mult o rotunjire pe termen |
+| `planner` | `SOL_START_UTC` | 2026-11-14 14:22 UTC | C: începutul fix al ieșirii, ≈ 08:00 ora locală la Jezero (Ls ≈ 22°); apusul la ≈ 633 min. Fix, ca planul să fie determinist |
+| `planner` | `max_duration_min` | termen-limită raportat ca `DAYLIGHT` | C: validatorul nu are o regulă de durată; sosirea după start + durata maximă devine încălcare `DAYLIGHT` (termenul efectiv = minimul dintre apus − marjă și start + durată) |
+| `planner` | `return_to_habitat=False` | validat ca și cum traseul s-ar termina acolo | C: O₂-ul și sosirea se iau la ultimul punct; staționarea la ultima țintă nu intră în buget |
+| `planner` | `CAUTION_O2_MARGIN_PCT` / `CAUTION_SUNSET_MARGIN_MIN` | 10 puncte / 60 min | din `ROL2_algoritmi.md` (regula verdictului), nu fizică |
+| `planner` | profilul de altitudine | 50 de puncte, interpolare liniară pe distanța cumulată | C: convenție de afișare |
 | `stops` | criteriul 3 de egalitate | lista de id-uri cea mai mică lexicografic, prefixul înaintea listei mai lungi | C: convenție pentru determinism, cerută de pas |
 
 **Normalizarea radiației (decizia rolului 2).** Radiația intră în cost ca exces relativ față de
