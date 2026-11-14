@@ -32,7 +32,8 @@ export function useLive(route) {
   useEffect(() => {
     dispatch({ type: 'reset' }); setState('idle'); setError('');
     if (!routeId) return;
-    return subscribeLive(msg => { if (msg.type === 'control') setState(msg.state); else dispatch(msg); }, setStatus, mock);
+    // `state` vine de la backend (la conectare și la fiecare schimbare, inclusiv `finished`); `control` vine din demo.
+    return subscribeLive(msg => { if (msg.type === 'state' || msg.type === 'control') setState(msg.state); else dispatch(msg); }, setStatus, mock);
   }, [routeId, mock]);
   async function control(action, nextSpeed = speed) {
     if (!routeId || busy) return;

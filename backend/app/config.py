@@ -7,8 +7,10 @@ ROOT = Path(__file__).resolve().parents[2]
 DATA_DIR = ROOT / "data"
 CONTRACTS_DIR = ROOT / "shared" / "contracts"
 
-# "synthetic" -> data/synthetic, altfel data/processed/<site_id>
-SITE_ID = os.getenv("MARSWALK_SITE", "synthetic")
+# "synthetic" -> data/synthetic, altfel data/processed/<site_id>. Implicit Jezero: relieful 3D din
+# frontend e mereu Jezero, deci un backend pe situl sintetic ar pune țintele în alte locuri.
+# Testele rulează pe situl sintetic (tests/conftest.py setează MARSWALK_SITE=synthetic).
+SITE_ID = os.getenv("MARSWALK_SITE", "jezero")
 
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
 # qwen3:4b-instruct (Qwen3-4B-Instruct-2507): ~2,9 GB în VRAM, fără mod de gândire, tool calling.

@@ -93,7 +93,6 @@ def test_jezero_demo_return_clock_updates_after_storm_front():
     pytest.fail("nicio decizie la minutul 80")
 
 
-@pytest.mark.xfail(strict=True, reason="AUDIT-004: parametri aberanți la /api/live/event sunt acceptați (200), apoi step() aruncă")
 def test_live_event_with_malformed_center_is_rejected(client, contract):
     """Un `center` care nu e {row: int, col: int} e respins la intrare cu 422 (live_event.json, forma lui center)."""
     client.post("/api/route", json=contract("route_request.json"))
