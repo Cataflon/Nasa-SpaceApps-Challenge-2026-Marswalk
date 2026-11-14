@@ -1,0 +1,94 @@
+/* Map-first planning, on-map waypoint popup, compact trip panel and on-map event placement. */
+
+/* Popup anchored to the selected location on the map */
+.map-popup{position:absolute;z-index:9;transform:translate(-50%,calc(-100% - 26px));pointer-events:auto}
+.map-popup[data-flip="1"]{transform:translate(-50%,26px)}
+.map-popup-body{position:relative;width:218px;padding:12px;border-radius:12px;background:#221912f7;border:1px solid #b58a5b99;box-shadow:0 12px 32px #000b;color:#ead5c1;display:flex;flex-direction:column;gap:8px;text-align:left}
+.map-popup-body:after{content:'';position:absolute;left:50%;top:100%;width:10px;height:10px;background:#221912;border-right:1px solid #b58a5b99;border-bottom:1px solid #b58a5b99;transform:translate(-50%,-50%) rotate(45deg)}
+.map-popup[data-flip="1"] .map-popup-body:after{top:0;transform:translate(-50%,-50%) rotate(225deg)}
+.map-popup-body form{display:flex;flex-direction:column;gap:8px}
+.map-popup-title{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:#b68c69;padding-right:24px}
+.map-popup-body strong{font-size:13px;font-weight:600;padding-right:24px;line-height:1.3}
+.map-popup-body small{font-size:10px;color:#ab8c72;margin-top:-4px}
+.map-popup-body input{width:100%;min-width:0;border:1px solid #6b4c35;border-radius:8px;background:#2c2119;padding:9px 10px;color:#f1dcc6;font-size:12px}
+.map-popup-body input:focus{outline:2px solid #e97845;outline-offset:1px}
+.map-popup-body .button{width:100%;min-height:36px;font-size:12px;padding:8px 10px}
+.map-popup-close{position:absolute;top:8px;right:8px;width:22px;height:22px;display:grid;place-items:center;padding:0;border:0;border-radius:6px;background:transparent;color:#b99a80}
+.map-popup-close:hover{background:#3b291b;color:#ffd1a1}
+.map-popup-delete{border:0;background:transparent;color:#d28a78;font-size:10px;padding:2px 0;text-align:center}
+.map-popup-delete:hover{color:#ffb4a1;text-decoration:underline}
+.has-popup .terrain-pin.selected .pin-label{display:none}
+
+/* Trip itinerary under the map */
+.trip-panel{margin:0 0 18px;padding:14px 18px;scroll-margin-top:95px}
+.trip-panel-head{display:flex;align-items:center;justify-content:space-between;gap:14px}
+.trip-panel-head h3{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:500}
+.trip-status{font-size:11px;color:#dcad83}
+.trip-empty{font-size:11px;line-height:1.6;color:#bca28b;margin:10px 0 2px}
+.trip-empty strong{color:#ead5c1;font-weight:600}
+.trip-chips{list-style:none;margin:12px 0 4px;padding:0;display:flex;flex-wrap:wrap;align-items:center;gap:8px 20px}
+.trip-chips li{position:relative;display:flex;align-items:center;gap:3px;min-height:32px;font-size:11px}
+.trip-chips li+li:before{content:'→';position:absolute;left:-16px;color:#8f6f55;font-size:12px}
+.trip-end{color:#bd9a7c;padding:0 4px}
+.trip-chip{background:#211b16;border:1px solid #493425;border-radius:9px;padding:2px 4px 2px 9px}
+.trip-chip>span{font-size:10px;color:#b68c69;margin-right:4px}
+.trip-chip button{width:24px;height:24px;display:grid;place-items:center;padding:0;border:0;border-radius:6px;background:transparent;color:#bda38c}
+.trip-chip button:hover:not(:disabled){background:#3b291b;color:#ffd1a1}
+.trip-chip button:disabled{opacity:.25}
+.trip-chip .trip-chip-name{width:auto;max-width:170px;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:0 7px 0 2px;color:#ead5c1;font-size:12px}
+.trip-chip .arrow-left{transform:rotate(180deg)}
+.trip-panel-foot{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-top:8px}
+.trip-panel .trip-return{margin:0}
+.trip-panel .trip-actions .text-button{padding:0;grid-column:auto}
+.trip-panel .local-notes-caption{font-size:9px;color:#92775f;margin:10px 0 0}
+.trip-panel .error{font-size:11px;margin:8px 0 0}
+
+/* Smaller science sites card */
+@media(min-width:1251px){.planning-dashboard-grid{grid-template-columns:minmax(0,.6fr) minmax(0,1.3fr) minmax(0,1fr)}}
+.planning-dashboard-grid>.science-catalog.compact{height:auto;align-self:start;padding:14px 14px 10px}
+.science-catalog.compact h3{font-size:13px;margin-bottom:6px}
+.science-catalog.compact .catalog-list{max-height:250px;overflow:auto}
+.science-catalog.compact .catalog-target{display:flex;align-items:center;gap:6px;padding:6px 0}
+.science-catalog.compact .catalog-target.selected{padding:6px 6px}
+.science-catalog.compact .catalog-target>button:first-child{gap:9px;min-width:0}
+.science-catalog.compact .catalog-target>button:first-child>div{min-width:0}
+.science-catalog.compact .catalog-target strong{font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.science-catalog.compact .catalog-target small{margin-top:2px;font-size:9px}
+.science-catalog.compact .catalog-use{flex:0 0 26px;width:26px;height:26px;display:grid;place-items:center;padding:0;border:1px solid #5c3e29;border-radius:7px;background:transparent;color:#e1ae83}
+.science-catalog.compact .catalog-use:hover{background:#3b291b}
+.science-catalog.compact .catalog-use svg{margin:0}
+
+/* Event placement: one dropdown, one button, the rest happens on the map */
+.event-placer .event-composer-heading{margin-bottom:14px}
+.event-place-row{display:flex;align-items:flex-end;gap:14px;flex-wrap:wrap}
+.flight-controls .event-place-row label{min-width:220px}
+.event-place-row .button{min-height:38px}
+.event-help{flex:1 1 240px;font-size:11px;line-height:1.6;color:#bca28b;margin:0;align-self:center}
+.event-advanced{margin-top:16px;border-top:1px solid #49342588;padding-top:12px}
+.event-advanced summary{cursor:pointer;font-size:11px;color:#c9a585;width:max-content}
+.event-advanced .event-fields{margin-top:14px;grid-template-columns:repeat(auto-fill,minmax(170px,220px))}
+.event-note{font-size:11px;color:#9fd0b4;margin:12px 0 0}
+.event-placer>.error{font-size:11px;margin:12px 0 0}
+#simulation-map-top{scroll-margin-top:14px}
+
+.terrain-view.placing .terrain-canvas{cursor:crosshair}
+.terrain-view.placing .terrain-pin{pointer-events:none!important}
+.terrain-view.placing-astronaut .terrain-canvas{cursor:default}
+.terrain-view.placing-astronaut .terrain-pin.astronaut-pin{pointer-events:auto!important;cursor:pointer;outline:2px dashed #ffd27a;outline-offset:5px;z-index:6}
+.placement-hint{position:absolute;top:20px;left:50%;transform:translateX(-50%);z-index:8;display:flex;align-items:center;gap:12px;max-width:calc(100% - 28px);padding:9px 10px 9px 12px;border-radius:12px;background:#201914f2;border:1px solid #e9784599;box-shadow:0 8px 26px #0008;color:#ead5c1}
+.placement-step{font-size:11px;font-weight:600;color:#221209;background:#e97845;border-radius:7px;padding:5px 8px;white-space:nowrap}
+.placement-hint div{display:flex;flex-direction:column;gap:2px;min-width:0}
+.placement-hint strong{font-size:12px;font-weight:600}
+.placement-hint span{font-size:11px;color:#d7b99b}
+.placement-hint small{font-size:10px;color:#ffd27a;min-height:13px}
+.placement-hint button{border:1px solid #5c3e29;border-radius:8px;background:#2c2119;color:#e4c9ad;font-size:11px;padding:7px 11px}
+.placement-hint button:hover{background:#3b291b}
+
+/* Astronaut with an active suit leak or fatigue */
+.terrain-pin.astronaut-pin.alert{background:#e0352b;border-color:#ffb1aa;color:#fff;z-index:6;animation:astronaut-alert 1s ease-in-out infinite}
+@keyframes astronaut-alert{0%,100%{box-shadow:0 0 0 0 #ff3b30cc}50%{box-shadow:0 0 0 14px #ff3b3000;background:#ff5a4f}}
+@media(prefers-reduced-motion:reduce){.terrain-pin.astronaut-pin.alert{animation:none}}
+@media(max-width:760px){.placement-hint{top:10px;gap:8px}.event-place-row .button{width:100%}.flight-controls .event-place-row label{min-width:0;width:100%}}
+
+/* The step-by-step hint takes the place of the map title while placing */
+.map-stage:has(.terrain-view.placing) .map-heading,.terrain-view.placing .terrain-camera-mode{visibility:hidden}

@@ -91,7 +91,7 @@ Switch to the app. Script: [demo.md](demo.md).
 
 ## 8. How we calculate: honest about the limits *(Validity)*
 
-- Every constant in the decision code is listed in the app's **How we calculate** screen, with its source: **33 from published sources, 36 our own assumptions, 4 still to verify**. A test fails if someone adds a constant without documenting it.
+- Every constant in the decision code is listed in the app's **How we calculate** screen, with its source: **37 from published sources, 42 our own assumptions, 3 still to verify**. A test fails if someone adds a constant without documenting it.
 - Sources: NASA technical reports (Apollo EVA metabolic rates, TN D-7883), peer-reviewed papers (DOIs checked in Crossref), USGS and NASA data catalogues.
 - Known limits:
   - the weather is simulated (calibrated on MEDA, REMS and RAD), not live;

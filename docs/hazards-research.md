@@ -1,4 +1,4 @@
-# Hazardurile unei ieșiri pe jos la Jezero: ce avem și ce lipsește
+r# Hazardurile unei ieșiri pe jos la Jezero: ce avem și ce lipsește
 
 Document intern al echipei (rolul 1), 14.11.2026. Pentru fiecare hazard: cât durează, cât de periculos e, ce trebuie făcut și cum apare în aplicație. Sursele sunt la final, majoritatea NASA/JPL.
 

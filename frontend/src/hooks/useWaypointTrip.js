@@ -19,5 +19,8 @@ export function useWaypointTrip(site,points){
       worker.postMessage({type:'grid',grid});worker.postMessage({id:token,start:site.habitat,tripStops:[...stops,...(returnHome?[site.habitat]:[])]});
     }catch(e){if(token===version.current){setBusy(false);setError(e.message);}}
   }
+  // The trip route follows the itinerary: any change to the stops rebuilds it.
+  const idsKey=ids.join('|');
+  useEffect(()=>{if(!site||!ids.length)return;const timer=setTimeout(()=>build(),120);return()=>clearTimeout(timer);},[idsKey,returnHome,signature,site?.site_id]);
   return {ids,setIds:changeIds,returnHome,setReturnHome:changeReturn,result,busy,error,build,clear:invalidate};
 }

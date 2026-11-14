@@ -1,4 +1,4 @@
-﻿import {useMemo} from 'react';
+﻿import {useEffect,useMemo,useState} from 'react';
 import MapView from './MapView';
 import FieldTracker from './FieldTracker';
 import EVAWatch from './EVAWatch';
@@ -9,22 +9,37 @@ import SimulationControls from './SimulationControls';
 import MissionMetrics from './MissionMetrics';
 import Icon from './Icon';
 import {decisions,number} from '../utils';
+import {eventSpecs,eventPayload} from '../simulation/events';
 const previewLive={state:'idle',tick:null,decision:null,trail:[],history:[],explanations:{}};
 export default function SimulationWorkspace({equipment,site,mapSite,route,live,offline,transport,selected,onSelect,onSensors,onPlanning,mock,onCopilotRoute}){
   const displayedLive=transport.isLive?live:previewLive;
   const displayedRoute=useMemo(()=>transport.path?{...route,path:transport.path}:route,[route,transport.path]);
+  // Event placement happens on the map: `placing` holds the event being placed, the map reports the result.
+  const [placing,setPlacing]=useState(null),[astronautAlert,setAstronautAlert]=useState(false),[zones,setZones]=useState([]),[note,setNote]=useState(null);
+  useEffect(()=>{if(live.state==='idle'){setPlacing(null);setAstronautAlert(false);setZones([]);setNote(null);}},[live.state]);
+  const placement=useMemo(()=>placing?{key:placing.kind+placing.at,mode:eventSpecs[placing.kind].place,color:eventSpecs[placing.kind].color,label:eventSpecs[placing.kind].label}:null,[placing]);
+  const now=live.tick?.t_min??0,activeZones=useMemo(()=>zones.filter(z=>'pending' in z?z.pending===live.tick:now<z.until),[zones,now,live.tick]);
+  function startPlacing(kind,values){transport.chooseMode('live');setNote(null);setPlacing({kind,values,at:Date.now()});document.getElementById('simulation-map-top')?.scrollIntoView({block:'start',behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth'});}
+  async function placed(result){if(!placing)return;const {kind,values}=placing,spec=eventSpecs[kind];setPlacing(null);
+    try{const params=eventPayload(kind,values,result,site);await live.event(kind,params);
+      if(spec.place==='astronaut')setAstronautAlert(true);
+      // Until the engine sends its next tick (e.g. while paused) the placed hazard is shown from local state.
+      else if(!spec.marker)setZones(list=>[...list.filter(z=>!('pending' in z)||z.pending===live.tick),{id:kind+Date.now(),row:result.center.row,col:result.center.col,radius_m:result.radius_m,color:spec.color,pending:live.tick,pulse:kind==='marsquake'}]);
+      if(spec.marker)setZones(list=>[...list,{id:kind+Date.now(),row:result.center.row,col:result.center.col,radius_m:result.radius_m,color:spec.color,until:now+params.duration_min}]);
+      setNote({text:`${spec.label} placed at t+${number(now)} min.${live.state==='paused'&&spec.place!=='astronaut'?' Resume the EVA to see it move.':''}`});
+    }catch(err){setNote({error:true,text:err.message});}}
   return <div className="simulation-workspace"><div className="workflow-page-heading"><div><span className="eyebrow">Astronaut operations</span><h1>Simulate. Track. Respond.</h1><p>One shared position for the terrain, first-person tracker and habitat compass.</p></div><button className="button secondary" onClick={onPlanning}><Icon name="map" size={15}/>Edit mission plan</button></div>
     {transport.localTrip&&<div className="workflow-info">Waypoint trip preview - follows your saved points. Custom-stop mission budgets and live events require backend support.</div>}
     {!route&&!transport.localTrip&&<div className="workflow-info"><Icon name="compass" size={17}/><span>{transport.path?'Local terrain preview selected. Generate a mission plan in Planning to run the live EVA.':'Choose a route in Planning to activate shared navigation.'}</span><button onClick={onPlanning}>Open Planning</button></div>}
-    <div className="copilot-live-status" role="status"><i className={offline?'offline':''}/><strong>Copilot</strong><span>{offline?'Link interrupted':live.decision?decisions[live.decision.decision]??live.decision.decision:live.state==='running'?'Monitoring mission':'Awaiting EVA'}</span>{live.decision&&<small>t+{number(live.decision.t_min)} min</small>}</div><div className="flight-workspace"><section className="flight-map-column"><div className="flight-mode-row"><div className="segmented"><button aria-pressed={transport.mode==='preview'} disabled={live.state==='running'} onClick={()=>transport.chooseMode('preview')}>Route preview</button><button aria-pressed={transport.mode==='live'} disabled={!route} onClick={()=>transport.chooseMode('live')}>Live mission</button></div><span>{transport.isLive?live.state==='paused'?'Mission paused':'Live position':transport.mode==='live'?'Waiting for mission telemetry':`${number(transport.progress*100)}% · preview only`}</span></div>
-      <MapView site={mapSite} route={displayedRoute} live={displayedLive} position={transport.position} selected={selected} onSelect={onSelect} explorer previewEnabled={false} mapTitle="Astronaut tracking"/>
+    <div className="copilot-live-status" role="status"><i className={offline?'offline':''}/><strong>Copilot</strong><span>{offline?'Link interrupted':live.decision?decisions[live.decision.decision]??live.decision.decision:live.state==='running'?'Monitoring mission':'Awaiting EVA'}</span>{live.decision&&<small>t+{number(live.decision.t_min)} min</small>}</div><div className="flight-workspace"><section className="flight-map-column" id="simulation-map-top"><div className="flight-mode-row"><div className="segmented"><button aria-pressed={transport.mode==='preview'} disabled={live.state==='running'} onClick={()=>transport.chooseMode('preview')}>Route preview</button><button aria-pressed={transport.mode==='live'} disabled={!route} onClick={()=>transport.chooseMode('live')}>Live mission</button></div><span>{transport.isLive?live.state==='paused'?'Mission paused':'Live position':transport.mode==='live'?'Waiting for mission telemetry':`${number(transport.progress*100)}% · preview only`}</span></div>
+      <MapView site={mapSite} route={displayedRoute} live={displayedLive} position={transport.position} selected={selected} onSelect={onSelect} explorer previewEnabled={false} mapTitle="Astronaut tracking" placement={placement} onPlaced={placed} onPlacementCancel={()=>setPlacing(null)} astronautAlert={astronautAlert} effectZones={activeZones}/>
       <div className="shared-position-row"><span><i/>Shared navigation position</span><span>{transport.position?`r ${number(transport.position.row,1)} / c ${number(transport.position.col,1)}`:'No position yet'}</span></div>
       {transport.mode==='preview'&&transport.frame&&<label className="flight-progress">Route playback <strong>{number(transport.progress*100)}%</strong><input aria-label="Shared route progress" type="range" min="0" max="1" step=".001" value={transport.progress} onChange={e=>transport.seek(e.target.value)}/><small>Preview, Step, Back and Reset on the tracker update this map and both watch dials.</small></label>}
       <MissionMetrics live={live} equipment={equipment}/><p className="flight-mode-note">{transport.mode==='live'?'Live movement is controlled by the mission engine. Pause and switch to Route preview to step through the path without changing telemetry.':'Local preview moves the astronaut and both devices together. It does not consume mission resources.'}</p>
     </section>
     <section className="flight-devices" aria-label="Synchronized astronaut devices"><div className="flight-tracker-slot"><div className="device-section-label">First-person tracker</div><FieldTracker equipment={equipment} site={site} route={route} live={live} transport={transport} selected={selected} onSelect={onSelect}/></div><div className="flight-watch-slot"><div className="device-section-label">Habitat & route compass</div><EVAWatch equipment={equipment} embedded site={site} route={route} live={displayedLive} position={transport.position} path={transport.path} frame={transport.frame} progress={transport.progress} setProgress={transport.seek} playing={transport.playing} setPlaying={()=>transport.toggle()}/></div></section>
     </div>
-    <SimulationControls site={site} selected={selected} route={transport.localTrip?null:route} live={live} transport={transport} offline={offline}/>
+    <SimulationControls site={site} route={transport.localTrip?null:route} live={live} transport={transport} offline={offline} placing={placing} onPlace={startPlacing} onCancelPlace={()=>setPlacing(null)} note={note}/>
     {live.decision&&<details className="decision-details"><summary>Latest copilot decision</summary><DecisionPanel live={live} route={route}/></details>}
     <SensorSummary feed={equipment} live={live} onDetails={onSensors}/>
   </div>;
