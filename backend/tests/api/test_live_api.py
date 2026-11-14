@@ -21,8 +21,10 @@ def test_start_streams_ticks(client):
     r = client.post("/api/live/control", json={"action": "start", "speed": 60})
     assert r.json() == {"ok": True, "state": "running", "t_min": 0}
     with client.websocket_connect("/api/live") as ws:
+        state = ws.receive_json()  # la conectare: starea curentă
         first = ws.receive_json()
         second = ws.receive_json()
+    assert state["type"] == "state" and state["state"] == "running"
     assert first["type"] == "tick" and second["t_min"] > first["t_min"]
 
 
@@ -56,3 +58,4 @@ def test_event_is_queued(client):
 
 def test_unknown_event_is_422(client):
     assert client.post("/api/live/event", json={"event": "alien_attack"}).status_code == 422
+

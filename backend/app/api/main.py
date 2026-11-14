@@ -137,6 +137,8 @@ def site(response: Response):
 
 # Chei opționale din meta.json -> layers.<strat>, transmise frontendului (rolul 1 le completează).
 LAYER_LABEL_KEYS = ("data_type", "mission", "instrument", "source", "analog_of", "product_id")
+# Varianta scurtă pentru click pe hartă („slope 12° · HiRISE · MRO”); product_id e prea lung aici.
+POINT_SOURCE_KEYS = ("mission", "instrument", "data_type", "source", "analog_of", "derived")
 
 
 @app.get("/api/layers")
@@ -152,7 +154,10 @@ def point(row: int, col: int):
     rows, cols = s.shape
     if not (0 <= row < rows and 0 <= col < cols):
         raise HTTPException(400, "Cell is outside the grid.")
-    return {"row": row, "col": col, "values": s.value_at(row, col)}
+    layers = s.meta.get("layers", {})
+    sources = {name: {k: spec[k] for k in POINT_SOURCE_KEYS if k in spec}
+               for name, spec in layers.items() if any(k in spec for k in POINT_SOURCE_KEYS)}
+    return {"row": row, "col": col, "values": s.value_at(row, col), "sources": sources}
 
 
 @app.post("/api/route")

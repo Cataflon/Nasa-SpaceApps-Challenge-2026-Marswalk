@@ -55,6 +55,32 @@
 - Scena demo are acum 4 decizii (30 REROUTE, 80 EMERGENCY, 90 RETURN `exit_zone`, 125 RETURN);
   testul Jezero din `tests/scenario` e actualizat, plus unul nou pe situl sintetic.
 
+- **Mesaj nou pe WebSocket, `state`** (14.11): `{"type": "state", "state": "idle|running|paused|finished", "t_min", "speed", "route_id", "reason"}`. Se trimite la conectare (primul mesaj), la start / pauză / reluare / reset / schimbarea vitezei și la final (`reason`: `egress_complete`, `o2_depleted`, `time_limit`; `error` dacă motorul a crăpat și s-a pus pe pauză).
+- **`compute_ms`** în mesajul `decision`: cât au durat alternativele + regula, în ms. Doar pentru afișare.
+- **`GET /api/benchmark`**: rămâne varianta rolului 2 (`api/bench_cache.py`, pornit la startup, 503 + `Retry-After` până e gata, cu `headline`). Varianta mea (`live/benchmark_cache.py`) a fost scoasă la merge, ca să nu existe două.
+- **`GET /api/point`** are acum `sources`: pentru fiecare strat, `mission`, `instrument`, `data_type`, `source` (`nasa` sau `assumption`), `analog_of`, `derived`, din `meta.json`. Pe situl sintetic e `{}`.
+
+- **Replanificarea live** (14.11, `app/live/replan.py` + motorul; plan și rezultate în `docs/plan-replanificare-live.md`):
+  - **Când replanifică:** la fiecare tick există un watchdog; replanifică imediat la eveniment, la 5 min periodic și la apropierea unui pericol.
+  - **Candidații** sunt trasee complete (poziție → ținte → habitat) care ocolesc pericolul pe ambele drumuri.
+  - **Alegerea** pune destinația întâi; RETURN rămâne doar dacă nicio variantă care atinge țintele nu e validă.
+  - **Rezultat:** la un cutremur pe traseu, decizia e acum REROUTE, nu RETURN.
+  - **Câmpuri noi în `decision`:** `trigger` (`event` / `hazard` / `budget` / `proximity` / `periodic`) și `route_version`. `hazard_id` și `eta_hazard_min` pot fi `null` la o replanificare de buget.
+  - **Câmp nou în `tick`:** `route_version`.
+  - **Coduri noi în `reason_code`:** `BETTER_ROUTE`, `LIMITS_EXCEEDED`, `HYSTERESIS`.
+  - **După merge-ul cu rolul 2 (14.11):** motorul cheamă `replan.py`, nu `alternatives.generate`.
+    - `REACT_WINDOW_MIN` (30 min) se păstrează doar pentru watchdog-ul de pericol;
+    - `committed_return` + `_confirm_return` se păstrează pentru furtuna regională (confirmare RETURN fără replanificare);
+    - alte pericole apărute pe drumul spre casă se replanifică la fel ca la dus (cerința echipei: ocolire dacă O₂ permite);
+    - cele 3 teste T6d ale rolului 2 din `test_engine.py` sunt adaptate la `replan.candidates`; testul „generate doar în fereastra de 30 min” e înlocuit, pentru că evenimentele noi se replanifică imediat.
+
+**Pentru rolul 4:**
+- când `tick.route_version` crește, traseul activ s-a schimbat: `remaining_path` e deja cel nou; traseul vechi se poate șterge sau estompa;
+- ascultă `type === "state"`: `running` → butonul „Pause EVA”; `paused` → „Resume”; `finished` → „Restart” + motivul; `idle` → „Start EVA”;
+- contorul „Pământul vs. copilotul”: `decision.compute_ms` față de `site.earth_delay_min.round_trip`;
+- cifra de titlu: `GET /api/benchmark` → `headline` (503 + `Retry-After` cât rulează; arată un loader);
+- popup-ul de la click: `sources[strat].instrument · sources[strat].mission`, iar dacă `source === "assumption"`, scrie „model”.
+
 ## În lucru
 
 ## Cereri
