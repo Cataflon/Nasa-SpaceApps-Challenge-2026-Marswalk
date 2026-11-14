@@ -2,8 +2,24 @@
 
 ## Gata
 
-Teste: `python -m pytest tests/core` → 77 trecute în 0,7 s
-(`test_decision` 6, `test_grid` 14, `test_costmap` 27, `test_routing` 30).
+Teste: `python -m pytest tests/core` → 109 trecute
+(`test_decision` 6, `test_grid` 14, `test_costmap` 27, `test_routing` 51, `test_budget` 11).
+
+### R2-4: bugetul (`budget.py`) + câmpurile D4 din `types.Budget`
+
+- `types.Budget`: câmpuri noi la final, cu valoare implicită: `eta_min`, `o2_pct`, `dose_msv_cum`
+  (câte una pe punct, la sosirea în punct).
+- `route_budget(...)`: vectorizat cu numpy. Parametri opționali noi, la final: `dwell_min_at`,
+  `o2_start_pct=100`, `fatigue=1`, `limits=None`. `dose_rate_usv_h` acceptă număr sau grila
+  `radiation`. Definițiile pentru `duration_min` și `return_by_min` sunt în docstring.
+- `point_of_no_return`: ultimul index dintr-un șir neîntrerupt de la start cu
+  `o2 − cost_to_home_o2 ≥ rezervă`; `None` dacă nici startul nu respectă rezerva.
+- Funcții noi: `o2_cost_grid(site)` și `minutes_grid(site)`, cu panta luată la urcare
+  (pesimist) și `inf` pe celulele interzise. Cu `reverse_dijkstra` dau O₂-ul și timpul până acasă.
+- **Exemplu numeric:** 1 km pe plat = 19,9 min și 3,85 % O₂ (v = 0,84 m/s, P = 273 W).
+  5 h de mers pe plat = 58,2 % O₂, în intervalul cerut de 40-60 %.
+- Pe situl sintetic, habitat → `clay_delta` → habitat (241 de puncte, 5,8 km, 30 min la țintă):
+  145 min, O₂ final 73,2 %, doză 0,024 mSv.
 
 ### R2-0: pornire, utilitare de grilă și de test
 
@@ -39,17 +55,45 @@ Teste: `python -m pytest tests/core` → 77 trecute în 0,7 s
 ### R2-2: `routing.astar`
 
 - `backend/app/core/routing.py`: `astar(cost, start, goal)` implementat peste `grid.py`.
-  8 vecini, costul unui pas = lungimea pasului × costul celulei în care intri, euristică
-  octilă × costul minim finit (admisibilă, deci traseul e optim), coadă `(f, g, idx)`, adică
-  `(f, g, row, col)`, cu eliminare leneșă după `g`.
+  8 vecini, euristică octilă × costul minim finit (admisibilă, deci traseul e optim), coadă
+  `(f, g, idx)`, adică `(f, g, row, col)`, cu eliminare leneșă după `g`.
+- **Costul unei mutări (D2), schimbat la R2-3:** lungimea pasului × media costurilor celor două
+  celule, `pas × (cost[a] + cost[b]) / 2`. Înainte era „pas × costul celulei în care intri”,
+  care nu e simetric: drumul optim X → habitat nu era mereu inversul drumului optim habitat → X.
+  Cu media, costul e același în ambele sensuri, deci `path_home` dă exact inversul lui A*.
+  Euristica rămâne admisibilă (fiecare jumătate de pas costă cel puțin `c_min / 2`).
 - **Fără tăierea colțurilor:** o diagonală e permisă doar dacă ambele celule ortogonale pe
   lângă care trece sunt finite. Un perete de celule care se ating doar în colțuri e deci închis.
 - `None` dacă start sau goal e pe o celulă interzisă, ori sunt izolate una de alta; `[start]`
   dacă start == goal. `ValueError` dacă start sau goal e în afara grilei ori harta are costuri
   negative. Celulele din traseu sunt `int` simplu (merg în JSON).
-- `backend/tests/core/test_routing.py` (nou): 30 de teste. Optimalitatea e verificată față de un
-  Dijkstra scris independent în test (cu aceeași regulă de colț), pe 8 grile aleatoare cu seed fix.
-- `reverse_dijkstra`, `path_home` și `astar_spacetime` sunt încă neimplementate.
+- `backend/tests/core/test_routing.py` (nou): optimalitatea e verificată față de un Dijkstra
+  scris independent în test (aceeași convenție de cost și de colț), pe 8 grile aleatoare cu seed fix.
+
+### R2-3: `routing.reverse_dijkstra` + `path_home`
+
+- `reverse_dijkstra(cost, habitat) -> (cost_to_home, parent_index)`: un singur Dijkstra pornit
+  din habitat. `cost_to_home` e float64 de forma grilei (0 la habitat, `inf` unde nu se poate
+  ajunge). `parent_index` e int32, cu indexul plat fără bordură (`row × W + col`) al pasului
+  următor spre casă și -1 la habitat și la celulele inaccesibile. Aceleași reguli ca `astar`
+  (convenția D2, fără tăierea colțurilor). `ValueError` pentru habitat în afara grilei sau
+  valori negative. Habitat pe celulă interzisă → totul `inf`, toți părinții -1.
+- `path_home(parent_index, start)`: urmează părinții până la habitat, cu ambele capete.
+  Celulă inaccesibilă → listă goală; start = habitat → `[habitat]`. Protecție la cicluri:
+  cel mult H × W pași, apoi `RuntimeError`.
+- Deosebirea habitat / inaccesibil (ambele au -1): habitatul e celula spre care arată cel puțin
+  un vecin. Caz limită: un habitat complet izolat dă tot listă goală (nu se poate deosebi doar
+  din `parent_index`).
+- **Utilizare dublă (pentru R2-4):** aceeași funcție, pe o grilă de O₂ pe celulă, dă O₂-ul
+  necesar până acasă din orice punct; pe o grilă de minute pe celulă, dă timpul până acasă.
+  Test: `test_dual_use_minutes_grid_gives_time_to_home`.
+- Teste noi în `test_routing.py`: 21. Pe 4 grile aleatoare (costuri reale, fără egalități):
+  din fiecare celulă, `path_home` se termină la habitat, costul de-a lungul lui e egal cu
+  `cost_to_home`, și e exact inversul lui `astar(habitat → celulă)`.
+- Pe situl sintetic: 97,96 % din celule ajung acasă; 1766 de celule permise sunt totuși izolate
+  de habitat (închise între pante). Traseele spre cele 3 ținte, din `path_home`, sunt identice
+  cu inversul celor din `astar`.
+- `astar_spacetime` e încă neimplementat.
 
 ### Timpi măsurați pe situl sintetic 500×500
 
@@ -60,13 +104,25 @@ Python 3.14.6, numpy 2.5.4; mediana din mai multe rulări.
 | `grid.pad_and_flatten(cost)` | 5,4 ms (max 7,1 ms) | fără țintă proprie; inclus în timpul lui `astar` |
 | `costmap.static_cost(site, "safe")`, fără cache | 7,1 ms (max 10,4 ms) | < 0,2 s |
 | `costmap.static_cost(site, "safe")`, din cache | 0,0003 ms | < 0,2 s |
-| `routing.astar`, habitat → `clay_delta` (121 celule, 2,9 km) | 28–31 ms, după preset | < 1 s |
-| `routing.astar`, habitat → `carbonate_rim` (181 celule, 4,1 km) | 45–51 ms | < 1 s |
-| `routing.astar`, habitat → `olivine_floor` (131 celule, 2,9 km) | 30–32 ms | < 1 s |
-| `routing.astar`, colț la colț, (0,0) → (499,499), 537 celule | 0,64 s (o rulare din 3: **1,38 s**) | < 1 s, la limită |
-| `routing.astar`, țintă izolată (fără traseu, explorează toată harta) | **1,56 s (max 1,68 s)** | < 1 s, **depășit** |
+| `routing.astar`, habitat → `clay_delta` (121 celule, 2,9 km) | 29–35 ms, după preset | < 1 s |
+| `routing.astar`, habitat → `carbonate_rim` (181 celule, 4,1 km) | 48–64 ms | < 1 s |
+| `routing.astar`, habitat → `olivine_floor` (131 celule, 2,9 km) | 35–38 ms | < 1 s |
+| `routing.astar`, colț la colț, (0,0) → (499,499), 537 celule | **1,14 s (max 1,25 s)** | < 1 s, **depășit** |
+| `routing.astar`, țintă izolată (fără traseu, explorează toată harta) | **1,42 s (max 1,56 s)** | < 1 s, **depășit** |
+| `routing.reverse_dijkstra`, `safe` / `fast` | 0,64 s / 0,69 s (max 1,16 s / 0,73 s) | < 2 s, o dată per hartă |
+| `routing.reverse_dijkstra`, `science` | 1,26 s (max 1,28 s) | < 2 s, o dată per hartă |
+| `routing.path_home` spre cele 3 ținte (121–181 celule) | 0,02–0,03 ms | fără țintă proprie |
+| `routing.path_home` din cea mai depărtată celulă (301 celule) | 0,06 ms | fără țintă proprie |
+| `budget.route_budget`, 241 de puncte, cu staționare și grila de radiație | 0,53 ms (max 0,85 ms) | < 50 ms |
+| `budget.point_of_no_return`, 241 de puncte | 0,016 ms | < 50 ms |
+| `budget.o2_cost_grid` / `minutes_grid` | 17 ms / 16 ms | fără țintă proprie |
+| `routing.reverse_dijkstra` pe `o2_cost_grid` | 0,64 s | < 2 s, o dată per hartă |
 
-Timpii lui `astar` sunt cu regula „fără tăierea colțurilor” (cu ≈ 10–20 % mai lent decât fără ea).
+Timpii lui `astar` sunt cu regula „fără tăierea colțurilor” și cu convenția D2 (media celor două
+celule). Față de R2-2, traseele spre ținte au rămas sub 65 ms; cazul colț la colț a crescut de
+la 0,64 s la 1,14 s. Ambele cazuri depășite sunt extreme (diagonala întregii hărți, respectiv
+fără traseu), nu trasee de planificare. Diferența de timp între preset-uri la
+`reverse_dijkstra` (`science` aproape dublu) nu o explic încă; e reproductibilă și sub țintă.
 
 Pe situl sintetic: 1,34 % din celule sunt interzise. Costul finit e între 1,03 și 18,04 la
 `safe`, 1,02 și 12,02 la `science`, 1,01 și 7,51 la `fast`. Termenul de radiație e între 0 și
@@ -74,11 +130,9 @@ Pe situl sintetic: 1,34 % din celule sunt interzise. Costul finit e între 1,03 
 
 ## În lucru
 
-- Urmează `routing.reverse_dijkstra` + `path_home`.
-- De preluat din `docs/roles/PARAMETRI_REFERINTA.md` (apărut în timpul R2-2, citit, încă
-  neaplicat), la pașii care le ating:
-  - `budget.py`: constantele cu sursă din §4.2 (`P_REST` 176 W, `M_TOTAL` 196 kg, `C_LEVEL` 0,59,
-    `ETA_UP` 0,22, rezervor 418 L, 0,000711 %/min/W) și justificarea pentru `SUIT_FACTOR` 0,6;
+- Urmează R2-5 (`daylight`).
+- De preluat din `docs/roles/PARAMETRI_REFERINTA.md`, la pașii care le ating (constantele
+  din `budget.py` sunt deja preluate la R2-4):
   - registrul `core/params.py` (un singur loc pentru constante, cu nivel A/B/C și sursă);
   - `hazards.py`: `SIGMA_V` calibrat pe variabilitatea vântului (R2-11).
   Tabelul de la „Presupuneri” de mai jos rămâne până atunci cu valorile din cod.
@@ -93,22 +147,38 @@ Pe situl sintetic: 1,34 % din celule sunt interzise. Costul finit e între 1,03 
   Dacă straturile unui `Site` se schimbă pe loc, trebuie apelat `costmap.clear_cost_cache()`.
 - **Pentru rolul 3:** `astar` întoarce `None` când nu există traseu (inclusiv când start sau
   goal e pe o celulă interzisă) și aruncă `ValueError` pentru celule în afara grilei. Când ținta
-  e izolată, răspunsul vine abia după ~1,6 s, pentru că A* trebuie să epuizeze harta. După ce
-  există `reverse_dijkstra`, verificarea ieftină va fi `cost_to_home[celulă] == inf`, înainte de
-  a chema `astar`.
+  e izolată, răspunsul vine abia după ~1,4 s, pentru că A* trebuie să epuizeze harta. Verificarea
+  ieftină, înainte de a chema `astar` de la habitat: `cost_to_home[celulă] == inf` din
+  `reverse_dijkstra` (calculat o dată per hartă). Pentru traseul de întoarcere nu e nevoie de
+  `astar` deloc: `path_home(parent_index, celulă)` durează sub 0,1 ms.
+- **Pentru oameni, de știut (R2-4):** pasul propunea `M_TOTAL` ≈ 170 kg și păstrarea
+  constantelor de O₂ existente (0,12 și 0,0006). Am luat valorile din registru, după regula
+  „constantele se iau din PARAMETRI_REFERINTA.md”: `M_TOTAL` 196 kg (B), 0,125 și 0,000711 (B).
+  Cu ele, 5 h pe plat consumă 58,2 % O₂ (cu cele vechi: ≈ 53 %); ambele sunt în 40-60 %.
+- **Pentru rolul 1 (doză):** `route_budget` folosește grila `radiation` așa cum vine, în µSv/h.
+  Registrul (§2) arată că ≈ 10 pe situl sintetic e de fapt doză absorbită (µGy/h), iar doza
+  echivalentă e ≈ 28 µSv/h. Dozele calculate sunt deci de ≈ 2,8 ori prea mici până se corectează
+  stratul.
+- **Pentru oameni, de știut:** pasul R2-3 cere să citesc `docs/PARAMETRI_REFERINTA.md`, dar
+  fișierul e la `docs/roles/PARAMETRI_REFERINTA.md`. L-am citit de acolo.
+- **Pentru oameni, de știut (convenția D2):** textul lui D2 nu e în repo. Costul unei mutări l-am
+  ales, cu acordul utilizatorului, ca media celor două celule (vezi R2-3 la „Gata”), și am
+  schimbat `astar` pe ea. Dacă D2 spune altceva, trebuie refăcute `astar` și `reverse_dijkstra`.
 - **Pentru oameni, de decis (start pe celulă interzisă, în live):** conform pasului R2-2, `astar`
   întoarce `None` dacă celula de start are cost `inf`. În ieșirea live, dacă un pericol e pus
   ca `inf` peste celula în care se află astronautul, din acea celulă nu mai iese niciun traseu.
   De hotărât la `astar_spacetime` / `alternatives.generate`: fie pericolul intră doar ca cost
   finit (`hazard_cost`), fie celula de start e exceptată acolo.
 - **Pentru oameni, de decis (preset-urile dau aproape același traseu pe situl sintetic):**
-  cu `slope_k` pe preset, traseele habitat → `clay_delta` diferă între `safe` și `fast`, dar
-  numai prin 3 celule din 121; au aceeași lungime (2897 m) și aceeași pantă maximă (7,3°).
-  `science` și `fast` dau trasee identice la toate cele 3 ținte, iar spre `olivine_floor` toate
-  preset-urile dau același traseu. Cauza: situl sintetic e aproape plat (pantă mediană 0,43°,
-  percentila 90 la 1,5°), deci `f_slope` e ≈ 1 aproape peste tot, la orice `slope_k`.
-  Urmare pentru `alternatives.generate`: preset-urile singure nu vor produce ocoliri distincte
-  pe acest sit. Ocolirile vor trebui să vină din termenul de pericol (`w_hazard × câmp`) sau din
+  cu convenția D2 actuală, traseul habitat → `clay_delta` e **identic** la toate cele trei
+  preset-uri. Spre `carbonate_rim` și `olivine_floor`, `safe` diferă de `fast` (174, respectiv
+  126 de celule comune), iar `science` și `fast` coincid la toate cele 3 ținte. Cauza: situl
+  sintetic e aproape plat (pantă mediană 0,43°, percentila 90 la 1,5°), deci `f_slope` e ≈ 1
+  aproape peste tot, la orice `slope_k`.
+  Testul din R2-2 care cerea `safe ≠ fast` spre `clay_delta` a picat după schimbarea D2; l-am
+  înlocuit cu ce e garantat (fiecare preset își găsește traseul optim după propria hartă).
+  Urmare pentru `alternatives.generate`: preset-urile singure nu produc ocoliri distincte pe
+  acest sit. Ocolirile vor trebui să vină din termenul de pericol (`w_hazard × câmp`) sau din
   blocarea pe rând a unei părți a pericolului (nord / sud).
 - **Pentru oameni, de știut:** `.venv` nu exista local. L-am creat cu `python -m venv .venv` și
   `pip install -r backend/requirements.txt` (exact lista înghețată, fără pachete în plus, fără
@@ -131,13 +201,18 @@ Constante și alegeri fără sursă, pentru rolul 1 (de documentat sau de înloc
 | `costmap.TERRAIN_FACTOR` | rocă / regolit / nisip / bolovani | 1,0 / 1,2 / 1,8 / 3,0 | multiplicator de cost pe teren |
 | `costmap` | normalizarea radiației | `(rad − rad.min()) / rad.min()` | excesul relativ față de minimul sitului; vezi mai jos |
 | `costmap` | `RADIATION_EPS` | 1e-9 | protecție tehnică la împărțire când minimul radiației e zero, nu fizică |
-| `routing.astar` | costul unui pas | lungimea pasului × costul celulei în care intri | convenție; alternativa ar fi media celor două celule |
-| `routing.astar` | tăierea colțurilor | interzisă | o diagonală cere ambele celule ortogonale libere; regulă de siguranță (un obstacol de 20 m nu se traversează pe colț), nu o valoare măsurată |
-| `budget` | `SUIT_FACTOR` | 0,6 | costumul reduce viteza la 60 % |
-| `budget` | `MARS_G_FACTOR` | 1,0 | ajustarea pentru 0,38 g încă nu e aplicată |
-| `budget` | `O2_PCT_PER_MIN_REST` | 0,12 %/min | consumul de O₂ în repaus |
-| `budget` | `O2_PCT_PER_MIN_PER_WATT` | 0,0006 %/min/W | consumul de O₂ pe watt metabolic |
-| `budget.tobler_speed_ms` | 6 km/h, −3,5, +0,05 | funcția lui Tobler | forma are sursă (Tobler 1993), dar e calibrată pe Pământ, fără costum |
+| `routing` (`astar`, `reverse_dijkstra`) | costul unei mutări (D2) | lungimea pasului × media costurilor celor două celule | convenție, nivel C: jumătate de pas în fiecare celulă; aleasă ca să fie simetrică, deci drumul spre casă e inversul drumului de la casă |
+| `routing` (`astar`, `reverse_dijkstra`) | tăierea colțurilor | interzisă | o diagonală cere ambele celule ortogonale libere; regulă de siguranță (un obstacol de 20 m nu se traversează pe colț), nu o valoare măsurată |
+| `budget` | `MARS_G_FACTOR` | 1,0 | C: rămâne 1,0 intenționat. Tobler e calibrată pe Pământ, dar pe Marte viteza e limitată de costum (`SUIT_FACTOR`), nu de gravitație; o corecție pentru 0,38 g ar număra de două ori |
+| `budget` | `ETA_UP` | 0,22 | C: eficiența musculară la urcare (tipic 0,2-0,25); registrul spune că nu e calibrată pe [S32] |
+| `budget.return_by_min` | „punctul cel mai îndepărtat” | distanța în linie dreaptă față de start; la egalitate, primul | C: convenție; întoarcerea = restul traseului după acel punct |
+| `budget.point_of_no_return` | șir neîntrerupt de la start | se oprește la prima încălcare a rezervei | C: convenție; pe drumul de întoarcere condiția poate redeveni adevărată, dar acolo nu mai e „neîntoarcere” |
+| `budget.o2_cost_grid` / `minutes_grid` | panta celulei luată la urcare | pesimist | C: direcția întoarcerii nu se știe dinainte; drumul ales de `reverse_dijkstra` e cel cu cel mai puțin O₂, nu neapărat cel mai ieftin după cost |
+
+Constante din `budget.py` care au nivel și sursă în registru (scrise și în cod): `SUIT_FACTOR`
+0,6 (B [S22][S24]), Tobler 6 km/h, −3,5, +0,05 (B, §4.1), `P_REST_W` 176 W (A [S31]),
+`M_TOTAL_KG` 196 kg (B [S24][S34], de confirmat), `G_MARS` 3,71 (A), `C_LEVEL` 0,59 J/(kg·m)
+(B [S28]), `O2_PCT_PER_MIN_PER_WATT` 0,000711 (B [S31][S33]), `O2_PCT_PER_MIN_REST` 0,125 (B).
 | `hazards` | `UNCERTAINTY_GROWTH_PER_MIN` | 0,005 | axele furtunii cresc cu 0,5 % pe minut de predicție |
 | `hazards` | `FORECAST_STEPS_MIN` | 10, 20, 30, 45, 60, 90, 120, 180 | orizonturile de predicție |
 | `decision` | `RISK_THRESHOLD` | 0,3 | sub acest risc, traseul curent continuă |
