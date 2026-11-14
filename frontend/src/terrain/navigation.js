@@ -16,3 +16,15 @@ export function routeFrame(path, fraction = 0, position = null, lookAheadCells =
   if(distance>=total-.001){const behind=sample(Math.max(0,total-lookAheadCells));ahead.row=eye.row+(eye.row-behind.row);ahead.col=eye.col+(eye.col-behind.col);}
   return {eye,ahead,distance,total,remaining:Math.max(0,total-distance),heading:(Math.atan2(ahead.col-eye.col,-(ahead.row-eye.row))*180/Math.PI+360)%360};
 }
+
+// Grid rows increase southward. Bearings are degrees clockwise from grid north.
+export function bearingTo(from,to) {
+  if(![from?.row,from?.col,to?.row,to?.col].every(Number.isFinite))return null;
+  const dr=to.row-from.row,dc=to.col-from.col;
+  if(Math.hypot(dr,dc)<1e-9)return null;
+  return (Math.atan2(dc,-dr)*180/Math.PI+360)%360;
+}
+export function distanceTo(from,to,cellSize) {
+  if(![from?.row,from?.col,to?.row,to?.col,cellSize].every(Number.isFinite)||cellSize<=0)return null;
+  return Math.hypot(to.row-from.row,to.col-from.col)*cellSize;
+}

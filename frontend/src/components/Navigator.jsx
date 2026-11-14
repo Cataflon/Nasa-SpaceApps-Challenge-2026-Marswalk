@@ -2,6 +2,7 @@
 import Icon from './Icon';
 import { decisions, number } from '../utils';
 import { routeFrame } from '../terrain/navigation';
+import EVAWatch from './EVAWatch';
 const TerrainView=lazy(()=>import('./TerrainView'));
 export default function Navigator({ site, route, live, position, selected, onSelect, navigationRoute }) {
   const [watch,setWatch]=useState(false),[progress,setProgress]=useState(0),[playing,setPlaying]=useState(false);
@@ -17,7 +18,7 @@ export default function Navigator({ site, route, live, position, selected, onSel
   useEffect(()=>{if(!playing||inMission||!frame)return;const timer=setInterval(()=>setProgress(p=>{const next=Math.min(1,p+20/Math.max(1,frame.total*site.cell_size_m));if(next===1)setPlaying(false);return next;}),100);return()=>clearInterval(timer);},[playing,inMission,frame?.total,site.cell_size_m]);
   const step=meters=>setProgress(p=>Math.max(0,Math.min(1,p+meters/Math.max(1,(frame?.total??1)*site.cell_size_m))));
   return <div className="navigator-page tracker-page"><div className="page-heading"><div><span className="eyebrow">Echipament de teren / EVA</span><h1>Navigatorul astronautului</h1></div><div className="segmented"><button aria-pressed={!watch} onClick={()=>setWatch(false)}>Tracker</button><button aria-pressed={watch} onClick={()=>setWatch(true)}>Ceas</button></div></div>
-    {watch?<div className="device-preview watch-preview"><section className="watch-device"><div className="device-top"><span>Marswalk / EVA</span><span>{inMission?'LIVE':'PREVIEW'}</span></div><div className="navigation-instruction"><Icon name="arrow" size={45} style={{transform:`rotate(${bearing??0}deg)`}}/><div><strong>{direction}</strong><p>{number(bearing)}° față de nord</p></div></div><p className="navigation-state">{decisions[live.decision?.decision]??'Urmează traseul'}</p><div className="device-budget"><div><span>Oxigen</span><strong>{number(live.tick?.sensors?.o2_pct,1)}%</strong></div><div><span>Rămas</span><strong>{number(frame?.remaining*site.cell_size_m/1000,1)} km</strong></div></div></section></div>:
+    {watch?<EVAWatch site={site} route={route} live={live} position={position} path={path} frame={frame} progress={progress} setProgress={setProgress} playing={playing} setPlaying={setPlaying}/>:
     <div className="tracker-layout"><section className="field-tracker" aria-label="Tracker EVA robust cu vizualizare first person">
       <i className="tracker-screw top-left"/><i className="tracker-screw top-right"/><i className="tracker-screw bottom-left"/><i className="tracker-screw bottom-right"/>
       <div className="tracker-crown"><span className="tracker-maker">MARSWALK <small>EVA FIELD UNIT</small></span><span className="tracker-led"/><span className="tracker-serial">MRK / 04</span></div>
