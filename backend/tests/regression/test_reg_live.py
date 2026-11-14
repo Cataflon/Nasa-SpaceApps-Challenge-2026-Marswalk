@@ -42,14 +42,14 @@ def plan(synthetic_site):
     return planner.plan_route(synthetic_site, synthetic_site.habitat, ["clay_delta"])
 
 
-@pytest.mark.xfail(strict=True, reason="AUDIT-001: motorul trimite remaining_path fără poziția curentă; generate aruncă ValueError")
+# AUDIT-001: reparat în timpul auditului (commit 948351c); testul rămâne ca gardă de regresie.
 def test_engine_real_core_hazard_on_route_produces_decision(synthetic_site, plan):
     """Cu core-ul real, o furtună pe traseu produce un mesaj `decision`, fără excepție (README §4, Faza 3)."""
     e = _engine(plan, synthetic_site, events=scenario.demo_events("synthetic"))
     assert _run_until(e, "decision", 100) is not None
 
 
-@pytest.mark.xfail(strict=True, reason="AUDIT-002: singleton-ul nu programează evenimentele demo (generate(..., None) -> events=[])")
+# AUDIT-002: reparat în timpul auditului (commit 948351c); testul rămâne ca gardă de regresie.
 def test_engine_default_schedules_demo_events(plan, synthetic_site):
     """Fără override, motorul programează scenario.demo_events(site_id) (cererea rolului 1; README §8, scena 4)."""
     store = RouteStore()
@@ -60,26 +60,37 @@ def test_engine_default_schedules_demo_events(plan, synthetic_site):
     assert [(x["t_min"], x["event"]) for x in e.scheduled] == expected
 
 
-@pytest.mark.xfail(strict=True, reason="AUDIT-003: scena demo dă EMERGENCY (fără ocoliri), nu REROUTE detour_north")
-def test_demo_scene_reroutes_north_and_validator_drops_south(monkeypatch, synthetic_site, plan):
-    """README §4 „Exemplu concret”: la furtuna demo regula alege o ocolire validă (REROUTE), iar
-    validatorul elimină ocolirea sud. Bugul AUDIT-001 e ocolit aici, ca testul să măsoare doar scena."""
-    from app.core import alternatives as core_alt
+# AUDIT-003 (scena README veche: ocolire nord / sud eliminată la furtuna locală) a fost redefinită de
+# echipă în timpul auditului (docs/demo.md, commit bf5f062): testul vechi a fost scos. Scena nouă e
+# verificată de tests/scenario/test_scenario.py::test_demo_scene_decisions_on_jezero.
 
-    orig = core_alt.generate
 
-    def with_position(site, pos, remaining, *a, **k):
-        rem = list(remaining)
-        if not rem or tuple(rem[0]) != tuple(pos):
-            rem = [tuple(pos)] + rem
-        return orig(site, pos, rem, *a, **k)
+@pytest.mark.slow
+@pytest.mark.xfail(strict=True, reason="AUDIT-018: pe Jezero, după EMERGENCY la min 80 ceasul de întoarcere rămâne 243")
+def test_jezero_demo_return_clock_updates_after_storm_front():
+    """docs/demo.md, rândul 1:25-1:40: „The return clock updates” după decizia de la minutul 80 (front de furtună)."""
+    from app.config import site_dir
+    from app.core.site_data import load_site
 
-    monkeypatch.setattr(engine_mod.core_alternatives, "generate", with_position)
-    e = _engine(plan, synthetic_site, events=scenario.demo_events("synthetic"))
-    d = _run_until(e, "decision", 100)
-    assert d is not None and d["decision"] == "REROUTE"
-    south = [a for a in d["alternatives"] if a["id"] == "detour_south"]
-    assert south and not south[0]["valid"]
+    directory = site_dir("jezero")
+    if not (directory / "meta.json").exists():
+        pytest.skip("situl Jezero (data/processed/jezero) lipsește")
+    site = load_site(directory)
+    route = planner.plan_route(site, site.habitat, ["clay_delta"])
+    store = RouteStore()
+    rid = store.add(dict(route))
+    e = LiveEngine(store=store, site_provider=lambda: site)
+    e.start(rid)
+    seen = None
+    for _ in range(90):
+        msgs = e.step()
+        if any(m["type"] == "decision" and m["t_min"] >= 80 for m in msgs):
+            seen = next(m for m in msgs if m["type"] == "tick")
+        elif seen is not None:
+            tick = next(m for m in msgs if m["type"] == "tick")
+            assert tick["budget"]["return_by_min"] != route["budget"]["return_by_min"]
+            return
+    pytest.fail("nicio decizie la minutul 80")
 
 
 @pytest.mark.xfail(strict=True, reason="AUDIT-004: parametri aberanți la /api/live/event sunt acceptați (200), apoi step() aruncă")
@@ -202,7 +213,7 @@ def test_tick_sunset_is_earlier_with_dust(contract):
     assert tick["budget"]["sunset_min"] == pytest.approx(effective_sunset_min(route["budget"]["sunset_min"], 3.0))
 
 
-@pytest.mark.xfail(strict=True, reason="AUDIT-036: evenimentele injectate nu trec prin scenario.with_event; senzorii nu se schimbă")
+# AUDIT-036: reparat în timpul auditului (commit 948351c); testul rămâne ca gardă de regresie.
 def test_injected_local_storm_raises_sensor_dust(contract):
     """O furtună locală injectată ridică tau-ul senzorilor (scenario.LOCAL_STORM: +2 × 0,7 la vârf; cererea rolului 1)."""
     route = contract("route_response.json")
