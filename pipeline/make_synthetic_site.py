@@ -4,11 +4,17 @@ Produce exact formatul pe care îl va produce și pipeline-ul real (vezi shared/
 ca echipa să poată lucra până sunt gata datele NASA.
 
 Rulare (din rădăcina repo-ului):  python pipeline/make_synthetic_site.py
+Verificare că situl de pe disc e la zi (cod de ieșire 1 dacă nu):  python pipeline/make_synthetic_site.py --check
+
+data/synthetic/ e în .gitignore, deci fiecare își generează situl local. Ca să nu lucreze
+oameni diferiți pe versiuni diferite, meta.json are `generator_version`; `--check` o compară
+cu versiunea din cod. Dacă schimbi geometria sitului, crești GENERATOR_VERSION.
 """
 
 import argparse
 import json
 import sys
+from collections import deque
 from pathlib import Path
 
 import numpy as np
@@ -19,6 +25,20 @@ ROOT = Path(__file__).resolve().parents[1]
 N = 500
 CELL_M = 20.0
 MAX_SLOPE_DEG = 25.0
+UNSAFE_SLOPE_DEG = 35.0  # înlocuitor pentru FOM-ul HiRISE
+# v1: schelet inițial. v2: front de deltă abrupt (pereți de netrecut + rampe), etichete pe straturi.
+GENERATOR_VERSION = 2
+DEFAULT_OUT = ROOT / "data" / "synthetic"
+
+# Etichetele fiecărui strat: ce tip de date e și ce instrument NASA imită în situl real.
+LAYER_LABELS = {
+    "elevation": {"data_type": "topographic", "analog_of": "MRO HiRISE DTM + MRO CTX DTM"},
+    "slope": {"data_type": "topographic", "analog_of": "derivat din DTM (pantă maximă pe celulă)"},
+    "terrain": {"data_type": "thermal", "analog_of": "Mars Odyssey THEMIS (inerție termică)"},
+    "minerals": {"data_type": "spectral", "analog_of": "MRO CRISM"},
+    "radiation": {"data_type": "radiation", "analog_of": "Curiosity RAD (model după altitudine)"},
+    "unsafe": {"data_type": "topographic", "analog_of": "HiRISE DTM FOM (aici: pantă > 35°)"},
+}
 
 HABITAT = (300, 200)
 TARGETS = [
@@ -49,12 +69,13 @@ def build(seed: int) -> dict[str, np.ndarray]:
     elev = -2540.0 - 0.003 * (x + y - 10000) + 6.0 * smooth_noise(rng, 3.2)
 
     # Delta: un evantai din NV cu un front abrupt. Lățimea frontului variază cu unghiul,
-    # deci frontul are porțiuni de netrecut (>25°) și rampe pe unde se poate urca.
+    # deci frontul are pereți de netrecut (>25°, ~1/4 din front) și rampe pe unde se poate urca.
+    # Panta maximă a logisticei ≈ înălțime / (4 · lățime): la 12 m -> ~55°, la 170 m -> ~6°.
     dy, dx = y - DELTA_APEX_M[0], x - DELTA_APEX_M[1]
     r = np.hypot(dy, dx)
     theta = np.arctan2(dy, dx)
-    front_width = 35.0 + 140.0 * (0.5 + 0.5 * np.sin(5 * theta + 0.7))
-    delta_mask = 1.0 / (1.0 + np.exp(-(DELTA_RADIUS_M - r) / front_width))
+    front_width = 12.0 + 160.0 * (0.5 + 0.5 * np.sin(5 * theta + 0.7))
+    delta_mask = 1.0 / (1.0 + np.exp(np.clip(-(DELTA_RADIUS_M - r) / front_width, -60, 60)))
     elev += delta_mask * (55.0 + 20.0 * np.clip(1 - r / DELTA_RADIUS_M, 0, 1))
 
     # Cratere mici, departe de habitat și de ținte.
@@ -105,7 +126,7 @@ def build(seed: int) -> dict[str, np.ndarray]:
     # Ordinul de mărime ~10 µSv/h e cel raportat de Curiosity RAD; variația e o presupunere.
     radiation = (10.0 * np.exp((elev - elev.mean()) / 11000.0) + 0.2 * smooth_noise(rng, 3.0)).astype(np.float32)
 
-    unsafe = slope > 35.0  # înlocuitor pentru masca FOM din datele reale
+    unsafe = slope > UNSAFE_SLOPE_DEG  # înlocuitor pentru masca FOM din datele reale
 
     return {
         "elevation": elev.astype(np.float32),
@@ -117,6 +138,42 @@ def build(seed: int) -> dict[str, np.ndarray]:
     }
 
 
+def walkable(layers: dict[str, np.ndarray], max_slope_deg: float = MAX_SLOPE_DEG) -> np.ndarray:
+    return (layers["slope"] <= max_slope_deg) & ~layers["unsafe"]
+
+
+def reachable_from(ok: np.ndarray, start: tuple[int, int]) -> np.ndarray:
+    """Celulele accesibile din `start` pe celule permise, cu 8 vecini (ca A*-ul rolului 2).
+
+    Diagonala e permisă doar dacă ambele celule ortogonale sunt permise, ca un traseu să nu
+    „strecoare” printre doi pereți atinși doar în colț.
+    """
+    rows, cols = ok.shape
+    seen = np.zeros_like(ok, dtype=bool)
+    if not ok[start]:
+        return seen
+    seen[start] = True
+    queue = deque([start])
+    while queue:
+        r, c = queue.popleft()
+        for dr in (-1, 0, 1):
+            for dc in (-1, 0, 1):
+                nr, nc = r + dr, c + dc
+                if (dr or dc) and 0 <= nr < rows and 0 <= nc < cols and ok[nr, nc] and not seen[nr, nc]:
+                    if dr and dc and not (ok[r + dr, c] and ok[r, c + dc]):
+                        continue
+                    seen[nr, nc] = True
+                    queue.append((nr, nc))
+    return seen
+
+
+def labeled_layers(layer_specs: dict, source: str, extra: dict | None = None) -> dict:
+    """Specificațiile straturilor din contract + etichetele de proveniență."""
+    extra = extra or {}
+    return {name: {**spec, **LAYER_LABELS.get(name, {}), "source": source, **extra.get(name, {})}
+            for name, spec in layer_specs.items()}
+
+
 def write(layers: dict[str, np.ndarray], out: Path, seed: int) -> None:
     out.mkdir(parents=True, exist_ok=True)
     (out / "png").mkdir(exist_ok=True)
@@ -124,8 +181,14 @@ def write(layers: dict[str, np.ndarray], out: Path, seed: int) -> None:
         np.save(out / f"{name}.npy", grid)
 
     contract = json.loads((ROOT / "shared" / "contracts" / "meta.json").read_text(encoding="utf-8"))
+    slope = layers["slope"]
     meta = {**contract, "source": "synthetic", "seed": seed, "targets": TARGETS,
-            "habitat": {"row": HABITAT[0], "col": HABITAT[1]}}
+            "habitat": {"row": HABITAT[0], "col": HABITAT[1]},
+            "layers": labeled_layers(contract["layers"], "synthetic"),
+            "generator_version": GENERATOR_VERSION,
+            # Amprentă informativă: dacă diferă între doi colegi, nu au același sit.
+            "fingerprint": {"forbidden_pct": round(float((slope > MAX_SLOPE_DEG).mean() * 100), 2),
+                            "elevation_mean_m": round(float(layers["elevation"].mean()), 1)}}
     (out / "meta.json").write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
 
     elev, slope = layers["elevation"], layers["slope"]
@@ -140,12 +203,31 @@ def write(layers: dict[str, np.ndarray], out: Path, seed: int) -> None:
     write_png(out / "png" / "radiation.png", ramp(layers["radiation"], [(0, (40, 40, 120)), (1, (240, 220, 60))]))
 
 
+def check(out: Path) -> int:
+    """0 dacă situl de pe disc e generat de versiunea curentă, 1 altfel."""
+    meta_path = out / "meta.json"
+    if not meta_path.exists():
+        print(f"Situl sintetic lipsește din {out}. Rulează: python pipeline/make_synthetic_site.py")
+        return 1
+    found = json.loads(meta_path.read_text(encoding="utf-8")).get("generator_version", 1)
+    if found != GENERATOR_VERSION:
+        print(f"Situl sintetic e vechi (v{found}, codul e v{GENERATOR_VERSION}). "
+              "Rulează: python pipeline/make_synthetic_site.py")
+        return 1
+    print(f"Situl sintetic e la zi (v{GENERATOR_VERSION}).")
+    return 0
+
+
 def main() -> None:
     sys.stdout.reconfigure(encoding="utf-8")  # consola Windows (cp1252) nu are diacritice
     p = argparse.ArgumentParser()
     p.add_argument("--seed", type=int, default=42)
-    p.add_argument("--out", type=Path, default=ROOT / "data" / "synthetic")
+    p.add_argument("--out", type=Path, default=DEFAULT_OUT)
+    p.add_argument("--check", action="store_true", help="doar verifică versiunea sitului de pe disc")
     args = p.parse_args()
+
+    if args.check:
+        sys.exit(check(args.out))
 
     layers = build(args.seed)
     write(layers, args.out, args.seed)
@@ -153,9 +235,11 @@ def main() -> None:
     slope = layers["slope"]
     print(f"Sit sintetic scris în {args.out}")
     print(f"  pantă: medie {slope.mean():.1f}°, max {slope.max():.1f}°, interzis (>{MAX_SLOPE_DEG:.0f}°): {(slope > MAX_SLOPE_DEG).mean():.1%}")
+    reach = reachable_from(walkable(layers), HABITAT)
     for name, (r, c) in [("habitat", HABITAT)] + [(t["id"], (t["row"], t["col"])) for t in TARGETS]:
         ok = "ok" if slope[r, c] <= MAX_SLOPE_DEG else "PREA ABRUPT"
-        print(f"  {name:<14} ({r},{c}): pantă {slope[r, c]:.1f}° {ok}")
+        acc = "accesibil" if reach[r, c] else "INACCESIBIL din habitat"
+        print(f"  {name:<14} ({r},{c}): pantă {slope[r, c]:.1f}° {ok}, {acc}")
 
 
 if __name__ == "__main__":

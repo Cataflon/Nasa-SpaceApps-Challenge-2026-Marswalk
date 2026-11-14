@@ -1,5 +1,10 @@
 # Rolurile pentru implementarea în paralel
 
+> ## 🆕 NOU (14.11.2026)
+> Au fost adăugate 7 funcționalități legate de tema challenge-ului: Survival Guide printabil (acum prioritate), contorul „Pământul vs. copilotul”, ceasul de întoarcere ca cifră principală, click pe hartă cu sursa fiecărei misiuni, numărul de titlu din benchmark, „Cum calculăm” cu fiecare constantă marcată și slide-ul salvamont. Tabelul cu ce face fiecare rol e în `README.md`, secțiunea „🆕 Noutăți”. **Fiecare fișier de rol are la început o casetă „🆕 NOU” cu sarcinile lui noi**, marcate 🆕 și în lista de sarcini.
+>
+> **Contractele:** câmpurile noi sunt toate **opționale** (`eva_start_ltst_h`, `earth_delay_min`, `sources`, `compute_ms`, `headline`). Exemplele JSON din `shared/contracts/` se actualizează de un om, cu acordul echipei. Până atunci, frontendul folosește fallback-urile din `ROL4_frontend.md`.
+
 Patru agenți (sau oameni) lucrează **simultan**, fiecare pe fișierul lui:
 
 | Fișier | Rol | Deține |
