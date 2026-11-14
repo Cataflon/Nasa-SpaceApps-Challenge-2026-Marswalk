@@ -236,6 +236,23 @@ def test_jezero_demo_storm_crosses_route_from_south():
     assert math.isclose(2 * max(storm.params["axes_m"]) / 2.5 / 60, 24.0)
 
 
+def test_eva_start_matches_planner():
+    """Ceasul de întoarcere din UI folosește EVA_START_LTST_H: trebuie să fie ora planner-ului."""
+    from app.core import daylight, planner
+
+    assert sc.DEMO_DATE_UTC == planner.SOL_START_UTC
+    assert daylight.ltst_hours(77.45, planner.SOL_START_UTC) == pytest.approx(sc.EVA_START_LTST_H, abs=0.25)
+
+
+def test_earth_mars_light_time():
+    # cazuri cunoscute: opoziția din ian. 2025 (~0,64 UA -> ~5,4 min), conjuncția din nov. 2023 (~2,5 UA -> ~21 min)
+    assert sc.earth_mars_light_min("2025-01-16T00:00:00Z") == pytest.approx(5.35, abs=0.15)
+    assert sc.earth_mars_light_min("2023-11-18T00:00:00Z") == pytest.approx(21.0, abs=0.3)
+    demo = sc.earth_mars_light_min(sc.DEMO_DATE_UTC)
+    assert 3.0 <= demo <= 22.5 and round(demo) == sc.EARTH_ONE_WAY_DELAY_MIN
+    assert sc.EARTH_ROUND_TRIP_MIN == 2 * sc.EARTH_ONE_WAY_DELAY_MIN + sc.MISSION_CONTROL_REACTION_MIN
+
+
 def test_sensor_labels_cover_all_keys():
     assert set(sc.SENSOR_LABELS) == KEYS == set(sc.BASELINE)
     for lab in sc.SENSOR_LABELS.values():

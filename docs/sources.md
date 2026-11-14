@@ -76,7 +76,10 @@ Every dataset, tool and paper behind Marswalk Copilot, what we use it for, and h
 | What | Source | Link | Status |
 |---|---|---|---|
 | Walking speed vs slope | Tobler (1993), hiking function, adjusted by a suit factor (assumption) | — (technical report, no DOI) | to verify |
-| O₂ consumption, suited walking | NASA NTRS reports (Apollo EVAs, suited walking tests) | [ntrs.nasa.gov](https://ntrs.nasa.gov/) | to verify (timed out from our network) |
+| Suited metabolic rate (Apollo lunar EVAs) | Waligora et al. 1975, *Apollo Experience Report: Assessment of Metabolic Expenditures*, NASA TN D-7883: 822-1267 kJ/h (780-1200 BTU/h) over 158.8 h of lunar EVA (Table I, p. 8-9) | [NTRS 19750010199](https://ntrs.nasa.gov/citations/19750010199) | verified (PDF read) |
+| O₂ model used by the budget | team parameter registry (`docs/roles/PARAMETRI_REFERINTA.md`, §4.2): 100% tank = 8 h at 1000 BTU/h = 418 L O₂; 4.825 kcal per litre O₂ | registry sources [S31] [S33] | link verified |
+| Other NASA EVA metabolic reports | Waligora & Horrigan 1975 (NTRS 19760005584); Paul 2011, Apollo-Skylab-STS-135 (NTRS 20110023042, abstract only); Greenlund 2017, Apollo EVA operational assessment (NTRS 20170007261) | [ntrs.nasa.gov](https://ntrs.nasa.gov/) (reached through the NTRS API) | link verified |
+| Earth-Mars light delay on the demo date | Standish, "Keplerian Elements for Approximate Positions of the Major Planets" (JPL Solar System Dynamics): 1.319 AU on 2026-11-14 → 11.0 min one way; checked on the Jan 2025 opposition and the Nov 2023 conjunction | `earth_mars_light_min()` in `scenario.py` | verified (checked on known dates) |
 | Sol length, local true solar time, sunset | Mars24 (NASA GISS) | [Mars24](https://www.giss.nasa.gov/tools/mars24/) | verified (link) |
 
 ## Still open

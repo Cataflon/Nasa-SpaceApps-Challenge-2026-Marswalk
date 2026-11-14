@@ -27,6 +27,13 @@ def test_site_has_artifacts_and_traverse():
         assert all(0 <= r < rows and 0 <= c < cols for r, c in body["rover_traverse"]["path"])
 
 
+def test_site_has_eva_clock_and_earth_delay():
+    body = TestClient(app).get("/api/site").json()
+    assert body["eva_start_ltst_h"] == 8.0
+    d = body["earth_delay_min"]
+    assert d["one_way"] == 11.0 and d["round_trip"] > 2 * d["one_way"] and d["source"]
+
+
 def test_site_mock_has_artifacts():
     mock = json.loads((CONTRACTS_DIR / "site.json").read_text(encoding="utf-8"))
     assert {a["id"] for a in mock["artifacts"]} >= {"three_forks_depot", "landing_site", "descent_stage"}

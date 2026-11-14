@@ -123,6 +123,18 @@
 - Totaluri oneste: 7 tipuri de date, 4 misiuni folosite efectiv (MRO, Mars Odyssey, Mars 2020, MSL); MGS și MAVEN doar context.
 - Test nou `pipeline/tests/test_sources.py`: fiecare DOI din cod, fiecare URL de date și fiecare colecție STAC folosită trebuie să apară în `sources.md`, cu status.
 
+### Consumul de O₂: sursă NASA verificată din PDF (14.11)
+- **NASA TN D-7883** (Waligora et al. 1975, *Apollo Experience Report: Assessment of Metabolic Expenditures*, NTRS 19750010199), Table I, p. 8-9: **822-1267 kJ/h = 228-352 W (780-1200 BTU/h)** pe 158,8 h de ieșiri pe Lună. E `[S29]` din registrul echipei, acum citit direct din PDF.
+- PDF-urile NTRS sunt în `data/raw/refs/` (ignorat de git). Textul e extras cu `pypdf` în `.venv-pipeline`.
+- Modelul de O₂ din `budget.py` (rolul 2, registrul §4.2) rămâne valabil: 176 W în repaus → 0,125 %/min, 272 W pe plat → 0,194 %/min. Valorile se încadrează în intervalul Apollo.
+
+### 7. `docs/how-we-calculate.md` (în engleză): fiecare constantă
+- 8 secțiuni, ~65 de rânduri: mers și costum, O₂, limite și verdict, lumina zilei, harta de cost și decizia, pericole, scenarii, hartă. Fiecare rând are valoarea **exact ca în cod**, numele constantei, sursa (`[S#]` din `PARAMETRI_REFERINTA.md`) și statusul `source` / `to verify` / `assumption`.
+- **Test nou `pipeline/tests/test_how_we_calculate.py`:** citește toate constantele din `core/{budget,costmap,decision,hazards,daylight,planner}.py` și `live/engine.py`. Pică dacă una nu e documentată (cu excepția celor pur tehnice, listate în `IGNORED`). Verifică și că fiecare rând are un badge valid.
+- **Ora de start aliniată:** `scenario.EVA_START_LTST_H` 9,0 → **8,0** = `planner.SOL_START_UTC` (Mars24-ul rolului 2 dă 07:59 LTST). Testul `test_eva_start_matches_planner` o ține sincronă.
+- **Întârzierea Pământ-Marte la data demo-ului (14.11.2026):** 1,319 UA → **11,0 min** într-un sens. Ajutorul de la Houston = 2 × 11 + 5 min reacție = **27 min**. Calculul e în `scenario.earth_mars_light_min()` (elementele kepleriene JPL/Standish), verificat pe opoziția din ianuarie 2025 și conjuncția din noiembrie 2023.
+- **`/api/site`** (cu acordul oamenilor) trimite acum `eva_start_ltst_h` și `earth_delay_min` (`one_way`, `round_trip`, `source`), deci ceasul de întoarcere și contorul din frontend au datele reale. Test în `tests/api/test_site_artifacts.py`.
+
 ## În lucru
 
 ## Cereri
@@ -135,6 +147,17 @@
 
 - ~~Rolul 2: normalizarea radiației~~: **rezolvat de rolul 2**. `static_cost` folosește excesul relativ `(rad − min) / min`, care nu depinde de scară.
 - ~~Mock-ul `live_messages.json` cu doza 9,8~~: **rezolvat** (cu acordul oamenilor). Acum `dose_rate_usv_h: 26.5` și `dose_total_msv: 0.032` (72 min × 26,7 µSv/h).
+- **Pentru rolurile 2 + 3 (test picat, nu de la rolul 1):** `tests/live/test_engine.py::test_uses_core_alternatives_when_available` pică pe `main` de la commit-ul `a67c375`, pentru că `hazards.predict` primește un `dict` în loc de `Hazard` (`AttributeError: 't0_min'`). Verificat pe o copie curată a HEAD.
+- **Pentru rolul 3:** `engine.DEFAULT_SUNSET_MIN = 420`, dar apusul planificat la data demo-ului e ≈ 633 min (planner). E doar fallback, dar dacă motorul pornește fără plan, ceasul de întoarcere ar fi cu ~3,5 h mai devreme.
+- **Pentru rolul 4:** `MissionSheet.jsx` are fallback `eva_start_ltst_h ?? 9`. Valoarea reală e 8 și vine acum din `/api/site`; schimbați fallback-ul la 8.
+- **Pentru oameni (de decis):** registrul `PARAMETRI_REFERINTA.md` recomandă pentru `scenario.py` mai multe schimbări care nu sunt încă făcute:
+  - furtuna solară × 2,5 (nu × 20), cu creștere pe ore și scădere pe 36 h;
+  - tau de bază 0,5 (nu 0,6);
+  - vânt Weibull;
+  - doza 28 µSv/h (0,67 mSv/zi; eu am 26,7, din 0,64 în rezumatul Hassler 2014);
+  - scena demo cu vârtej mare + front de furtună.
+  
+  Le pot face; schimbă comportamentul demo-ului.
 - **Pentru rolul 3 (motorul live pe Jezero):** folosiți `scenario.demo_events(SITE_ID)`. Furtuna pe Jezero e calibrată pe traseul habitat (229, 264) -> `clay_delta` (211, 115). Dacă planner-ul alege alt traseu, ajustați `center` în `JEZERO_DEMO_EVENTS` sau spuneți-mi.
 - **Pentru oameni (de verificat, P2):** legenda culorilor FOM HiRISE (produsele `DTFEC_*`) nu e pe paginile USGS sau UA. Se poate căuta în arhiva PDS `MRO-M-HIRISE-5-DTM-V1.0`. Până atunci, `unsafe` = pantă > 35°.
 - **Pentru oameni / rolul 4 (amânat, de reamintit):** `npm install` avertizează că scriptul `postinstall` al `esbuild@0.21.5` nu e aprobat (`npm install-scripts approve esbuild`). Dacă `npm run build` pică, de acolo e.

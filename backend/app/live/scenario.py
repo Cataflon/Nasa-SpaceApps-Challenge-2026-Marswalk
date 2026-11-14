@@ -32,7 +32,20 @@ import numpy as np
 # Timpul pe Marte. Un sol = 24 h 39 min 35 s = 1479,6 min terestre (NASA GISS Mars24).
 SOL_MIN = 1479.6
 MARS_HOUR_MIN = SOL_MIN / 24.0
-EVA_START_LTST_H = 9.0  # presupunere: ieșirea pornește la 09:00 ora solară locală
+# Ieșirea pornește la ≈ 08:00 ora solară locală: aceeași clipă ca planner-ul rolului 2
+# (core/planner.SOL_START_UTC = 2026-11-14 14:22 UTC ≈ 08:00 LTST la Jezero). Frontendul afișează
+# ceasul de întoarcere din ea, deci trebuie să fie identică cu a planner-ului (test în tests/scenario).
+EVA_START_LTST_H = 8.0
+DEMO_DATE_UTC = "2026-11-14T14:22:00Z"  # = core/planner.SOL_START_UTC
+
+# Întârzierea Pământ-Marte la data demo-ului. Distanța din elementele kepleriene aproximative JPL
+# (Standish, „Keplerian Elements for Approximate Positions of the Major Planets”, 1800-2050):
+# 14.11.2026 -> 1,319 UA -> lumina face 10,97 min într-un sens. Verificat pe cazuri cunoscute:
+# opoziția din 16.01.2025 -> 0,644 UA, conjuncția din 18.11.2023 -> 2,53 UA. Vezi earth_mars_light_min().
+EARTH_ONE_WAY_DELAY_MIN = 11.0
+MISSION_CONTROL_REACTION_MIN = 5.0  # presupunere: timpul echipei de la sol să analizeze și să răspundă
+EARTH_ROUND_TRIP_MIN = 2 * EARTH_ONE_WAY_DELAY_MIN + MISSION_CONTROL_REACTION_MIN  # 27 min
+EARTH_DELAY_SOURCE = "JPL approximate Keplerian elements (Standish); Earth-Mars distance 1.319 AU on 2026-11-14"
 
 # Opacitatea prafului (tau). Jezero, primul an Mars 2020: tau ~0,3-1,0, tipic ~0,5-0,7
 # (Lemmon et al. 2022, GRL, „Dust, sand, and winds within an active Martian storm in Jezero crater”;
@@ -300,6 +313,44 @@ def generate(seed: int = 42, duration_min: int = 300, events: list[ScheduledEven
         for a, b, c, d, e in zip(tau, wind, temp, pressure, dose)
     ]
     return Scenario(seed=seed, duration_min=int(duration_min), sensors=sensors, events=events)
+
+
+# Elementele kepleriene aproximative JPL (Standish), tabelul pentru 1800-2050:
+# (a [UA], e, I [°], L [°], longitudinea periheliului [°], longitudinea nodului [°]) + ratele pe secol.
+_KEPLER = {
+    "earth": ((1.00000261, 0.01671123, -0.00001531, 100.46457166, 102.93768193, 0.0),
+              (0.00000562, -0.00004392, -0.01294668, 35999.37244981, 0.32327364, 0.0)),
+    "mars": ((1.52371034, 0.09339410, 1.84969142, -4.55343205, -23.94362959, 49.55953891),
+             (0.00001847, 0.00007882, -0.00813131, 19140.30268499, 0.44441088, -0.29257343)),
+}
+AU_KM = 149597870.7
+C_KM_S = 299792.458
+
+
+def _helio(planet: str, jd: float) -> tuple[float, float, float]:
+    """Poziția heliocentrică ecliptică (UA) din elementele kepleriene aproximative."""
+    t = (jd - 2451545.0) / 36525
+    base, rate = _KEPLER[planet]
+    a, e, inc, mean_long, peri, node = (b + r * t for b, r in zip(base, rate))
+    m = np.radians((mean_long - peri + 180) % 360 - 180)
+    w, inc, node = np.radians(peri - node), np.radians(inc), np.radians(node)
+    ecc = m + e * np.sin(m)
+    for _ in range(20):
+        ecc -= (ecc - e * np.sin(ecc) - m) / (1 - e * np.cos(ecc))
+    x, y = a * (np.cos(ecc) - e), a * np.sqrt(1 - e * e) * np.sin(ecc)
+    cw, sw, cn, sn, ci, si = np.cos(w), np.sin(w), np.cos(node), np.sin(node), np.cos(inc), np.sin(inc)
+    return (float((cw * cn - sw * sn * ci) * x + (-sw * cn - cw * sn * ci) * y),
+            float((cw * sn + sw * cn * ci) * x + (-sw * sn + cw * cn * ci) * y),
+            float(sw * si * x + cw * si * y))
+
+
+def earth_mars_light_min(utc_iso: str) -> float:
+    """Timpul luminii Pământ-Marte (minute, într-un sens) la momentul UTC dat (precizie ~1%)."""
+    from datetime import datetime
+
+    jd = datetime.fromisoformat(utc_iso.replace("Z", "+00:00")).timestamp() / 86400 + 2440587.5
+    dist_au = float(np.linalg.norm(np.subtract(_helio("earth", jd), _helio("mars", jd))))
+    return dist_au * AU_KM / C_KM_S / 60
 
 
 def with_event(scenario: Scenario, event: ScheduledEvent) -> Scenario:

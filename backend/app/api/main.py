@@ -17,6 +17,7 @@ from fastapi.staticfiles import StaticFiles
 from app.config import CONTRACTS_DIR, FRONTEND_ORIGINS, LIVE_MOCK, SITE_ID, site_dir
 from app.core import planner
 from app.core.site_data import get_site
+from app.live import scenario
 from app.live.engine import engine, mock_stream
 from app.live.store import routes
 from app.llm import warm_up
@@ -77,6 +78,11 @@ def site(response: Response):
         # Hardware NASA ca POI (rolul 1) + traseul real al roverului Perseverance (doar pe Jezero).
         "artifacts": meta.get("artifacts", []),
         "rover_traverse": meta.get("rover_traverse"),
+        # Ceasul de întoarcere și contorul „Pământul vs. copilotul” (constante de la rolul 1).
+        "eva_start_ltst_h": scenario.EVA_START_LTST_H,
+        "earth_delay_min": {"one_way": scenario.EARTH_ONE_WAY_DELAY_MIN,
+                            "round_trip": scenario.EARTH_ROUND_TRIP_MIN,
+                            "source": scenario.EARTH_DELAY_SOURCE},
         "layers": [
             {"id": name, "label": LAYER_LABELS.get(name, name), "png": f"/static/layers/{name}.png", "unit": spec["unit"],
              # Etichetele de proveniență scrise de pipeline (rolul 1), dacă există.
