@@ -19,14 +19,14 @@ Unelte precum Mars Trek arată datele ca straturi pe o hartă globală, dar chal
 Marswalk Copilot are două părți:
 
 1. **O hartă hiperlocală** (10×10 km în jurul deltei Jezero) construită din date din mai multe misiuni NASA: relief, imagine, minerale, termic, radiație, vreme.
-2. **Un copilot** care urmărește ieșirea în timp real. La fiecare pas citește senzorii, prezice unde va fi pericolul, generează trasee alternative, elimină variantele nesigure, iar un LLM local alege dintre variantele sigure și explică decizia.
+2. **Un copilot** care urmărește ieșirea în timp real. La fiecare pas citește senzorii, prezice unde va fi pericolul, generează trasee alternative, elimină variantele nesigure și alege determinist varianta sigură cu riscul cel mai mic. Un LLM local explică decizia pe limba astronautului.
 
 ### Principii
 
 - **Cifrele vin din cod, nu din LLM.** Distanța, O₂-ul, timpul și riscul se calculează determinist.
-- **LLM-ul alege și explică.** Primește un rezumat compact și alternative deja calculate, apoi răspunde în JSON fix.
+- **Codul decide, LLM-ul explică.** Regula alege varianta, iar LLM-ul primește situația și decizia deja luată și scrie motivul. LLM-ul nu se află pe calea critică.
 - **Validatorul are ultimul cuvânt.** Nicio variantă nesigură nu ajunge la astronaut.
-- **Sistemul merge și fără LLM.** Dacă Ollama nu răspunde, o regulă implicită decide.
+- **Sistemul merge și fără LLM.** Dacă Ollama nu răspunde, decizia rămâne aceeași și explicația vine dintr-un șablon.
 - **Fiecare etapă e un demo complet.**
 
 ---
@@ -86,35 +86,82 @@ Marswalk Copilot are două părți:
 
 ---
 
-## 4. Arhitectura
+## 4. Workflow-ul
+
+Pe scurt: **codul decide, LLM-ul explică.** Workflow-ul are 3 faze.
+
+### Faza 1: Pregătirea datelor (offline, o singură dată)
+
+Rulăm `pipeline/` înainte de demo, iar rezultatul se salvează pe disc. De aici, backendul doar citește fișiere, fără internet.
 
 ```
-┌───────────────────────────────────────────────────────────────┐
-│ 1. DATE                                                       │
-│  statice (NASA): relief, pantă, imagine, minerale, termic,    │
-│                  radiație, geologie                           │
-│  dinamice (simulate, calibrate pe NASA): praf, vânt, temp.,   │
-│                  furtuni, evenimente solare                   │
-└──────────────────────────────┬────────────────────────────────┘
-                               ▼
-┌───────────────────────────────────────────────────────────────┐
-│ 2. FUZIUNE: hartă de cost + hartă de pericol cost(x, y, t)    │
-└──────────────────────────────┬────────────────────────────────┘
-                               ▼
-┌───────────────────────────────────────────────────────────────┐
-│ 3. MOTOR LIVE (tick = 1 min simulat)                          │
-│  senzori → model pericol → predicție → traseul e afectat?     │
-│     nu → CONTINUE                                             │
-│     da → 4. ALGORITMI: ocolire / așteptare / întoarcere       │
-│          → 5. VALIDATOR (O₂, lumină, pantă, radiație)         │
-│          → 6. LLM (Ollama): alege + explică [fallback: regulă]│
-└──────────────────────────────┬────────────────────────────────┘
-                               ▼ WebSocket
-┌───────────────────────────────────────────────────────────────┐
-│ 7. FRONTEND: hartă cu straturi, astronaut, furtună + con de   │
-│ predicție, trasee alternative, buget O₂, decizie, HUD         │
-└───────────────────────────────────────────────────────────────┘
+STAC (HiRISE + CTX) ──► decupaj 10×10 km ──► pantă ──► grilă 20 m
+CRISM, THEMIS, radiație ───────────────────────────────► aceeași grilă
+                                                          │
+                                         elevation.npy, slope.npy, terrain.npy, …
 ```
+
+### Faza 2: Planificarea (înainte de ieșire)
+
+Astronautul spune: „Vreau proba de argilă de la deltă, am 5 ore."
+
+1. **A\*** găsește traseul habitat → țintă pe harta de cost.
+2. **Dijkstra invers** calculează, o singură dată, costul de întoarcere din orice celulă. De aici iese punctul de neîntoarcere.
+3. **Bugetul** calculează pe traseu timpul, O₂-ul, doza și ora apusului.
+4. **Validatorul** dă verdictul GO / CAUTION / NO-GO.
+5. **LLM-ul** (opțional) explică planul în chat.
+
+### Faza 3: Ieșirea live (inima proiectului)
+
+Un **tick = 1 minut simulat**. La fiecare tick:
+
+```
+┌─ 1. SENZORI ── scenario.py dă: poziție, O₂, praf, vânt, radiație
+│
+├─ 2. PERICOL ── hazards.py: unde e furtuna acum + unde va fi la t+10…t+180
+│
+├─ 3. VERIFICARE ── traseul rămas intersectează pericolul prezis?
+│        │
+│        ├── NU ──► CONTINUE (nimic nu se schimbă, majoritatea tick-urilor)
+│        │
+│        └── DA ──► 4. ALTERNATIVE (ocolire nord, ocolire sud, WAIT, RETURN)
+│                       │  calculate cu A* spațiu-timp + Dijkstra invers
+│                       ▼
+│                   5. VALIDATOR ── elimină ce încalcă O₂ / lumină / pantă / doză
+│                       │
+│                       ▼
+│                   6. REGULA ── alege varianta validă cu riscul cel mai mic
+│                       │        (determinist, < 50 ms)
+│                       ▼
+│                   7. UI (WebSocket) ── decizia apare IMEDIAT pe hartă
+│                       │
+│                       ▼  (în paralel, nu blochează)
+│                   8. LLM ── primește situația + decizia → scrie „de ce"
+│                            (2-3 s; dacă pică → text din șablon)
+└─ următorul tick
+```
+
+**Histerezisul** împiedică traseul să se schimbe din minut în minut: se schimbă doar dacă riscul trece pragul și alternativa e clar mai bună.
+
+### Exemplu concret (scena 4 din demo)
+
+- **Minutul 72:** praful crește, iar senzorii văd o furtună locală la 3 km vest, care se deplasează spre est.
+- **Predicția:** furtuna taie traseul în 16 minute.
+- **Alternativele:** ocolire nord (+25 min, O₂ final 31%), ocolire sud (+40 min, O₂ final 22%), WAIT, RETURN.
+- **Validatorul:** elimină ocolirea sud, pentru că 22% e sub rezerva de 30%.
+- **Regula:** alege ocolirea nord, care are cel mai mic risc. Pe hartă, traseul se redesenează instant.
+- **LLM-ul**, 2 secunde mai târziu: *„Furtuna ajunge pe traseu în 16 min. Ocolirea nord adaugă 25 min și lasă 31% O₂, peste rezerva de 30%."*
+
+Dacă furtuna e regională, nicio ocolire nu trece validatorul și regula alege RETURN pe ruta din Dijkstra invers.
+
+### Cine face ce
+
+| Componentă | Determinist? | Poate greși decizia? |
+|---|---|---|
+| A*, Dijkstra, buget | da | nu, sunt doar calcule |
+| Validator | da | nu, sunt reguli fixe |
+| Regula de alegere | da | nu |
+| LLM | aproape | **nu**, doar explică |
 
 ---
 
@@ -136,7 +183,7 @@ cost = distanță × f(pantă) × f(teren) + w_pericol × pericol(x, y, t) + w_r
 ```
 
 - Pantă peste limită (de exemplu 25°) sau FOM nesigur înseamnă celulă interzisă.
-- Ponderile `w_*` pot fi ajustate de LLM.
+- Ponderile `w_*` vin din 3 preset-uri fixe: **sigur**, **rapid**, **științific**. Nu le modifică LLM-ul, ca harta de cost să rămână deterministă.
 
 ### 5.3 Algoritmii
 
@@ -178,19 +225,22 @@ cost = distanță × f(pantă) × f(teren) + w_pericol × pericol(x, y, t) + w_r
 - **Model decizie (live):** `qwen2.5:7b-instruct` (Q4, ~4,7 GB, intră complet în VRAM, rapid). Alternativă de testat: `qwen3:8b` cu thinking oprit. Rezervă: `qwen2.5:3b` sau `llama3.2:3b`.
 - **Model chat/explicații (opțional):** un 14B (ex. `qwen2.5:14b`) nu încape în 6 GB și se împarte între GPU și CPU, deci e mai lent (câțiva tokeni/s). Se folosește doar unde latența nu contează, nu pentru decizia live.
 - **Setări:** `temperature: 0`, `seed: 42`, format cu schemă JSON, context mic (2-4k) ca să rămână în VRAM.
-- **Când rulează:** doar la evenimente și la cererile din chat.
-- **Intrare:** rezumatul situației și alternativele deja validate.
-- **Ieșire:**
+- **Rol:** doar explică. Decizia e deja luată de regulă și afișată în UI înainte ca LLM-ul să înceapă.
+- **Când rulează:** doar la evenimente (pas 8 din Faza 3) și la cererile din chat. Rulează asincron și nu blochează tick-ul.
+- **Intrare:** prompt scurt (< 500 de tokeni). Partea fixă (instrucțiunile) stă la început, ca Ollama să o refolosească din cache, iar partea variabilă (situația, alternativele validate, decizia aleasă) la sfârșit.
+- **Ieșire** (schemă JSON, ~60 de tokeni):
 
 ```json
-{"decizie": "CONTINUE|REROUTE|WAIT|RETURN|EMERGENCY",
+{"decizie": "REROUTE",
  "alternativa_id": "ocolire_nord",
- "ponderi": {"siguranta": 0.7, "stiinta": 0.3},
- "motiv": "Furtuna ajunge în 16 min; ocolirea lasă 31% O₂..."}
+ "motiv": "Furtuna ajunge pe traseu în 16 min. Ocolirea nord adaugă 25 min și lasă 31% O₂, peste rezerva de 30%."}
 ```
 
-- **Chat cu unelte** pentru planificare: `plan_route`, `oxygen_budget`, `layer_value`, `science_stops`, `daylight`.
-- **Fallback:** dacă nu răspunde în ~3 s sau JSON-ul e invalid, se alege alternativa validă cu cel mai mic risc.
+  `decizie` și `alternativa_id` sunt copiate din decizia regulii (servesc ca verificare de consistență), iar `motiv` are maxim 25 de cuvinte.
+- **Viteză:** `keep_alive: -1` și un request de încălzire la pornirea backendului, ca prima explicație să nu plătească încărcarea modelului.
+- **Chat cu unelte** pentru planificare: `plan_route`, `oxygen_budget`, `layer_value`, `science_stops`, `daylight`. Puține unelte, cu parametri simpli, pentru că un 7B le apelează nesigur.
+- **Fallback:** dacă nu răspunde în ~3 s, JSON-ul e invalid sau `alternativa_id` nu se potrivește cu decizia, se afișează un text din șablon (ex. „Furtună pe traseu în {t} min. Ocolire {nume}: O₂ final {o2}%.").
+- **Reproductibilitate:** `temperature: 0` și `seed` reduc variația, dar nu o garantează la bit. De aceea explicațiile se pun în cache după hash-ul stării, iar demo-ul și benchmark-ul se repetă identic.
 
 ### 5.8 Backendul (FastAPI, Python 3.11)
 
@@ -264,7 +314,7 @@ marswalk-copilot/
 | Interval | Backend | Algoritmi | Date | Frontend |
 |---|---|---|---|---|
 | H12–H18 | WebSocket `/live` | A* spațiu-timp, alternativele, validatorul | `scenario.py` calibrat pe MEDA, REMS, RAD | Astronaut animat, furtuna, conul, alternativele |
-| H18–H24 | `llm.py` + fallback, chatul | Histerezis, WAIT și RETURN | Imaginile Perseverance la opriri | Panoul de decizie, explicația, chatul |
+| H18–H24 | `llm.py` (explicații) + șabloane, chatul | Histerezis, WAIT și RETURN | Imaginile Perseverance la opriri | Panoul de decizie, explicația, chatul |
 | H24–H30 | Benchmark | Teste pe scenarii | Ecranul „Cum calculăm", sursele | HUD sau Survival Guide (bonus) |
 | H30–H34 | Stabilizare | Stabilizare | Slide-uri, video demo | Finisaje |
 | H34–H36 | Îngheț de cod | | Repetiție demo | |
@@ -289,7 +339,7 @@ Pentru 2-3 oameni: Backend + Algoritmi devin o persoană, iar Date & prezentare 
 1. Harta Jezero cu straturile: „date din 5 misiuni NASA" (15 s).
 2. Planificare: „Vreau o probă de argilă de la deltă, am 5 ore" → traseu, buget, punct de neîntoarcere, imaginea Perseverance de la țintă (25 s).
 3. Pornim ieșirea, iar astronautul merge pe hartă (10 s).
-4. Furtună locală la jumătatea drumului: apare conul de predicție, apar 3 alternative, validatorul elimină una, LLM-ul alege ocolirea și explică (35 s).
+4. Furtună locală la jumătatea drumului: apare conul de predicție, apar alternativele, validatorul elimină una, regula alege ocolirea instant, iar LLM-ul explică de ce (35 s).
 5. Furtună regională: sistemul decide RETURN, pentru că nu poate fi ocolită (15 s).
 6. Benchmark: copilot față de „doar planul", pe 100 de scenarii (15 s).
 7. Închidere: HUD-ul sau Survival Guide-ul (5 s).
@@ -302,11 +352,11 @@ Pentru 2-3 oameni: Backend + Algoritmi devin o persoană, iar Date & prezentare 
 |---|---|
 | STAC-ul e lent sau DTM-ul nu se decupează | Doar CTX; dacă nici asta nu merge, situl sintetic + straturile NASA arătate separat |
 | CRISM sau THEMIS durează prea mult | Ținte științifice puse manual după harta geologică USGS |
-| Ollama e lent sau nu e instalat | Fallback pe regulă; LLM-ul doar explică, cu mesajul „se gândește…" |
-| A* spațiu-timp e prea lent | Orizont mai scurt sau zona furtunii „umflată" static |
+| Ollama e lent sau nu e instalat | Decizia nu e afectată (o ia regula); explicația vine din șablon |
+| A* spațiu-timp e prea lent | Orizont mai scurt (30-60 min), grilă de 100 m la replanificare, `numpy`/`numba`, sau zona furtunii „umflată" static |
 | Integrarea frontend–backend întârzie | Frontendul rulează pe scenarii înregistrate (mock) |
 | Internetul pică la demo | Totul local + video de rezervă |
-| Juriul întreabă dacă AI-ul poate greși | AI-ul alege doar dintre variante validate; benchmark-ul o arată |
+| Juriul întreabă dacă AI-ul poate greși | AI-ul nu ia decizia: o ia regula, dintre variante validate. LLM-ul doar explică; benchmark-ul rulează fără LLM și e reproductibil |
 
 ---
 
