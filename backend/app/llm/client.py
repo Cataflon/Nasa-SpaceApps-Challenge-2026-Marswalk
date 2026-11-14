@@ -17,8 +17,8 @@ OPTIONS = {"temperature": 0, "seed": 42, "num_ctx": 4096, "num_predict": 120}
 async def explain(summary: dict) -> dict:
     """Întoarce {"text": ..., "source": "llm" | "template" | "cache"}.
 
-    `summary` trebuie să conțină `decision`, `alternative_id`, `alternative_ids` și cifrele
-    folosite de șablon (o2_end_pct, eta_hazard_min, extra_min).
+    `summary` vine din `llm.summary.build_summary` (conține `decision`, `alternative_id`,
+    `alternative_ids` și cifrele folosite de șablon: o2_end_pct, eta_hazard_min, extra_min).
     """
     fallback = {
         "text": templates.render(summary["decision"], **summary),

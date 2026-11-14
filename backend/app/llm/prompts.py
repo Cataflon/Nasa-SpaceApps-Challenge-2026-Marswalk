@@ -2,6 +2,8 @@
 
 import json
 
+from app.llm.summary import NO_ALTERNATIVE
+
 SYSTEM = """Ești copilotul unui astronaut aflat pe jos pe Marte.
 Decizia a fost DEJA luată de sistemul de siguranță. Nu o schimbi și nu calculezi nimic.
 Treaba ta: explici pe scurt DE CE, folosind doar cifrele primite.
@@ -17,7 +19,7 @@ def response_schema(alternative_ids: list[str]) -> dict:
         "type": "object",
         "properties": {
             "decizie": {"type": "string", "enum": ["CONTINUE", "REROUTE", "WAIT", "RETURN", "EMERGENCY"]},
-            "alternativa_id": {"type": "string", "enum": alternative_ids or ["none"]},
+            "alternativa_id": {"type": "string", "enum": alternative_ids or [NO_ALTERNATIVE]},
             "motiv": {"type": "string", "maxLength": 220},
         },
         "required": ["decizie", "alternativa_id", "motiv"],
