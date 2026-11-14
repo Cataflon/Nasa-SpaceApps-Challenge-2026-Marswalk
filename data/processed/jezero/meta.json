@@ -1,0 +1,1169 @@
+{
+  "site_id": "jezero",
+  "name": "Jezero crater, delta front (Perseverance landing site)",
+  "source": "nasa",
+  "cell_size_m": 20,
+  "shape": [
+    500,
+    500
+  ],
+  "crs": "+proj=eqc +lat_ts=18.44 +lat_0=18.44 +lon_0=77.45 +R=3396190 +units=m +no_defs +type=crs",
+  "center": {
+    "lat": 18.44,
+    "lon": 77.45
+  },
+  "habitat": {
+    "row": 229,
+    "col": 264
+  },
+  "max_slope_deg": 25,
+  "layers": {
+    "elevation": {
+      "file": "elevation.npy",
+      "dtype": "float32",
+      "unit": "m",
+      "data_type": "topographic",
+      "mission": "MRO",
+      "instrument": "HiRISE + CTX",
+      "source": "nasa",
+      "product_id": "DTEEC_023524_1985_023379_1985_U01, DTEEC_045994_1985_046060_1985_U01, DTEEC_048842_1985_048908_1985_U01, DTEEC_022680_1985_022746_1985_A01, DTEEC_002387_1985_003798_1985_A01, J03_045994_1986_XN_18N282W__J03_046060_1986_XN_18N282W, J10_048842_1986_XN_18N282W__J11_048908_1986_XN_18N282W, K13_058574_1983_XN_18N282W__K13_058640_1983_XN_18N282W"
+    },
+    "slope": {
+      "file": "slope.npy",
+      "dtype": "float32",
+      "unit": "deg",
+      "data_type": "topographic",
+      "mission": "MRO",
+      "instrument": "HiRISE + CTX",
+      "source": "nasa",
+      "product_id": "DTEEC_023524_1985_023379_1985_U01, DTEEC_045994_1985_046060_1985_U01, DTEEC_048842_1985_048908_1985_U01, DTEEC_022680_1985_022746_1985_A01, DTEEC_002387_1985_003798_1985_A01, J03_045994_1986_XN_18N282W__J03_046060_1986_XN_18N282W, J10_048842_1986_XN_18N282W__J11_048908_1986_XN_18N282W, K13_058574_1983_XN_18N282W__K13_058640_1983_XN_18N282W",
+      "derived": "max slope of 4 m pixels"
+    },
+    "terrain": {
+      "file": "terrain.npy",
+      "dtype": "uint8",
+      "unit": "class",
+      "data_type": "thermal",
+      "mission": "Mars Odyssey + MRO",
+      "instrument": "THEMIS night IR + HiRISE roughness",
+      "source": "nasa",
+      "product_id": "mc13_syrtis_major_dir, mc13_syrtis_major_nir",
+      "derived": "classes from thermal-inertia proxy and DTM roughness; thresholds are assumptions"
+    },
+    "minerals": {
+      "file": "minerals.npy",
+      "dtype": "uint8",
+      "unit": "class",
+      "data_type": "spectral",
+      "mission": "Mars 2020 Perseverance + MRO",
+      "instrument": "rover-confirmed units (PIXL/SHERLOC) + delta outline from HiRISE/CTX DTM",
+      "source": "assumption",
+      "derived": "approximate unit outlines; CRISM not available in USGS STAC",
+      "units": [
+        {
+          "id": "delta_deposits",
+          "class": 1,
+          "name": "Main body of the western delta (Fe/Mg smectite clays)",
+          "source": "HiRISE/CTX DTM (delta outline) + CRISM literature (Goudge et al. 2015)",
+          "cells_pct": 14.67
+        },
+        {
+          "id": "delta_front_mudstones",
+          "class": 1,
+          "name": "Delta front mudstones (rover-confirmed clays)",
+          "source": "Perseverance delta-front campaign (M20 waypoints, sols 400-699)",
+          "cells_pct": 1.6
+        },
+        {
+          "id": "seitah",
+          "class": 3,
+          "name": "Séítah olivine cumulate",
+          "source": "Perseverance Séítah campaign (M20 waypoints, sols 200-340); Liu et al. 2022",
+          "cells_pct": 1.95
+        },
+        {
+          "id": "margin_unit",
+          "class": 2,
+          "name": "Margin unit carbonates",
+          "source": "Perseverance margin campaign (M20 waypoints, sols 750-899); Horgan et al. 2020",
+          "cells_pct": 1.89
+        }
+      ]
+    },
+    "radiation": {
+      "file": "radiation.npy",
+      "dtype": "float32",
+      "unit": "uSv/h",
+      "data_type": "radiation",
+      "mission": "MSL Curiosity",
+      "instrument": "RAD (altitude model)",
+      "source": "assumption"
+    },
+    "unsafe": {
+      "file": "unsafe.npy",
+      "dtype": "bool",
+      "unit": "mask",
+      "data_type": "topographic",
+      "mission": "MRO",
+      "instrument": "HiRISE + CTX",
+      "source": "nasa",
+      "product_id": "DTEEC_023524_1985_023379_1985_U01, DTEEC_045994_1985_046060_1985_U01, DTEEC_048842_1985_048908_1985_U01, DTEEC_022680_1985_022746_1985_A01, DTEEC_002387_1985_003798_1985_A01, J03_045994_1986_XN_18N282W__J03_046060_1986_XN_18N282W, J10_048842_1986_XN_18N282W__J11_048908_1986_XN_18N282W, K13_058574_1983_XN_18N282W__K13_058640_1983_XN_18N282W",
+      "derived": "slope > 35° at 4 m (FOM legend not published)"
+    }
+  },
+  "terrain_classes": {
+    "0": "bedrock",
+    "1": "regolith",
+    "2": "sand",
+    "3": "boulders"
+  },
+  "mineral_classes": {
+    "0": "none",
+    "1": "clay",
+    "2": "carbonate",
+    "3": "olivine"
+  },
+  "targets": [
+    {
+      "id": "clay_delta",
+      "name": "Clay, delta front (Hawksbill Gap)",
+      "kind": "clay",
+      "row": 216,
+      "col": 123,
+      "science_value": 10,
+      "dwell_min": 30,
+      "image": null,
+      "lat": 18.4513,
+      "lon": 77.40501,
+      "snapped_m": 0,
+      "note": "Clay-bearing mudstone at the base of the delta front, studied by Perseverance during the delta campaign",
+      "source": "NASA/JPL Perseverance localization waypoints (M20_waypoints.json), sols 500-599"
+    },
+    {
+      "id": "carbonate_rim",
+      "name": "Carbonates, crater margin unit",
+      "kind": "carbonate",
+      "row": 123,
+      "col": 10,
+      "science_value": 7,
+      "dwell_min": 20,
+      "image": null,
+      "lat": 18.48268,
+      "lon": 77.36482,
+      "snapped_m": 0,
+      "note": "Carbonate-bearing margin unit along the inner crater rim, explored by Perseverance",
+      "source": "NASA/JPL Perseverance localization waypoints (M20_waypoints.json), sols 800-899"
+    },
+    {
+      "id": "olivine_floor",
+      "name": "Olivine, Séítah (crater floor)",
+      "kind": "olivine",
+      "row": 269,
+      "col": 228,
+      "science_value": 4,
+      "dwell_min": 15,
+      "image": null,
+      "lat": 18.43342,
+      "lon": 77.44235,
+      "snapped_m": 0,
+      "note": "Olivine-rich cumulate (Séítah formation), sampled by Perseverance",
+      "source": "NASA/JPL Perseverance localization waypoints (M20_waypoints.json), sols 200-299"
+    }
+  ],
+  "artifacts": [
+    {
+      "id": "three_forks_depot",
+      "name": "Three Forks Sample Depot (10 sample tubes)",
+      "type": "recovery_target",
+      "row": 212,
+      "col": 132,
+      "lat": 18.45273,
+      "lon": 77.40824,
+      "caution_radius_m": 0,
+      "note": "Ten titanium tubes with rock cores and atmosphere, left on the surface by Perseverance (Dec 2022 - Jan 2023) for Mars Sample Return.",
+      "source": "NASA/JPL Perseverance localization waypoints (M20_waypoints.json), sols 652-686",
+      "status": "verified"
+    },
+    {
+      "id": "landing_site",
+      "name": "Octavia E. Butler Landing (Perseverance touchdown)",
+      "type": "landmark",
+      "row": 236,
+      "col": 252,
+      "lat": 18.44463,
+      "lon": 77.45089,
+      "caution_radius_m": 0,
+      "note": "Where Perseverance touched down on 18 February 2021.",
+      "source": "NASA/JPL Perseverance localization waypoints (M20_waypoints.json), sol 13",
+      "status": "verified"
+    },
+    {
+      "id": "descent_stage",
+      "name": "Mars 2020 Descent Stage (sky crane) crash site",
+      "type": "hazard_debris",
+      "row": 217,
+      "col": 238,
+      "lat": 18.451,
+      "lon": 77.446,
+      "caution_radius_m": 150,
+      "note": "Sharp metal debris and possible hydrazine residue: keep clear.",
+      "source": "approximate, to verify on the NASA location map",
+      "status": "to verify"
+    },
+    {
+      "id": "backshell_parachute",
+      "name": "Backshell and supersonic parachute",
+      "type": "hazard_debris",
+      "row": 161,
+      "col": 250,
+      "lat": 18.47,
+      "lon": 77.45,
+      "caution_radius_m": 100,
+      "note": "Backshell and parachute on the surface: risk of snagging on cables and fabric.",
+      "source": "approximate, to verify on the NASA location map",
+      "status": "to verify"
+    },
+    {
+      "id": "heat_shield",
+      "name": "Mars 2020 heat shield",
+      "type": "historical_hardware",
+      "row": 289,
+      "col": 305,
+      "lat": 18.4267,
+      "lon": 77.4697,
+      "caution_radius_m": 50,
+      "note": "Carbon-composite heat shield with ablative cork, ~1.5 km southeast of the landing site.",
+      "source": "approximate, to verify on the NASA location map",
+      "status": "to verify"
+    },
+    {
+      "id": "ingenuity_first_flight",
+      "name": "Wright Brothers Field (Ingenuity's first flight)",
+      "type": "historical_hardware",
+      "row": 235,
+      "col": 252,
+      "lat": 18.44486,
+      "lon": 77.45102,
+      "caution_radius_m": 0,
+      "note": "First powered, controlled flight on another planet (19 April 2021). After 72 flights, Ingenuity rests at Airfield Chi, about 2 km west of this map (last flight 18 January 2024).",
+      "source": "NASA/JPL Ingenuity flight log (m20_heli_waypoints.json), flight 1",
+      "status": "verified"
+    }
+  ],
+  "rover_traverse": {
+    "name": "Perseverance traverse (inside this map)",
+    "source": "NASA/JPL Perseverance localization waypoints (M20_waypoints.json): https://mars.nasa.gov/mmgis-maps/M20/Layers/json/M20_waypoints.json",
+    "sols": [
+      13,
+      2022
+    ],
+    "path": [
+      [
+        236,
+        252
+      ],
+      [
+        234,
+        252
+      ],
+      [
+        234,
+        254
+      ],
+      [
+        234,
+        255
+      ],
+      [
+        234,
+        254
+      ],
+      [
+        234,
+        255
+      ],
+      [
+        234,
+        253
+      ],
+      [
+        236,
+        253
+      ],
+      [
+        235,
+        252
+      ],
+      [
+        235,
+        254
+      ],
+      [
+        235,
+        255
+      ],
+      [
+        235,
+        256
+      ],
+      [
+        236,
+        256
+      ],
+      [
+        237,
+        257
+      ],
+      [
+        237,
+        256
+      ],
+      [
+        238,
+        256
+      ],
+      [
+        240,
+        254
+      ],
+      [
+        241,
+        253
+      ],
+      [
+        242,
+        252
+      ],
+      [
+        244,
+        251
+      ],
+      [
+        244,
+        250
+      ],
+      [
+        246,
+        249
+      ],
+      [
+        249,
+        248
+      ],
+      [
+        251,
+        248
+      ],
+      [
+        252,
+        248
+      ],
+      [
+        251,
+        248
+      ],
+      [
+        254,
+        248
+      ],
+      [
+        255,
+        249
+      ],
+      [
+        257,
+        249
+      ],
+      [
+        258,
+        251
+      ],
+      [
+        262,
+        254
+      ],
+      [
+        267,
+        255
+      ],
+      [
+        272,
+        256
+      ],
+      [
+        276,
+        256
+      ],
+      [
+        277,
+        255
+      ],
+      [
+        279,
+        256
+      ],
+      [
+        284,
+        255
+      ],
+      [
+        286,
+        254
+      ],
+      [
+        287,
+        254
+      ],
+      [
+        286,
+        252
+      ],
+      [
+        284,
+        247
+      ],
+      [
+        280,
+        243
+      ],
+      [
+        280,
+        241
+      ],
+      [
+        280,
+        240
+      ],
+      [
+        278,
+        237
+      ],
+      [
+        277,
+        234
+      ],
+      [
+        275,
+        231
+      ],
+      [
+        272,
+        223
+      ],
+      [
+        271,
+        225
+      ],
+      [
+        269,
+        226
+      ],
+      [
+        269,
+        228
+      ],
+      [
+        268,
+        227
+      ],
+      [
+        268,
+        229
+      ],
+      [
+        268,
+        230
+      ],
+      [
+        267,
+        230
+      ],
+      [
+        268,
+        230
+      ],
+      [
+        268,
+        228
+      ],
+      [
+        269,
+        227
+      ],
+      [
+        271,
+        225
+      ],
+      [
+        271,
+        224
+      ],
+      [
+        276,
+        226
+      ],
+      [
+        277,
+        230
+      ],
+      [
+        276,
+        234
+      ],
+      [
+        278,
+        237
+      ],
+      [
+        280,
+        240
+      ],
+      [
+        280,
+        241
+      ],
+      [
+        281,
+        241
+      ],
+      [
+        282,
+        245
+      ],
+      [
+        281,
+        256
+      ],
+      [
+        279,
+        256
+      ],
+      [
+        275,
+        257
+      ],
+      [
+        271,
+        255
+      ],
+      [
+        266,
+        256
+      ],
+      [
+        263,
+        255
+      ],
+      [
+        262,
+        254
+      ],
+      [
+        249,
+        254
+      ],
+      [
+        247,
+        255
+      ],
+      [
+        243,
+        254
+      ],
+      [
+        238,
+        256
+      ],
+      [
+        231,
+        254
+      ],
+      [
+        223,
+        262
+      ],
+      [
+        216,
+        275
+      ],
+      [
+        209,
+        283
+      ],
+      [
+        199,
+        283
+      ],
+      [
+        198,
+        283
+      ],
+      [
+        188,
+        286
+      ],
+      [
+        177,
+        282
+      ],
+      [
+        169,
+        273
+      ],
+      [
+        166,
+        262
+      ],
+      [
+        166,
+        256
+      ],
+      [
+        167,
+        246
+      ],
+      [
+        168,
+        238
+      ],
+      [
+        170,
+        236
+      ],
+      [
+        174,
+        228
+      ],
+      [
+        178,
+        219
+      ],
+      [
+        184,
+        210
+      ],
+      [
+        185,
+        202
+      ],
+      [
+        188,
+        193
+      ],
+      [
+        192,
+        181
+      ],
+      [
+        199,
+        170
+      ],
+      [
+        204,
+        161
+      ],
+      [
+        209,
+        149
+      ],
+      [
+        208,
+        147
+      ],
+      [
+        208,
+        138
+      ],
+      [
+        207,
+        134
+      ],
+      [
+        208,
+        134
+      ],
+      [
+        209,
+        133
+      ],
+      [
+        210,
+        133
+      ],
+      [
+        211,
+        133
+      ],
+      [
+        214,
+        126
+      ],
+      [
+        222,
+        124
+      ],
+      [
+        225,
+        122
+      ],
+      [
+        223,
+        115
+      ],
+      [
+        223,
+        114
+      ],
+      [
+        220,
+        113
+      ],
+      [
+        218,
+        113
+      ],
+      [
+        219,
+        119
+      ],
+      [
+        220,
+        122
+      ],
+      [
+        215,
+        124
+      ],
+      [
+        211,
+        130
+      ],
+      [
+        211,
+        132
+      ],
+      [
+        210,
+        132
+      ],
+      [
+        209,
+        133
+      ],
+      [
+        208,
+        133
+      ],
+      [
+        202,
+        133
+      ],
+      [
+        199,
+        134
+      ],
+      [
+        198,
+        134
+      ],
+      [
+        197,
+        134
+      ],
+      [
+        197,
+        133
+      ],
+      [
+        197,
+        132
+      ],
+      [
+        198,
+        130
+      ],
+      [
+        197,
+        129
+      ],
+      [
+        198,
+        127
+      ],
+      [
+        196,
+        127
+      ],
+      [
+        195,
+        126
+      ],
+      [
+        194,
+        126
+      ],
+      [
+        193,
+        126
+      ],
+      [
+        194,
+        126
+      ],
+      [
+        195,
+        130
+      ],
+      [
+        196,
+        133
+      ],
+      [
+        196,
+        134
+      ],
+      [
+        196,
+        133
+      ],
+      [
+        200,
+        133
+      ],
+      [
+        204,
+        131
+      ],
+      [
+        209,
+        128
+      ],
+      [
+        214,
+        125
+      ],
+      [
+        219,
+        123
+      ],
+      [
+        220,
+        122
+      ],
+      [
+        219,
+        116
+      ],
+      [
+        219,
+        114
+      ],
+      [
+        218,
+        113
+      ],
+      [
+        217,
+        113
+      ],
+      [
+        216,
+        113
+      ],
+      [
+        216,
+        112
+      ],
+      [
+        209,
+        107
+      ],
+      [
+        211,
+        107
+      ],
+      [
+        212,
+        108
+      ],
+      [
+        213,
+        110
+      ],
+      [
+        215,
+        113
+      ],
+      [
+        216,
+        113
+      ],
+      [
+        216,
+        112
+      ],
+      [
+        220,
+        114
+      ],
+      [
+        219,
+        117
+      ],
+      [
+        219,
+        122
+      ],
+      [
+        216,
+        123
+      ],
+      [
+        212,
+        129
+      ],
+      [
+        212,
+        131
+      ],
+      [
+        212,
+        132
+      ],
+      [
+        211,
+        133
+      ],
+      [
+        210,
+        133
+      ],
+      [
+        207,
+        133
+      ],
+      [
+        198,
+        134
+      ],
+      [
+        196,
+        133
+      ],
+      [
+        196,
+        134
+      ],
+      [
+        196,
+        133
+      ],
+      [
+        194,
+        133
+      ],
+      [
+        190,
+        125
+      ],
+      [
+        185,
+        117
+      ],
+      [
+        178,
+        115
+      ],
+      [
+        174,
+        111
+      ],
+      [
+        165,
+        109
+      ],
+      [
+        156,
+        106
+      ],
+      [
+        148,
+        102
+      ],
+      [
+        145,
+        92
+      ],
+      [
+        144,
+        82
+      ],
+      [
+        147,
+        80
+      ],
+      [
+        147,
+        77
+      ],
+      [
+        152,
+        72
+      ],
+      [
+        159,
+        65
+      ],
+      [
+        160,
+        64
+      ],
+      [
+        159,
+        51
+      ],
+      [
+        157,
+        46
+      ],
+      [
+        157,
+        45
+      ],
+      [
+        150,
+        52
+      ],
+      [
+        149,
+        44
+      ],
+      [
+        144,
+        35
+      ],
+      [
+        140,
+        28
+      ],
+      [
+        134,
+        23
+      ],
+      [
+        131,
+        22
+      ],
+      [
+        131,
+        23
+      ],
+      [
+        127,
+        22
+      ],
+      [
+        122,
+        22
+      ],
+      [
+        123,
+        21
+      ],
+      [
+        122,
+        21
+      ],
+      [
+        121,
+        20
+      ],
+      [
+        122,
+        20
+      ],
+      [
+        122,
+        19
+      ],
+      [
+        122,
+        20
+      ],
+      [
+        122,
+        19
+      ],
+      [
+        124,
+        15
+      ],
+      [
+        127,
+        13
+      ],
+      [
+        128,
+        10
+      ],
+      [
+        128,
+        5
+      ],
+      [
+        128,
+        1
+      ]
+    ]
+  },
+  "provenance": {
+    "stac_api": "https://stac.astrogeology.usgs.gov/api/",
+    "hirise_dtms": [
+      "DTEEC_023524_1985_023379_1985_U01",
+      "DTEEC_045994_1985_046060_1985_U01",
+      "DTEEC_048842_1985_048908_1985_U01",
+      "DTEEC_022680_1985_022746_1985_A01",
+      "DTEEC_002387_1985_003798_1985_A01"
+    ],
+    "hirise_with_fom": [
+      "DTEEC_022680_1985_022746_1985_A01",
+      "DTEEC_023524_1985_023379_1985_U01",
+      "DTEEC_045994_1985_046060_1985_U01",
+      "DTEEC_048842_1985_048908_1985_U01"
+    ],
+    "ctx_dtms": [
+      "J03_045994_1986_XN_18N282W__J03_046060_1986_XN_18N282W",
+      "J10_048842_1986_XN_18N282W__J11_048908_1986_XN_18N282W",
+      "K13_058574_1983_XN_18N282W__K13_058640_1983_XN_18N282W"
+    ],
+    "themis": [
+      "mc13_syrtis_major_dir",
+      "mc13_syrtis_major_nir"
+    ],
+    "vertical_bias_m": {
+      "J10_048842_1986_XN_18N282W__J11_048908_1986_XN_18N282W": 1.54,
+      "K13_058574_1983_XN_18N282W__K13_058640_1983_XN_18N282W": -12.6,
+      "DTEEC_002387_1985_003798_1985_A01": -30.97,
+      "DTEEC_022680_1985_022746_1985_A01": -42.53,
+      "DTEEC_048842_1985_048908_1985_U01": -21.71,
+      "DTEEC_045994_1985_046060_1985_U01": -32.97,
+      "DTEEC_023524_1985_023379_1985_U01": -33.15
+    },
+    "vertical_datum": "areoid (HiRISE DTEEC); CTX shifted by -32.97 m",
+    "rover_vertical_check": {
+      "n_points": 306,
+      "offset_m": 0.0,
+      "mean_abs_dev_m": 5.16,
+      "p95_abs_dev_m": 17.77,
+      "applied_shift_m": -5.76
+    },
+    "hirise_coverage_pct": 94.4,
+    "fine_resolution_m": 4.0,
+    "license": "CC0-1.0 (USGS Astrogeology ARD)"
+  },
+  "fingerprint": {
+    "forbidden_pct": 0.86,
+    "unsafe_pct": 0.13,
+    "elevation_mean_m": -2558.7
+  }
+}

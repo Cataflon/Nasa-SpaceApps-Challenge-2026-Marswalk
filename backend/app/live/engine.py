@@ -28,6 +28,8 @@ from app.config import CONTRACTS_DIR
 from app.core import alternatives as core_alternatives
 from app.core import hazards as core_hazards
 from app.core.budget import O2_PCT_PER_MIN_PER_WATT, O2_PCT_PER_MIN_REST, tobler_speed_ms
+from app.core.daylight import sunrise_sunset_min
+from app.core.planner import SOL_START_UTC
 from app.core.decision import choose
 from app.core.site_data import get_site
 from app.core.types import Alternative, Decision, Limits
@@ -45,10 +47,14 @@ O2_PCT_PER_MIN_WALK = O2_PCT_PER_MIN_REST + O2_PCT_PER_MIN_PER_WATT * WALK_WATTS
 SUIT_LEAK_PCT_PER_MIN = 0.15
 FATIGUE_SPEED_FACTOR = 0.8
 FATIGUE_O2_FACTOR = 1.15
+# Rezerva de ultimă instanță; de obicei apusul vine din plan sau se calculează ca în planner
+# (daylight + SOL_START_UTC, ≈ 633 min la Jezero pe 14.11.2026), vezi _planned_sunset_min.
 DEFAULT_SUNSET_MIN = 420.0
 DEFAULT_WAIT_MIN = 30
-SOLAR_DOSE_MULTIPLIER = 20.0
-SOLAR_DURATION_MIN = 60
+# Furtuna solară: aceleași valori ca scenariul (× 2,5, Zeitlin et al. 2018). Când există seria
+# scenariului, creșterea pe ore și scăderea pe 36 h vin din ea; astea servesc doar fallback-ului.
+SOLAR_DOSE_MULTIPLIER = scenario_mod.SOLAR_PARTICLE_EVENT["dose_rate_multiplier"]
+SOLAR_DURATION_MIN = int(scenario_mod.SOLAR_PARTICLE_EVENT["duration_min"])
 
 # --- Parametrii motorului ---
 REEVAL_MIN = 5  # cât de des se reevaluează un pericol care lovește încă traseul
@@ -57,9 +63,12 @@ MAX_DURATION_MIN = 720  # siguranță: simularea se oprește după 12 ore
 
 # Valori implicite pentru pericolele injectate fără parametri. Furtunile mobile pornesc
 # lateral față de traseu și se deplasează spre el, ca să ajungă în ~offset/viteză secunde.
+# Mărimi reale (registrul echipei, §3): vârtej de praf mare = 100-135 m diametru, se mișcă odată cu
+# vântul (câțiva m/s) -> se poate ocoli; „local_storm” = frontul unei furtuni de praf (celule de
+# 20-40 km, 10-20 m/s) -> nu se poate ocoli pe harta de 10 km, decizia e WAIT sau RETURN.
 HAZARD_DEFAULTS = {
-    "dust_devil": {"axes_m": [150, 150], "speed_ms": 3.0, "intensity": 0.5, "offset_m": 600},
-    "local_storm": {"axes_m": [1800, 1100], "speed_ms": 2.5, "intensity": 0.7, "offset_m": 2500},
+    "dust_devil": {"axes_m": [65, 65], "speed_ms": 4.0, "intensity": 0.9, "offset_m": 600},
+    "local_storm": {"axes_m": [15000, 2500], "angle_deg": 90.0, "speed_ms": 15.0, "intensity": 0.7, "offset_m": 9000},
     "regional_storm": {"axes_m": [30000, 30000], "speed_ms": 0.0, "intensity": 0.9, "offset_m": 0},
     "marsquake": {"axes_m": [300, 300], "speed_ms": 0.0, "intensity": 1.0, "offset_m": 0},
 }
@@ -131,6 +140,7 @@ class LiveEngine:
         self.pending_events: list[dict] = []
         self.scheduled: list[dict] = []
         self.sensors_series: list[dict] | None = None
+        self._scenario = None
         self.sunset_min = DEFAULT_SUNSET_MIN
         self.last_tick: dict | None = None
         self.last_decision: dict | None = None
@@ -181,16 +191,19 @@ class LiveEngine:
             for s in route.get("stops", [])
             if 0 <= s.get("index_in_path", -1) < len(path)
         ]
-        self.sunset_min = float(route.get("budget", {}).get("sunset_min", DEFAULT_SUNSET_MIN))
+        self.sunset_min = float(route.get("budget", {}).get("sunset_min") or self._planned_sunset_min())
 
-        scenario_events = scenario_mod.DEMO_SCENARIO_EVENTS
+        # Evenimentele demo ale sitului curent (Jezero sau sintetic); senzorii le includ deja, deci
+        # praful și vântul cresc exact când trece pericolul programat.
+        if self._scheduled_override is not None:
+            events = list(self._scheduled_override)
+        else:
+            events = scenario_mod.demo_events(self._meta.get("site_id", "synthetic"))
         try:
-            sc = scenario_mod.generate(self.seed, MAX_DURATION_MIN, None)
-            self.sensors_series = sc.sensors
-            scenario_events = sc.events
+            self._scenario = scenario_mod.generate(self.seed, MAX_DURATION_MIN, events)
+            self.sensors_series = self._scenario.sensors
         except NotImplementedError:
-            self.sensors_series = None
-        events = self._scheduled_override if self._scheduled_override is not None else scenario_events
+            self._scenario, self.sensors_series = None, None
         self.scheduled = sorted(
             ({"t_min": int(e.t_min), "event": e.event, "params": dict(e.params)} for e in events),
             key=lambda e: e["t_min"],
@@ -208,6 +221,8 @@ class LiveEngine:
 
         due = [e for e in self.scheduled if e["t_min"] <= t]
         self.scheduled = [e for e in self.scheduled if e["t_min"] > t]
+        for ev in self.pending_events:
+            self._add_to_scenario(ev, t)  # cele programate sunt deja în scenariu
         for ev in due + self.pending_events:
             msgs.append(self._apply_event(ev, t))
         self.pending_events = []
@@ -302,11 +317,32 @@ class LiveEngine:
             s["dose_rate_usv_h"] = s["dose_rate_usv_h"] * self.dose_mult
         return s
 
+    def _planned_sunset_min(self) -> float:
+        """Apusul în minute de la start, calculat ca în planner, pentru un traseu fără budget.sunset_min."""
+        center = self._meta.get("center") or {}
+        try:
+            return float(sunrise_sunset_min(center["lat"], center["lon"], SOL_START_UTC)[1])
+        except (KeyError, TypeError, ValueError):
+            return DEFAULT_SUNSET_MIN
+
+    def _add_to_scenario(self, ev: dict, t: int) -> None:
+        """Un eveniment injectat live intră în scenariu (scenario.with_event): senzorii îl simt de la t."""
+        if self._scenario is None or ev["event"] not in scenario_mod.SENSOR_EVENTS:
+            return
+        params = dict(ev["params"])
+        if ev["event"] == "local_storm" and "peak_after_min" not in params and "center" not in params:
+            # Frontul implicit pornește la offset_m de traseu: vârful îl simte când ajunge la astronaut.
+            d = HAZARD_DEFAULTS["local_storm"]
+            params = {**params, "peak_after_min": d["offset_m"] / d["speed_ms"] / 60.0,
+                      "axes_m": d["axes_m"], "angle_deg": d["angle_deg"], "velocity_ms": [0.0, d["speed_ms"]]}
+        self._scenario = scenario_mod.with_event(self._scenario, scenario_mod.ScheduledEvent(t, ev["event"], params))
+        self.sensors_series = self._scenario.sensors
+
     def _apply_event(self, ev: dict, t: int) -> dict:
         kind, params = ev["event"], ev["params"]
         if kind in HAZARD_DEFAULTS:
             self.hazards.append(self._new_hazard(kind, params, t))
-        elif kind == "solar_particle_event":
+        elif kind == "solar_particle_event" and self.sensors_series is None:
             self.dose_mult = float(params.get("dose_rate_multiplier", SOLAR_DOSE_MULTIPLIER))
             self.dose_mult_until = t + int(params.get("duration_min", SOLAR_DURATION_MIN))
         elif kind == "suit_leak":
@@ -335,7 +371,7 @@ class LiveEngine:
             "t0": t,
             "center0": center,
             "axes_m": list(params.get("axes_m", d["axes_m"])),
-            "angle_deg": float(params.get("angle_deg", 0.0)),
+            "angle_deg": float(params.get("angle_deg", d.get("angle_deg", 0.0))),
             "intensity": float(params.get("intensity", d["intensity"])),
             "velocity_ms": [float(velocity[0]), float(velocity[1])],
         }
@@ -405,6 +441,9 @@ class LiveEngine:
         out, eta = [], float(t + (self.dwell_left or 0))
         if self.wait_until is not None:
             eta = max(eta, float(self.wait_until))
+        # Cât stă pe loc (oprire la țintă sau WAIT), e tot în path[0]: verificăm fiecare minut,
+        # altfel un front care trece peste el în timpul opririi nu e văzut.
+        out.extend((path[0], float(k)) for k in range(t, int(eta)))
         prev = path[0]
         for p in path:
             eta += _dist(prev, p) / speed_cells_min
@@ -458,6 +497,9 @@ class LiveEngine:
         path = [self.pos] + self.remaining
         hits = []
         for h in self.hazards:
+            if (self.returning and h["id"] in self._last_eval_t
+                    and core_hazards.HAZARD_RESPONSES.get(h["kind"]) == {"RETURN"}):
+                continue  # RETURN deja decis pentru el: reevaluarea nu schimbă nimic și costă ~1 s pe tick
             eta = self._hits(h, path, t)
             if eta is not None:
                 hits.append((eta, h))
@@ -501,8 +543,11 @@ class LiveEngine:
         if self._site is not None:
             try:
                 core_hz = [core_hazards.from_contract(self._hazard_contract(x, t), self.cell_size_m, t) for x in self.hazards]
+                here = _cell(self.pos)
+                # Contractul generate(): remaining_path începe la poziția curentă.
+                remaining = [here] + [c for i, c in enumerate(self.remaining) if i or c != here]
                 return core_alternatives.generate(
-                    self._site, _cell(self.pos), list(self.remaining), [s["id"] for s in self.stops_left],
+                    self._site, here, remaining, [s["id"] for s in self.stops_left],
                     core_hz, t, self.o2_pct, self.dose_msv, self.sunset_min, self.preset,
                 )
             except NotImplementedError:

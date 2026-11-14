@@ -68,17 +68,42 @@ def test_baseline_ranges_calibrated():
         assert all(0 <= v <= 25 for v in series(s, "wind_ms"))
         assert all(-90 <= v <= -10 for v in series(s, "temp_c"))
         assert all(650 <= v <= 790 for v in series(s, "pressure_pa"))
-        # RAD: 0,64 mSv/zi doză echivalentă ≈ 26,7 µSv/h (Hassler et al. 2014)
-        assert all(22 <= v <= 32 for v in series(s, "dose_rate_usv_h"))
+        # RAD: 0,67 mSv/zi doză echivalentă ≈ 28 µSv/h, ±11% pe zi (Hassler 2013/2014)
+        assert all(22 <= v <= 34 for v in series(s, "dose_rate_usv_h"))
+    assert sc.TAU_MEAN == 0.5 and sc.DOSE_RATE_USV_H == 28.0
 
 
 def test_temperature_has_diurnal_cycle():
-    """Ieșirea pornește la 09:00 LTST: după-amiaza e mai cald decât dimineața."""
+    """Ieșirea pornește la 08:00 LTST: la prânz e mai cald decât dimineața (−83 → −23 °C)."""
     temp = series(sc.generate(42, 300), "temp_c")
     morning = sum(temp[0:20]) / 20
-    afternoon_start = round((13.5 - sc.EVA_START_LTST_H) * sc.MARS_HOUR_MIN)
-    afternoon = sum(temp[afternoon_start - 10 : afternoon_start + 10]) / 20
+    noon = round((sc.TEMP_PEAK_LTST_H - sc.EVA_START_LTST_H) * sc.MARS_HOUR_MIN)
+    afternoon = sum(temp[noon - 10 : noon + 10]) / 20
     assert afternoon > morning + 5
+    assert sc.TEMP_MEAN_C - sc.TEMP_AMP_C == -83.0 and sc.TEMP_MEAN_C + sc.TEMP_AMP_C == -23.0
+
+
+def test_wind_is_weibull():
+    """Marginala vântului e Weibull(k = 2): media cerută și coada P(v > 2·medie) = e^−π ≈ 4,3%."""
+    import numpy as np
+
+    z = np.random.default_rng(0).standard_normal(200_000)
+    v = sc._weibull(z, np.full(z.size, 4.0), 2.0)
+    assert v.mean() == pytest.approx(4.0, rel=0.01)
+    assert (v > 8.0).mean() == pytest.approx(np.exp(-np.pi), rel=0.05)
+    # în scenariu: rafale peste 10 m/s apar, dar rar (mai ales după-amiaza, media 6 m/s)
+    wind = [w for seed in range(5) for w in series(sc.generate(seed, 480), "wind_ms")]
+    assert 0 < sum(w > 10 for w in wind) < 0.10 * len(wind)
+    assert sum(w > 15 for w in wind) < 0.01 * len(wind)
+
+
+def test_dose_follows_pressure_cycle():
+    """Doza e minimă la maximul de presiune (08:00 LTST) și cu ~11% mai mare la jumătatea ciclului."""
+    dose = series(sc.generate(42, 480), "dose_rate_usv_h")
+    morning = sum(dose[0:20]) / 20
+    i = round(6 * sc.MARS_HOUR_MIN)  # 14:00 LTST: maree la zero
+    afternoon = sum(dose[i - 10 : i + 10]) / 20
+    assert 1.06 < afternoon / morning < 1.18
 
 
 def test_events_do_not_change_rng_stream():
@@ -114,15 +139,25 @@ def _diff(key, event, t_min=60, duration=240, seed=11):
     return [b - a for a, b in zip(base, ev)]
 
 
-def test_solar_particle_event_multiplies_dose_during_event():
-    base = sc.generate(11, 240)
-    spe = sc.generate(11, 240, [ScheduledEvent(60, "solar_particle_event", {"dose_rate_multiplier": 20, "duration_min": 60})])
+def test_solar_particle_event_rises_over_hours_and_decays_slowly():
+    """SPE implicit (Zeitlin et al. 2018): × 2,5, crește în ~2 h, scade pe ~36 h."""
+    base = sc.generate(11, 480)
+    spe = sc.generate(11, 480, [ScheduledEvent(60, "solar_particle_event")])
     ratio = [b["dose_rate_usv_h"] / a["dose_rate_usv_h"] for a, b in zip(base.sensors, spe.sensors)]
-    assert all(r == pytest.approx(1.0) for r in ratio[:60])
-    assert all(r == pytest.approx(20.0, rel=1e-3) for r in ratio[75:115])
-    assert ratio[-1] == pytest.approx(1.0)
-    # restul seriilor nu se schimbă
-    assert series(base, "dust_tau") == series(spe, "dust_tau")
+    assert all(r == pytest.approx(1.0, abs=2e-3) for r in ratio[:61])
+    assert 1.1 < ratio[120] < 2.4  # încă urcă după o oră
+    assert all(b >= a - 2e-3 for a, b in zip(ratio[60:180], ratio[61:181]))
+    assert all(r == pytest.approx(2.5, rel=2e-3) for r in ratio[185:295])
+    assert 2.3 < ratio[-1] < 2.5  # după platou scade foarte încet
+    assert series(base, "dust_tau") == series(spe, "dust_tau")  # restul seriilor nu se schimbă
+
+
+def test_solar_particle_event_explicit_params():
+    """Parametrii din contract: rampa e cel mult `duration_min`, apoi platoul și scăderea lentă."""
+    base = sc.generate(11, 120)
+    spe = sc.generate(11, 120, [ScheduledEvent(10, "solar_particle_event", {"dose_rate_multiplier": 3, "duration_min": 20})])
+    ratio = [b["dose_rate_usv_h"] / a["dose_rate_usv_h"] for a, b in zip(base.sensors, spe.sensors)]
+    assert ratio[30] == pytest.approx(3.0, rel=2e-3) and 2.9 < ratio[60] < 3.0
 
 
 def test_regional_storm_grows_gradually_and_persists():
@@ -154,6 +189,14 @@ def test_local_storm_duration_from_geometry():
     d_tau = _diff("dust_tau", ev)
     active = [i for i, x in enumerate(d_tau) if x > 1e-6]
     assert 20 <= len(active) <= 28
+
+
+def test_storm_front_passes_quickly():
+    """Un front de 30 × 5 km care înaintează perpendicular pe axa lungă trece în 2 × 2500 m / 15 m/s ≈ 6 min."""
+    ev = ScheduledEvent(0, "local_storm", {"axes_m": [15000, 2500], "angle_deg": 90, "velocity_ms": [0.0, 15.0], "intensity": 0.7})
+    assert sc._local_storm_duration(ev.params) == pytest.approx(2 * 2500 / 15 / 60)
+    active = [i for i, x in enumerate(_diff("dust_tau", ev)) if x > 1e-6]
+    assert 3 <= len(active) <= 8
 
 
 def test_intensity_scales_effect():
@@ -193,21 +236,77 @@ def test_physical_limits_under_extreme_events():
 # --- scenariul demo și etichetele ------------------------------------------------------------
 
 
-def test_demo_scenario_storm_then_regional():
+DEMO_KINDS = ["dust_devil", "local_storm", "regional_storm"]
+
+
+@pytest.mark.parametrize("site_id", ["synthetic", "jezero"])
+def test_demo_hazards_have_real_sizes(site_id):
+    """Registrul echipei §3: vârtej mare 100-135 m, front de zeci de km la 10-20 m/s, regională."""
+    evs = sc.demo_events(site_id)
+    assert [e.event for e in evs] == DEMO_KINDS
+    devil, front = evs[0].params, evs[1].params
+    assert 100 <= 2 * max(devil["axes_m"]) <= 135 and 2 <= float(sum(v * v for v in devil["velocity_ms"])) ** 0.5 <= 6
+    assert max(front["axes_m"]) >= 10_000 and 10 <= float(sum(v * v for v in front["velocity_ms"])) ** 0.5 <= 20
+
+
+def test_demo_scenario_sensors():
     s = sc.generate(42, 300, sc.DEMO_SCENARIO_EVENTS)
-    tau = series(s, "dust_tau")
-    assert max(tau[:72]) < 1.0  # liniște până la furtuna locală
-    assert max(tau[80:105]) > 1.5  # furtuna locală trece pe la minutul 88
-    assert max(tau[115:170]) < 1.0  # s-a liniștit
+    tau, wind = series(s, "dust_tau"), series(s, "wind_ms")
+    assert max(tau[:80]) < 1.0  # vârtejul trece pe lângă: vânt, puțin praf
+    assert max(wind[33:38]) > 10
+    assert max(tau[86:96]) > 1.5 and max(wind[86:96]) > 10  # frontul trece pe la minutul 90
+    assert max(tau[100:125]) < 1.0  # s-a liniștit
     assert tau[300] > 2.0  # furtuna regională
-    assert [e.event for e in s.events] == ["local_storm", "regional_storm"]
+    assert [e.event for e in s.events] == DEMO_KINDS
 
 
 def test_demo_events_returns_copy_with_fallback():
     evs = sc.demo_events("synthetic")
     evs[0].params["intensity"] = 0
-    assert sc.DEMO_SCENARIO_EVENTS[0].params["intensity"] == 0.7
-    assert [e.event for e in sc.demo_events("unknown_site")] == ["local_storm", "regional_storm"]
+    assert sc.DEMO_SCENARIO_EVENTS[0].params["intensity"] == 0.9
+    assert [e.event for e in sc.demo_events("unknown_site")] == DEMO_KINDS
+
+
+def test_demo_scene_decisions_on_jezero():
+    """Motorul live, cu alternativele reale ale rolului 2, pe traseul demo habitat -> clay_delta.
+
+    Vârtejul se ocolește (REROUTE), frontul nu se poate evita (întoarcere imediată), regionala -> RETURN.
+    """
+    from app.core.planner import plan_route
+    from app.core.site_data import get_site
+    from app.live.engine import LiveEngine
+    from app.live.store import RouteStore
+
+    site = get_site("jezero")
+    if site is None:
+        pytest.skip("situl Jezero nu e generat")
+    store = RouteStore()
+    store.add(plan_route(site, site.habitat, ["clay_delta"], "safe", 0, 300))
+    e = LiveEngine(site_provider=lambda: site, store=store)
+    e.start()
+    msgs = []
+    while e.state == "running" and e.t_min < 300:
+        msgs += e.step()
+    got = [(m["t_min"], m["decision"]) for m in msgs if m["type"] == "decision"]
+    assert got == [(30, "REROUTE"), (80, "EMERGENCY"), (125, "RETURN")]
+    assert e.state == "finished" and e.pos == tuple(float(v) for v in site.habitat)
+
+
+def test_eva_start_matches_planner():
+    """Ceasul de întoarcere din UI folosește EVA_START_LTST_H: trebuie să fie ora planner-ului."""
+    from app.core import daylight, planner
+
+    assert sc.DEMO_DATE_UTC == planner.SOL_START_UTC
+    assert daylight.ltst_hours(77.45, planner.SOL_START_UTC) == pytest.approx(sc.EVA_START_LTST_H, abs=0.25)
+
+
+def test_earth_mars_light_time():
+    # cazuri cunoscute: opoziția din ian. 2025 (~0,64 UA -> ~5,4 min), conjuncția din nov. 2023 (~2,5 UA -> ~21 min)
+    assert sc.earth_mars_light_min("2025-01-16T00:00:00Z") == pytest.approx(5.35, abs=0.15)
+    assert sc.earth_mars_light_min("2023-11-18T00:00:00Z") == pytest.approx(21.0, abs=0.3)
+    demo = sc.earth_mars_light_min(sc.DEMO_DATE_UTC)
+    assert 3.0 <= demo <= 22.5 and round(demo) == sc.EARTH_ONE_WAY_DELAY_MIN
+    assert sc.EARTH_ROUND_TRIP_MIN == 2 * sc.EARTH_ONE_WAY_DELAY_MIN + sc.MISSION_CONTROL_REACTION_MIN
 
 
 def test_sensor_labels_cover_all_keys():

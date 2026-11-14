@@ -28,23 +28,51 @@ MAX_SLOPE_DEG = 25.0
 UNSAFE_SLOPE_DEG = 35.0  # înlocuitor pentru FOM-ul HiRISE
 # v1: schelet inițial. v2: front de deltă abrupt (pereți de netrecut + rampe), etichete pe straturi.
 # v3: radiația în doză echivalentă RAD (~26,7 µSv/h în loc de ~10).
-GENERATOR_VERSION = 3
+# v4: textele vizibile în engleză (numele țintelor și sitului, etichetele straturilor).
+# v5: `artifacts` (hardware NASA ca POI) și `rover_traverse` (None pe situl sintetic).
+# v6: Ingenuity = Wright Brothers Field (primul zbor); epava e în afara hărții Jezero.
+# v7: doza de fond 28 µSv/h (0,67 mSv/zi, RAD), ca scenario.DOSE_RATE_USV_H.
+GENERATOR_VERSION = 7
 # Doza echivalentă la suprafață: RAD 0,64 mSv/zi = 26,7 µSv/h (Hassler et al. 2014, Science).
 # Aceeași valoare ca scenario.DOSE_RATE_USV_H (backend/app/live/scenario.py).
-DOSE_RATE_USV_H = 26.7
+DOSE_RATE_USV_H = 28.0
 DEFAULT_OUT = ROOT / "data" / "synthetic"
 
 # Etichetele fiecărui strat: ce tip de date e și ce instrument NASA imită în situl real.
+# Textele apar în UI (popup-ul de la click pe hartă), deci sunt în engleză.
 LAYER_LABELS = {
     "elevation": {"data_type": "topographic", "analog_of": "MRO HiRISE DTM + MRO CTX DTM"},
-    "slope": {"data_type": "topographic", "analog_of": "derivat din DTM (pantă maximă pe celulă)"},
-    "terrain": {"data_type": "thermal", "analog_of": "Mars Odyssey THEMIS (inerție termică)"},
+    "slope": {"data_type": "topographic", "analog_of": "derived from DTM (max slope per cell)"},
+    "terrain": {"data_type": "thermal", "analog_of": "Mars Odyssey THEMIS (thermal inertia)"},
     "minerals": {"data_type": "spectral", "analog_of": "MRO CRISM"},
-    "radiation": {"data_type": "radiation", "analog_of": "Curiosity RAD (model după altitudine)"},
-    "unsafe": {"data_type": "topographic", "analog_of": "HiRISE DTM FOM (aici: pantă > 35°)"},
+    "radiation": {"data_type": "radiation", "analog_of": "Curiosity RAD (altitude model)"},
+    "unsafe": {"data_type": "topographic", "analog_of": "HiRISE DTM FOM (here: slope > 35°)"},
 }
 
 HABITAT = (300, 200)
+
+# Hardware NASA real, pus pe situl sintetic în poziții ANALOGE celor de pe Jezero (față de habitat
+# și ținte), ca demo-ul să arate reperele reale și pe harta sintetică. Același format ca în
+# data/processed/jezero/meta.json (vezi build_layers.ARTIFACTS). Pozițiile reale sunt pe situl Jezero.
+SYNTH_NOTE = " (synthetic map: position is illustrative; real position on the Jezero site)"
+ARTIFACTS = [
+    {"id": "three_forks_depot", "name": "Three Forks Sample Depot (10 sample tubes)", "type": "recovery_target",
+     "row": 186, "col": 150, "caution_radius_m": 0,
+     "note": "Ten titanium tubes with rock cores and atmosphere, left by Perseverance for Mars Sample Return." + SYNTH_NOTE},
+    {"id": "landing_site", "name": "Octavia E. Butler Landing (Perseverance touchdown)", "type": "landmark",
+     "row": 292, "col": 210, "caution_radius_m": 0, "note": "Where Perseverance touched down on 18 February 2021." + SYNTH_NOTE},
+    {"id": "descent_stage", "name": "Mars 2020 Descent Stage (sky crane) crash site", "type": "hazard_debris",
+     "row": 274, "col": 188, "caution_radius_m": 150, "note": "Sharp metal debris and possible hydrazine residue: keep clear." + SYNTH_NOTE},
+    {"id": "backshell_parachute", "name": "Backshell and supersonic parachute", "type": "hazard_debris",
+     "row": 228, "col": 205, "caution_radius_m": 100, "note": "Risk of snagging on cables and fabric." + SYNTH_NOTE},
+    {"id": "heat_shield", "name": "Mars 2020 heat shield", "type": "historical_hardware",
+     "row": 345, "col": 255, "caution_radius_m": 50, "note": "Carbon-composite heat shield with ablative cork." + SYNTH_NOTE},
+    {"id": "ingenuity_first_flight", "name": "Wright Brothers Field (Ingenuity's first flight)", "type": "historical_hardware",
+     "row": 289, "col": 214, "caution_radius_m": 0,
+     "note": "First powered, controlled flight on another planet (19 April 2021)." + SYNTH_NOTE},
+]
+for _a in ARTIFACTS:
+    _a.update(source="synthetic", status="synthetic")
 TARGETS = [
     {"id": "clay_delta", "name": "Clay, delta front", "kind": "clay", "row": 180, "col": 140, "science_value": 10, "dwell_min": 30, "image": None},
     {"id": "carbonate_rim", "name": "Carbonates, delta margin", "kind": "carbonate", "row": 120, "col": 260, "science_value": 7, "dwell_min": 20, "image": None},
@@ -190,6 +218,7 @@ def write(layers: dict[str, np.ndarray], out: Path, seed: int) -> None:
     slope = layers["slope"]
     meta = {**contract, "source": "synthetic", "seed": seed, "targets": TARGETS,
             "habitat": {"row": HABITAT[0], "col": HABITAT[1]},
+            "artifacts": ARTIFACTS, "rover_traverse": None,
             "layers": labeled_layers(contract["layers"], "synthetic"),
             "generator_version": GENERATOR_VERSION,
             # Amprentă informativă: dacă diferă între doi colegi, nu au același sit.

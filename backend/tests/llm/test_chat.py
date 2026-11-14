@@ -6,6 +6,7 @@ import httpx
 import pytest
 
 from app.live import planning
+from app.live import scenario as scenario_mod
 from app.live.engine import engine
 from app.live.store import routes
 from app.llm import chat, tools
@@ -60,8 +61,9 @@ def test_plan_route_is_stored_for_live_engine():
 
 
 def test_ltst_uses_mars_hours():
-    assert tools.ltst(0) == "09:00"
-    assert tools.ltst(2 * 61.65) == "11:00"
+    start = int(scenario_mod.EVA_START_LTST_H)
+    assert tools.ltst(0) == f"{start:02d}:00"
+    assert tools.ltst(2 * scenario_mod.MARS_HOUR_MIN) == f"{start + 2:02d}:00"
 
 
 def test_layer_value_at_target(monkeypatch):
@@ -81,7 +83,7 @@ def test_eva_status_during_live_eva():
     for _ in range(3):
         engine.step()
     status = tools.eva_status()
-    assert status["t_min"] == 3 and status["o2_now_pct"] < 100 and status["now_ltst"] == "09:03"
+    assert status["t_min"] == 3 and status["o2_now_pct"] < 100 and status["now_ltst"] == tools.ltst(3)
 
 
 # ---------------------------------------------------------------- fallback fără LLM

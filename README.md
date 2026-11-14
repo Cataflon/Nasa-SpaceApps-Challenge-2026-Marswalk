@@ -45,12 +45,14 @@ Challenge-ul se numește chiar **„Interplanetary Survival Guide”**. Adăugă
 | 5 | **Un singur număr de titlu din benchmark**: „The copilot brought the astronaut home safely in X% of storms; the fixed plan, in Y%” | Pe primul slide și în video | Pe slide și în video | `headline` în `run_benchmark` | `headline` în `GET /api/benchmark` | Afișat în UI |
 | 6 | **Ecranul „How we calculate”**, cu fiecare constantă marcată **source** sau **assumption** | Onestitatea despre limite crește încrederea (Validity) | `docs/how-we-calculate.md` complet, mutat la **P1** | Toate constantele la nivel de modul, cu comentariul `sursă:` sau `presupunere` | — | Badge-uri pe coloana „Status” |
 | 7 | **Un slide despre Pământ (Influence):** același motor, cu un model de teren din munții noștri, pentru salvamont | Doar pe slide, **nu în cod** | `docs/slides.md` | — | — | — |
+| 8 | 🆕 **Hardware NASA real pe hartă** ([harta oficială Perseverance](https://science.nasa.gov/mission/mars-2020-perseverance/location-map/)): depozitul de probe **Three Forks** (10 tuburi de titan, țintă de recuperare pentru Mars Sample Return), locul de aterizare, sky crane-ul, parașuta și scutul termic, Ingenuity, plus **traseul real al roverului** | Legătură directă cu misiunea reală NASA; demo: „mergi să recuperezi tuburile de la Three Forks”; detaliu de siguranță: cercuri de precauție în jurul resturilor | **Gata:** `artifacts` și `rover_traverse` în `meta.json`, poziții din waypoint-urile oficiale ale roverului | — (POI statice, **nu** intră în rutare) | **Gata:** `/api/site` le trimite | Strat activabil „NASA hardware”, iconițe per tip, cerc de precauție, popup, traseul roverului |
 
 **Câmpuri noi în contracte, toate opționale** (se adaugă cu acordul echipei; până atunci frontendul are fallback):
 - `site.json`: `eva_start_ltst_h` (ex. `9.0`), `earth_delay_min` (`{"one_way": 14, "round_trip": 28, "source": "…"}`), iar în `layers[]` etichetele `mission`, `instrument`, `data_type`, `source` (deja trimise de `/api/site`).
 - `GET /api/point`: `sources` (`{"slope": {"mission": "MRO", "instrument": "HiRISE", "data_type": "topographic"}, …}`).
 - `live_messages.json`, mesajul `decision`: `compute_ms` (cât a durat decizia; se măsoară doar pentru afișare, nu intră în logică).
 - `GET /api/benchmark`: `headline` (`{"copilot_safe_pct": X, "plan_safe_pct": Y, "n_scenarios": 100}`).
+- 🆕 `site.json` / `meta.json`: `artifacts` (listă de POI: `id`, `name`, `type` = `recovery_target | landmark | historical_hardware | hazard_debris`, `row`, `col`, `lat`, `lon`, `caution_radius_m`, `note`, `source`, `status` = `verified | to verify | synthetic`) și `rover_traverse` (`{"name", "source", "sols", "path": [[row, col], …]}` sau `null` pe situl sintetic). **Deja în contracte și în `/api/site`.**
 
 ---
 
@@ -423,13 +425,14 @@ Instrucțiunile complete pentru fiecare rol (pentru 4 agenți care lucrează în
 
 ## 8. Demo-ul (≈2 min)
 
-0. Deschidere cu numărul de titlu: „The copilot brought the astronaut home safely in X% of storms; the fixed plan, in Y%” (5 s).
-1. Harta Jezero cu straturile: „date din 5 misiuni NASA”. Click pe un punct: „slope 12° · HiRISE · MRO” (15 s).
-2. Planificare: „Vreau o probă de argilă de la deltă, am 5 ore" → traseu, buget, punct de neîntoarcere, imaginea Perseverance de la țintă și ceasul mare „Return by 14:20” (25 s).
+0. Deschidere cu numărul de titlu: „The copilot brought the astronaut home safely in 81% of storms; the fixed plan, in 51%” (benchmark Jezero, 14.11; 5 s). Scenariul complet, secundă cu secundă: [docs/demo.md](docs/demo.md); slide-urile: [docs/slides.md](docs/slides.md).
+1. Harta Jezero cu straturile: „date din 4 misiuni NASA” (MRO, Mars Odyssey, Mars 2020, MSL). Click pe ținta de argilă: „slope 7° · HiRISE + CTX · MRO”; stratul „NASA hardware” cu depozitul Three Forks (15 s).
+2. Planificare: „Vreau o probă de argilă de la deltă, am 5 ore" → traseu (5,9 km, 148 min), buget, punct de neîntoarcere, imaginea Perseverance de la țintă și ceasul mare „Return by 11:56” (25 s).
 3. Pornim ieșirea, iar astronautul merge pe hartă (10 s).
-4. Furtună locală la jumătatea drumului: apare conul de predicție, apar alternativele, validatorul elimină una, regula alege ocolirea instant, iar LLM-ul explică de ce. Contorul: „Houston ar răspunde în 28 min · copilotul a decis în 0,05 s” (35 s).
-5. Furtună regională: sistemul decide RETURN, pentru că nu poate fi ocolită; ceasul de întoarcere se actualizează (15 s).
-6. Benchmark: copilot față de „doar planul", pe 100 de scenarii (10 s).
+4. 🆕 Minutul 30: un vârtej de praf mare (130 m) taie traseul: apare conul de predicție, apar alternativele, validatorul le elimină pe cele nesigure, regula alege ocolirea spre nord, iar LLM-ul explică de ce. Contorul: „Houston's help would arrive in 27 min · copilot decided in <0.1 s” (30 s).
+   Minutul 80: frontul unei furtuni de praf (30 km, 15 m/s) ajunge peste astronaut la țintă: nicio variantă nu-l ocolește, deci copilotul îl trimite acasă imediat (EMERGENCY) (15 s).
+5. Minutul 125: furtună regională: sistemul decide RETURN, pentru că nu poate fi ocolită. Astronautul ajunge acasă la minutul 145 (10:21) (8 s).
+6. Benchmark: copilot față de „doar planul", pe 100 de scenarii: în siguranță 81% față de 51%, dar cu 41% din probe față de 100% (7 s).
 7. Închidere: Survival Guide-ul printabil al ieșirii (5 s).
 
 ---
@@ -454,6 +457,6 @@ Instrucțiunile complete pentru fiecare rol (pentru 4 agenți care lucrează în
 |---|---|
 | **Influence** | Siguranța primelor ieșiri umane pe Marte; un slide arată același motor, cu un model de teren din munții noștri, pentru salvamont |
 | **Creativity** | Replanificare în timp real cu predicția pericolului, nu o hartă statică; contorul „Pământul vs. copilotul” |
-| **Validity** | DTM-uri oficiale NASA/USGS, date din 5 misiuni (vizibile la click pe hartă), decizii deterministe, benchmark măsurat, ecranul „Cum calculăm” cu fiecare constantă marcată sursă sau presupunere |
+| **Validity** | DTM-uri oficiale NASA/USGS, date din 4 misiuni NASA (vizibile la click pe hartă), decizii deterministe, benchmark măsurat, ecranul „Cum calculăm” cu fiecare constantă marcată sursă sau presupunere |
 | **Relevance** | Acoperă cerințele: hiperlocal, ≥3 tipuri de date, siguranță, radiație, mobilitate în costum, obiective științifice, imagini de la sol; produce chiar un **Survival Guide** per ieșire |
 | **Presentation** | Demo vizual: furtuna se mișcă, traseul se reface, decizia e explicată; un singur număr de titlu din benchmark |

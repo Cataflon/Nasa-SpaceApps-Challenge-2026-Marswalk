@@ -117,13 +117,24 @@ def test_deterministic():
 
 def test_solar_event_multiplies_dose_rate():
     # Comparăm cu același motor fără eveniment: doza de bază vine din scenariu și variază pe minut.
+    # Evenimentul injectat intră în scenariu (scenario.with_event): × 2,5, crește pe ~2 h (Zeitlin 2018).
     quiet, solar = started(straight_route()), started(straight_route())
-    solar.inject("solar_particle_event", {"dose_rate_multiplier": 20, "duration_min": 5})
+    solar.inject("solar_particle_event", {})
     base, msgs = quiet.step()[0]["sensors"]["dose_rate_usv_h"], solar.step()
-    assert msgs[0]["sensors"]["dose_rate_usv_h"] == pytest.approx(20 * base, rel=0.01)
+    assert msgs[0]["sensors"]["dose_rate_usv_h"] == pytest.approx(base, rel=0.01)  # abia a început
     assert any(m["type"] == "event" and m["event"] == "solar_particle_event" for m in msgs)
-    run(quiet, 6), run(solar, 6)
-    assert solar.last_tick["sensors"]["dose_rate_usv_h"] == quiet.last_tick["sensors"]["dose_rate_usv_h"]
+    run(quiet, 60), run(solar, 60)
+    assert solar.dose_msv > quiet.dose_msv * 1.1
+    ratio = [s["dose_rate_usv_h"] / q["dose_rate_usv_h"] for s, q in zip(solar.sensors_series, quiet.sensors_series)]
+    assert 1.5 < ratio[61] < 2.0 and ratio[150] == pytest.approx(2.5, rel=0.01)
+
+
+def test_sunset_from_daylight_when_route_has_none():
+    """Fără budget.sunset_min, apusul se calculează ca în planner (≈ 633 min la Jezero, 14.11.2026)."""
+    route = straight_route()
+    del route["budget"]
+    e = started(route)
+    assert 600 < e.sunset_min < 660
 
 
 def test_suit_leak_increases_o2_use():
@@ -215,7 +226,7 @@ def test_uses_core_alternatives_when_available(monkeypatch):
             Alternative("detour_south", "REROUTE", [pos, (pos[0], pos[1] - 30)], 40, 22, risk=0.10, **base),
         ]
 
-    monkeypatch.setattr(engine_mod.core_hazards, "from_contract", lambda d, cell, t0=0.0: d)
+    # from_contract rămâne cel real (e implementat din a67c375); demo_alternatives ignoră pericolele.
     monkeypatch.setattr(engine_mod.core_alternatives, "generate", demo_alternatives)
 
     e = started(straight_route(length=200), site_provider=lambda: site)

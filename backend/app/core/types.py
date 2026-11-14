@@ -24,6 +24,10 @@ class Budget:
     dose_msv: float
     return_by_min: float
     sunset_min: float
+    # D4: câte o valoare pe fiecare punct din traseu (la sosirea în punct).
+    eta_min: list[float] = field(default_factory=list)
+    o2_pct: list[float] = field(default_factory=list)
+    dose_msv_cum: list[float] = field(default_factory=list)
 
 
 @dataclass

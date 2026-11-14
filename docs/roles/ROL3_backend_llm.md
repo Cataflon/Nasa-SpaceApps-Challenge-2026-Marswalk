@@ -7,6 +7,7 @@
 > 3. **`/api/point` primește `sources`:** pentru fiecare strat, `mission` / `instrument` / `data_type` / `source` din `meta["layers"][strat]`, pentru click-ul pe hartă („pantă 12° · HiRISE · MRO”). Pe situl sintetic, ce există (`data_type`, `analog_of`, `source`).
 > 4. **`/api/benchmark` trimite mai departe `headline`** din `run_benchmark` („acasă în siguranță: copilot X% · plan fix Y%”).
 > 5. **Scenariile (de la rolul 1, deja gata):** folosește `scenario.sensors_at(s, t_min)`, `scenario.with_event(s, ev)` și `scenario.demo_events(SITE_ID)`. Detalii în `docs/roles/notes/rol1.md`, la „Cereri”.
+> 6. 🆕🆕 **Hardware NASA (deja făcut de rolul 1, doar de știut):** `/api/site` trimite acum și `artifacts` (POI-uri: depozitul Three Forks, sky crane etc.) și `rover_traverse` (traseul real al roverului; `null` pe situl sintetic), cu `meta.get(...)`. Test: `tests/api/test_site_artifacts.py`. Opțional, pentru chat: o unealtă sau un răspuns despre „ce hardware NASA e aproape” se poate face din `site.meta["artifacts"]`.
 
 Ești unul dintre 4 agenți care implementează **simultan** Marswalk Copilot în același repo. Ceilalți trei lucrează la date (`pipeline/`, `scenario.py`, `docs/`), algoritmi (`backend/app/core/`) și frontend (`frontend/`). Tu ai serverul FastAPI, motorul live, LLM-ul și integrarea.
 
