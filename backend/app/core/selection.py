@@ -116,13 +116,28 @@ def select(alternatives: list[Alternative], ctx: Context = Context(), limits: Li
         gain = (current.score - best.score) / max(current.score, 1e-6)
         if gain < DELTA - 1e-9 or ctx.t_now - ctx.last_switch_t < DWELL_MIN - 1e-9:
             return decide("CONTINUE", current.id, "HYSTERESIS")
-    reason = "HAZARD_ON_ROUTE" if current else "PLANNED"
-    return decide(best.kind, best.id, reason)
+    return decide(best.kind, best.id, _switch_reason(current))
+
+
+def _switch_reason(current) -> str:
+    """Motivul schimbării: încălcarea traseului curent (HAZARD → HAZARD_ON_ROUTE, altfel codul ei,
+    de ex. NO_RETURN_POINT sau O2_RESERVE); traseu curent valid dar riscant → HAZARD_ON_ROUTE."""
+    if current is None:
+        return "PLANNED"
+    if current.valid or not current.violations:
+        return "HAZARD_ON_ROUTE"
+    code = sorted(current.violations)[0] if "HAZARD" not in current.violations else "HAZARD"
+    return "HAZARD_ON_ROUTE" if code == "HAZARD" else code
 
 
 def _emergency(alternatives, decide) -> Decision:
     """§9.3-4: return/shelter cu V2, apoi și V5 relaxate (V1 și V7 nu se relaxează); altfel UNRECOVERABLE."""
-    rescue = [a for a in alternatives if a.kind == "RETURN"] or [a for a in alternatives if a.kind != "CONTINUE"]
+    # Salvarea: întâi variantele RETURN; altfel orice rută care se mișcă spre refugiu (pe drumul de
+    # întoarcere traseul curent ESTE drumul spre casă); așteptarea pe loc doar dacă nu există nicio rută.
+    # Altfel, cu O₂ sub rezervă, WAIT ar ține astronautul pe loc până la epuizarea O₂.
+    rescue = ([a for a in alternatives if a.kind == "RETURN"]
+              or [a for a in alternatives if a.kind != "WAIT" and len(a.path) > 1]
+              or [a for a in alternatives if a.kind == "WAIT"])
     for relaxed in (("DAYLIGHT",), ("DAYLIGHT", "HAZARD")):
         ok = sorted((a for a in rescue if set(a.violations) <= set(relaxed)), key=order_key)
         if ok:

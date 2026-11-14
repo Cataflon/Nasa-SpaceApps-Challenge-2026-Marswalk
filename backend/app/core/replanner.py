@@ -39,6 +39,10 @@ MAX_CANDIDATES = 8  # §6
 HUB_GRACE_M = 100.0
 AIRLOCK_MIN = 5.0
 HALO_SCALE_MIN = 10.0  # halou normalizat: 10 min în halou = 1
+# presupunere (C): toleranța V6 față de marja planului acceptat; acoperă diferența dintre O₂-ul măsurat
+# live (motorul: rată de mers constantă) și cel din `timeline` (cu panta), ca să nu fie respins traseul
+# curent din cauza unei derive de zecimi de procent.
+PNR_FLOOR_SLACK_PCT = 2.0
 OUTBOUND, INBOUND = "OUTBOUND", "INBOUND"
 
 # Coduri de omitere (§6) și de stare (§8-§9), stabile în ieșire.
@@ -97,6 +101,11 @@ class ReplanState:
     limits: Limits = field(default_factory=Limits)
     last_switch_t: float = -math.inf
     dose_rate_usv_h: float | None = None  # None = grila `radiation`
+    # V6: marja minimă (O₂ − O₂ până acasă) a planului acceptat, în condiții nominale (`plan_pnr_margin`).
+    # Un plan CAUTION poate trece de punctul de neîntoarcere chiar de la planificare; V6 respinge atunci
+    # doar candidații care merg mai adânc decât planul (pragul = min(rezervă, marja planului)).
+    # None = pragul e rezerva (§7, ca în specificație).
+    pnr_floor_pct: float | None = None
 
 
 @dataclass
@@ -260,9 +269,9 @@ class _Evaluator:
         self.refuges = refuges_usable
         self.arrival_ref: float | None = None
 
-    def evaluate(self, alt_id: str, kind: str, path: list[Cell], extra_dwell: dict | None = None,
-                 wait_min: float = 0.0, display_path: list[Cell] | None = None, flags=()) -> Alternative:
-        s, site = self.s, self.site
+    def _dwell(self, path: list[Cell], extra_dwell: dict | None = None) -> tuple[dict, dict]:
+        """(opririle vizitate, staționările pe index): opririle de pe cale + staționarea în curs."""
+        s = self.s
         visited = _visited_stops(path, self.stops, self.stop_cells)
         last = len(path) - 1
         dwell = {i: m for i, m in (extra_dwell or {}).items() if i < last}
@@ -271,6 +280,12 @@ class _Evaluator:
                 dwell[i] = dwell.get(i, 0.0) + float(self.targets[x]["dwell_min"])
         if s.dwell_now_min > 0 and last > 0:
             dwell[0] = dwell.get(0, 0.0) + s.dwell_now_min
+        return visited, dwell
+
+    def evaluate(self, alt_id: str, kind: str, path: list[Cell], extra_dwell: dict | None = None,
+                 wait_min: float = 0.0, display_path: list[Cell] | None = None, flags=()) -> Alternative:
+        s, site = self.s, self.site
+        visited, dwell = self._dwell(path, extra_dwell)
         b = _timeline(s, path, dwell or None)
         refuge = path[-1]
         arrival = b.eta_min[-1] + (AIRLOCK_MIN if refuge in self.refuges else 0.0)
@@ -337,12 +352,12 @@ class _Evaluator:
             halo_min += max(0.0, outer - core)
         return exposure, over, min(1.0, halo_min / HALO_SCALE_MIN)
 
-    def _beyond_pnr(self, path, b) -> bool:
-        """V6: există un punct din care O₂-ul (cu efectele active) nu mai ajunge acasă cu rezerva?"""
+    def _pnr_margin(self, path, b) -> float:
+        """Marja minimă pe cale: O₂ − O₂ până acasă (cu efectele active). +inf fără refugii."""
         if not self.refuges:
-            return False
+            return math.inf
         need = _o2_home(self.s, self.refuges)
-        reserve = self.s.limits.o2_reserve_pct
+        worst = math.inf
         for i, c in enumerate(path):
             _, o2_mult, add, _ = active_multipliers(self.s.effects, b.eta_min[i])
             home = float(need[c])
@@ -350,9 +365,18 @@ class _Evaluator:
                 continue
             # adaosul pe minut: aproximat cu O₂ / ritm de mers pe plat (0,194 %/min) ca durată a întoarcerii
             minutes_home = home / 0.194
-            if b.o2_pct[i] - home * o2_mult - add * minutes_home < reserve - EPS:
-                return True
-        return False
+            worst = min(worst, b.o2_pct[i] - home * o2_mult - add * minutes_home)
+        return worst
+
+    def _beyond_pnr(self, path, b) -> bool:
+        """V6: există un punct din care O₂-ul (cu efectele active) nu mai ajunge acasă cu rezerva?
+
+        Pragul e rezerva; pentru un plan acceptat care trecea deja de punctul de neîntoarcere
+        (`pnr_floor_pct`), pragul coboară la marja planului: nu se merge mai adânc decât el."""
+        threshold = self.s.limits.o2_reserve_pct
+        if self.s.pnr_floor_pct is not None:
+            threshold = min(threshold, self.s.pnr_floor_pct - PNR_FLOOR_SLACK_PCT)
+        return self._pnr_margin(path, b) < threshold - EPS
 
 
 # ------------------------------------------------------------------ candidații (§6)
@@ -698,6 +722,25 @@ def _dedupe(alts: list[Alternative]) -> tuple[list[Alternative], list[dict]]:
 
 
 # ------------------------------------------------------------------ planificarea (selecție, §9)
+
+
+def plan_pnr_margin(state: ReplanState) -> float | None:
+    """Marja minimă O₂ − O₂ până acasă pe traseul rămas din `state` (cu opririle și efectele lui).
+
+    Se calculează o dată, la încărcarea planului acceptat, și se pune în `ReplanState.pnr_floor_pct`.
+    None dacă nu se poate calcula (fără refugii, traseu gol); nu aruncă excepție."""
+    try:
+        site = state.site
+        cell, _ = project_to_grid(state.position, site.shape)
+        path = _clean_path([cell] + [_cell(p) for p in state.remaining_path], site.shape, site, state.preset)
+        if not path:
+            return None
+        ev = _Evaluator(state, _refuges(state))
+        _, dwell = ev._dwell(path)
+        margin = ev._pnr_margin(path, _timeline(state, path, dwell or None))
+        return float(margin) if math.isfinite(margin) else None
+    except Exception:  # noqa: BLE001 — un sit incomplet sau un traseu nevalid: fără prag (V6 ca în §7)
+        return None
 
 
 def plan(state: ReplanState) -> tuple[Decision, Candidates]:

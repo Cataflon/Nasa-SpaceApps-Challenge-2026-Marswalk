@@ -25,6 +25,7 @@ from app.core.hazard_spec import from_hazard
 from app.core.hazards import FORECAST_STEPS_MIN, HIT_THRESHOLD
 from app.core.replanner import ReplanState
 from app.core.replanner import plan as replan
+from app.core.replanner import plan_pnr_margin
 from app.core.planner import PLANNER_LIMITS, plan_route
 from app.core.site_data import Site, get_site
 from app.core.storms import Storm, generate_storm
@@ -71,6 +72,11 @@ def _simulate(site: Site, plan: dict, path, storm: Storm, sunset: float, copilot
     # (altfel scorul copilotului nu măsoară întoarcerea). Faza doar schimbă ținta, nu eșantionarea.
     phase, last_switch, decisions = "OUTBOUND", -math.inf, []
     exposure, collected, finished, arrival = 0.0, 0.0, False, math.inf
+    # V6: marja planului acceptat (ca în motor), ca un plan care trece deja de punctul de
+    # neîntoarcere să nu fie abandonat fără pericol.
+    pnr_floor = plan_pnr_margin(ReplanState(site=site, position=path[0], remaining_path=list(path), stops=[stop],
+                                            specs=[], t_now=0.0, o2_pct=100.0, dose_msv=0.0, sunset_min=sunset,
+                                            limits=limits)) if copilot else None
 
     def budget():
         cells = [(targets[s]["row"], targets[s]["col"]) for s in stops]
@@ -96,11 +102,11 @@ def _simulate(site: Site, plan: dict, path, storm: Storm, sunset: float, copilot
                 state = ReplanState(site=site, position=remaining[0], remaining_path=remaining, stops=list(stops),
                                     specs=[observed], t_now=t, o2_pct=o2, dose_msv=dose, sunset_min=sunset,
                                     phase=phase, last_switch_t=last_switch, limits=limits,
-                                    dwell_now_min=float(dwell_left or 0.0))
+                                    dwell_now_min=float(dwell_left or 0.0), pnr_floor_pct=pnr_floor)
                 d, _ = replan(state)
                 decisions.append(d.decision)
                 alt = next((a for a in d.alternatives if a.id == d.alternative_id), None)
-                if alt is not None and d.decision == "WAIT":
+                if alt is not None and (d.decision == "WAIT" or alt.kind == "WAIT"):  # și sub EMERGENCY
                     wait_until, last_switch = t + alt.extra_min, t
                 elif alt is not None and d.decision in ("REROUTE", "RETURN", "EMERGENCY") and alt.kind != "CONTINUE":
                     remaining, dwell_left, last_switch = list(alt.path), None, t

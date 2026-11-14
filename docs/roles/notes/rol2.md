@@ -595,6 +595,24 @@ pe opririle rămase, doar la oprire blocată sau eveniment de stare. De urmărit
 pur) e ~50 % din timpul benchmark-ului (90 de apeluri × 55 ms pe 15 scenarii); sub `tracemalloc`, testul
 de memorie pe 130 de scenarii devine foarte lent.
 
+**Reparații după fluxul end-to-end pe jezero (14.11):**
+- EMERGENCY care alegea `wait` (cale de o celulă) golea traseul, iar misiunea se „termina” cu
+  `egress_complete` pe teren deschis; acum `wait` e aplicată ca așteptare (motor și benchmark), iar un
+  traseu terminat departe de destinație pune drumul până acolo și replanifică imediat (nivel 3).
+- `_emergency`: salvarea e întâi RETURN, apoi orice rută care se mișcă (pe întoarcere, traseul curent),
+  abia apoi `wait`; înainte, cu O₂ sub rezervă pe drumul spre casă, astronautul aștepta pe loc până la
+  epuizarea O₂-ului.
+- V6 față de planul acceptat: un plan CAUTION care trece deja de punctul de neîntoarcere (estimarea O₂ până
+  acasă e pesimistă: urcare pe fiecare celulă) era abandonat la minutul 1, fără pericol. Acum
+  `ReplanState.pnr_floor_pct` = marja planului (`plan_pnr_margin`), pragul V6 = min(rezervă, marja − 2).
+- `reason_code` la schimbare = încălcarea reală a traseului curent (ex. `NO_RETURN_POINT`, `O2_RESERVE`),
+  nu mereu `HAZARD_ON_ROUTE`.
+- Benchmark (100 de scenarii, seed 42): sintetic 77 % (planul 51 %), jezero 78 %. Cifra anterioară de 85 %
+  era umflată de bugul cu `wait` (scenariul se oprea pe loc, fără expunere ulterioară): cu vechea regulă de
+  salvare și bugul reparat ies 78 %; regula nouă costă un punct și elimină epuizarea O₂-ului.
+- Rămas (de decis): motorul consumă O₂ cu `WALK_WATTS` fix (0,281 %/min), planificatorul cu `budget._walk`
+  (~0,194 %/min pe plat); după ~15 min un plan cu marjă de 1 punct primește RETURN pe `O2_RESERVE`.
+
 **Pasul următor:** niciunul pentru V2 (F0-F9 gata); cererile către rolurile 1, 3 și 4 sunt la „Cereri”.
 
 ## Cereri
@@ -781,6 +799,7 @@ Doar în teste (nu afectează produsul):
 | `replanner` | `MAX_CANDIDATES` | 8 | §6 |
 | `replanner` | `HUB_GRACE_M`, `AIRLOCK_MIN` | 100 m, 5 min | C (§8.5) |
 | `replanner` | `HALO_SCALE_MIN` | 10 min | C: halou normalizat |
+| `replanner` | `PNR_FLOOR_SLACK_PCT` | 2 % O₂ | C: toleranța V6 față de marja planului (deriva O₂ live vs. `timeline`) |
 | `replanner` | V6: minutele până acasă | O₂ până acasă / 0,194 %/min | C: aproximare pentru adaosul de O₂ pe minut |
 | `replanner` | furtuna regională | variantele care mai vizitează opriri sunt respinse | C: regula „doar RETURN” |
 | `modes` | `K_BY_MODE` | 15 / 5 / 1 / 1 | C (§3) |

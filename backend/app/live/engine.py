@@ -158,6 +158,11 @@ class LiveEngine:
         self._last_periodic = -10**9
         self._was_inside = False
         self._state_event = False
+        # Traseul s-a terminat departe de destinație (ex. la un refugiu improvizat): drumul spre casă e
+        # pus din nou și tick-ul următor replanifică imediat (nivel 3), în loc să declare sosirea.
+        self._force_replan = False
+        self._pnr_floor: float | None = None  # V6: marja planului acceptat (calculată o dată, la nevoie)
+        self._pnr_floor_ready = False
         self.injured = False
         self.comm_lost = False  # pierderea legăturii: doar semnal, fără opriri noi
         self.o2_pct = 100.0
@@ -701,8 +706,10 @@ class LiveEngine:
         self.mode = core_modes.mode_for(contacts[0][0] - t if contacts else None, inside, self._state_event,
                                         last == "EMERGENCY" and bool(self.hazards))
         trigger, h, eta = None, None, None
-        if smart and (self._new_hazards or self._state_event):
-            # Nivel 3: pericol adăugat / actualizat (rev) / șters, sau eveniment de stare.
+        if smart and (self._new_hazards or self._state_event or self._force_replan):
+            # Nivel 3: pericol adăugat / actualizat (rev) / șters, eveniment de stare sau traseu terminat
+            # departe de destinație.
+            self._force_replan = False
             newest = self._new_hazards[-1] if self._new_hazards else None
             trigger = "event"
             eta, h = hit if hit else (None, newest if newest and not newest.get("removed") else None)
@@ -787,7 +794,27 @@ class LiveEngine:
             preset=self.preset, effects=self._effects(t, specs), phase=self.phase,
             dwell_now_min=float(self.dwell_left + waiting), limits=self.limits, last_switch_t=self._last_switch_t,
             dose_rate_usv_h=float(self._sensors(t)["dose_rate_usv_h"]),
+            pnr_floor_pct=self._plan_pnr_floor(),
         )
+
+    def _plan_pnr_floor(self) -> float | None:
+        """Marja O₂ − O₂ până acasă a planului acceptat, de la start, în condiții nominale (V6).
+
+        Un plan CAUTION poate trece de punctul de neîntoarcere chiar de la planificare; fără această
+        marjă, copilotul l-ar abandona la primul tick fără niciun pericol."""
+        if self._pnr_floor_ready:
+            return self._pnr_floor
+        self._pnr_floor_ready = True
+        if self._site is None or not self.route or not self.route.get("path"):
+            return None
+        path = [_cell(p) for p in self.route["path"]]
+        state = core_replanner.ReplanState(
+            site=self._site, position=path[0], remaining_path=path,
+            stops=[s["id"] for s in self.route.get("stops", [])], specs=[],
+            t_now=float(self.route.get("start_time_min") or 0.0), o2_pct=100.0, dose_msv=0.0,
+            sunset_min=self.sunset_min, preset=self.preset, limits=self.limits)
+        self._pnr_floor = core_replanner.plan_pnr_margin(state)
+        return self._pnr_floor
 
     def _choose(self, t: int, h: dict | None) -> Decision:
         """Cu sit: replanificarea V2 din core (ARHITECTURA_RUTARE_V2). Fără sit sau dacă replanificarea
@@ -911,8 +938,10 @@ class LiveEngine:
         alt = next((a for a in decision.alternatives if a.id == decision.alternative_id), None)
         if alt is None or decision.decision == "CONTINUE":
             return
-        if decision.decision == "WAIT":
-            self.wait_until = t + int(round(alt.extra_min))
+        if decision.decision == "WAIT" or alt.kind == "WAIT":
+            # Și sub EMERGENCY: așteptarea pe loc nu înlocuiește traseul (calea ei are o singură celulă;
+            # aplicată ca rută, ar goli traseul rămas și misiunea s-ar „termina” pe teren deschis).
+            self.wait_until = t + max(1, int(round(alt.extra_min)))
             self._last_switch_t = t
             return
         here = _cell(self.pos)
@@ -981,6 +1010,8 @@ class LiveEngine:
         if self.o2_pct <= 0:
             end = "o2_depleted"
         elif not self.remaining and self.dwell_left == 0 and self.wait_until is None:
+            if self._resume_to_destination():
+                return []
             end = "egress_complete"
         elif t >= MAX_DURATION_MIN:
             end = "time_limit"
@@ -990,6 +1021,33 @@ class LiveEngine:
         return [{"type": "event", "t_min": t, "event": end, "severity": "info", "params": {
             "o2_pct": round(self.o2_pct, 1), "dose_total_msv": round(self.dose_msv, 3)}},
             self.state_message()]
+
+    def _resume_to_destination(self) -> bool:
+        """Traseul rămas e gol, dar astronautul nu e la destinația planului: pune drumul până acolo
+        (A* pe costul static; altfel înapoi pe drumul parcurs) și cere o replanificare imediată.
+        Întoarce False dacă astronautul e deja la destinație sau nu există sit (fallback-ul vechi)."""
+        if self._site is None or not self.route or not self.route.get("path"):
+            return False
+        here, dest = _cell(self.pos), _cell(self.route["path"][-1])
+        if here == dest:
+            return False
+        path = None
+        try:
+            from app.core.costmap import static_cost
+            from app.core.routing import astar
+
+            path = astar(static_cost(self._site, self.preset), here, dest)
+        except (ValueError, IndexError, KeyError):
+            path = None
+        if not path:
+            path = [here] + [p for p in reversed(self.traveled) if p != here]
+            if path[-1] != dest:
+                path.append(dest)
+        self.remaining = path[1:] if path[0] == here else path
+        self.route_version += 1
+        self.phase = "INBOUND" if not self.stops_left else self.phase
+        self._force_replan = True
+        return True
 
     # ------------------------------------------------------------------ explicații
 

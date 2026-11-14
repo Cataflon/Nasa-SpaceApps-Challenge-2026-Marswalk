@@ -108,9 +108,12 @@ def test_start_unknown_route():
 
 
 def test_deterministic():
+    """Aceleași intrări → aceleași mesaje. `compute_ms` e timpul de calcul măsurat pe ceas (contorul
+    „Pământul vs. copilotul”), nu o ieșire a logicii, deci se scoate din comparație."""
     def trace():
         e = started(straight_route(length=200), scheduled_events=[ScheduledEvent(3, "local_storm", {})])
-        return json.dumps(run(e, 60), sort_keys=True)
+        msgs = [{k: v for k, v in m.items() if k != "compute_ms"} for m in run(e, 60)]
+        return json.dumps(msgs, sort_keys=True)
 
     assert trace() == trace()
 
