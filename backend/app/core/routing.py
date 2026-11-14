@@ -419,6 +419,74 @@ def _project(states, f, start, goal, t0_min, shape):
     return path
 
 
+# presupunere (C, ARHITECTURA_RUTARE_V2 §1.7, §11): limita de expandări pentru degradare deterministă.
+N_MAX = 600_000
+
+
+def reverse_dijkstra_multi(cost: np.ndarray, sources: list[Cell], max_expansions: int = N_MAX) -> tuple[np.ndarray, np.ndarray]:
+    """Dijkstra invers pornit din MAI MULTE surse (refugii, §8.5): costul spre cel mai apropiat refugiu.
+
+    Aceleași reguli și aceeași formă a rezultatului ca `reverse_dijkstra`; `parent_index` duce spre
+    refugiul cel mai ieftin (la egalitate: indexul mai mic, deci ordinea e totală). Sursele în afara
+    grilei sau interzise se ignoră (fără excepție). Se oprește după `max_expansions` noduri scoase din
+    coadă (degradare deterministă): celulele neajunse rămân inf, cu părinte -1.
+    """
+    _check_no_negative(cost)
+    height, width = cost.shape
+    flat, Wp = pad_and_flatten(cost)
+    inf = math.inf
+    dist = [inf] * len(flat)
+    parent = [-1] * len(flat)
+    heap = []
+    for s in sorted({(int(r), int(c)) for r, c in sources}):
+        if 0 <= s[0] < height and 0 <= s[1] < width:
+            idx = to_flat(s, Wp)
+            if flat[idx] != inf and dist[idx] > 0.0:
+                dist[idx] = 0.0
+                heap.append((0.0, idx))
+    heapq.heapify(heap)
+    push, pop = heapq.heappush, heapq.heappop
+    moves = _half_step_moves(Wp)
+    expanded = 0
+    while heap and expanded < max_expansions:
+        d_current, current = pop(heap)
+        if d_current > dist[current]:
+            continue
+        expanded += 1
+        current_cost = flat[current]
+        for delta, half_step, side_a, side_b in moves:
+            neighbor = current + delta
+            cell_cost = flat[neighbor]
+            if cell_cost == inf or flat[current + side_a] == inf or flat[current + side_b] == inf:
+                continue
+            d_new = d_current + half_step * (current_cost + cell_cost)
+            if d_new < dist[neighbor]:
+                dist[neighbor] = d_new
+                parent[neighbor] = current
+                push(heap, (d_new, neighbor))
+    cost_to_home = np.array(dist, dtype=np.float64).reshape(height + 2, Wp)[1:-1, 1:-1].copy()
+    padded_parent = np.array(parent, dtype=np.int64).reshape(height + 2, Wp)[1:-1, 1:-1]
+    unpadded = (padded_parent // Wp - 1) * width + (padded_parent % Wp - 1)
+    parent_index = np.where(padded_parent >= 0, unpadded, -1).astype(np.int32)
+    return cost_to_home, parent_index
+
+
+def project_to_grid(position, shape: tuple[int, int]) -> tuple[Cell, bool]:
+    """Cea mai apropiată celulă din grilă (§8.3, OFF_MAP) și dacă poziția era în afara ei. Fără excepții.
+
+    `position` = (row, col), poate fi fracționar sau în afara grilei; NaN → (0, 0), în afara grilei.
+    """
+    rows, cols = shape
+    try:
+        r, c = float(position[0]), float(position[1])
+    except (TypeError, ValueError, IndexError):
+        return (0, 0), True
+    if not (math.isfinite(r) and math.isfinite(c)):
+        return (0, 0), True
+    off = not (-0.5 <= r < rows - 0.5 and -0.5 <= c < cols - 0.5)
+    return (int(min(max(round(r), 0), rows - 1)), int(min(max(round(c), 0), cols - 1))), off
+
+
 def reverse_dijkstra(cost: np.ndarray, habitat: Cell) -> tuple[np.ndarray, np.ndarray]:
     """Costul de întoarcere la habitat din fiecare celulă + părinții pentru reconstruirea rutei.
 

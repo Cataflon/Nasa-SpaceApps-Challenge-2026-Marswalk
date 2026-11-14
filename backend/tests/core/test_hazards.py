@@ -88,10 +88,13 @@ def test_route_hit_on_crossing_path_gives_correct_minute():
     path = [(59 - i, 50) for i in range(40)]
     eta = [float(i) for i in range(40)]
 
-    assert route_hit(path, eta, hazards, CELL, threshold=0.3) == (True, 15.0)
-    # Același rezultat ca citirea din hazard_field la momentul fiecărui punct.
+    # ARHITECTURA_RUTARE_V2 §4 (S1): route_hit folosește testul CONTINUU (traseul parcurs liniar între
+    # puncte), deci contactul cade între punctele 14 și 15, nu la primul punct eșantionat lovit (15).
+    hit, t_hit = route_hit(path, eta, hazards, CELL, threshold=0.3)
+    assert hit and 14.0 < t_hit <= 15.0
+    # Primul punct eșantionat lovit (citit din hazard_field) e 15: continuul e cu < 1 tick mai devreme.
     first = next(i for i, (r, c) in enumerate(path) if hazard_field(hazards, eta[i], (60, 100), CELL)[r, c] >= 0.3)
-    assert first == 15
+    assert first == 15 and first - t_hit < 1.0
 
 
 def test_route_hit_parallel_far_away_is_false():

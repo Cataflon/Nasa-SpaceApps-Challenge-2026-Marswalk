@@ -22,21 +22,23 @@ import copy
 import json
 import logging
 import math
+import threading
 import time
 from collections.abc import AsyncIterator, Awaitable, Callable
 
 from app.config import CONTRACTS_DIR
 from app.core import alternatives as core_alternatives
+from app.core import hazard_spec as core_spec
 from app.core import hazards as core_hazards
+from app.core import modes as core_modes
+from app.core import replanner as core_replanner
 from app.core.benchmark import REACT_WINDOW_MIN
-from app.core.budget import O2_PCT_PER_MIN_PER_WATT, O2_PCT_PER_MIN_REST, tobler_speed_ms
+from app.core.budget import O2_PCT_PER_MIN_PER_WATT, O2_PCT_PER_MIN_REST, EffectWindow, tobler_speed_ms
 from app.core.daylight import sunrise_sunset_min
 from app.core.planner import SOL_START_UTC
 from app.core.decision import choose
 from app.core.site_data import get_site
 from app.core.types import Alternative, Decision, Limits
-from app.core.validator import validate
-from app.live import replan
 from app.live import scenario as scenario_mod
 from app.live.store import RouteStore
 from app.live.store import routes as default_routes
@@ -63,8 +65,10 @@ SOLAR_DURATION_MIN = int(scenario_mod.SOLAR_PARTICLE_EVENT["duration_min"])
 # --- Parametrii motorului ---
 REEVAL_MIN = 5  # cât de des se reevaluează un pericol care lovește încă traseul
 # Bucla pe 3 niveluri (docs/plan-replanificare-live.md §4, „Arhitectura deterministă” §6):
-REPLAN_EVERY_MIN = 5  # nivelul 2: căutare periodică a unui traseu mai bun cât există pericole
-PROXIMITY_M = 450.0  # nivelul 3: un pericol ajunge la mai puțin de atât de astronaut
+# Nivelul 2 (periodic) folosește K pe mod (core/modes.py: 15 / 5 / 1 / 1), nivelul 3 de proximitate
+# `core_modes.PROXIMITY_M`; constantele stau în core (ARHITECTURA_RUTARE_V2 §3, §11).
+_STATE_EVENTS = ("suit_leak", "fatigue", "crewmate_injured")
+_INJURED_SPEED, _INJURED_O2 = 0.5, 1.5  # = hazard_spec.CLASS_DEFAULTS["crewmate_injured"] (nivel C)
 HIT_HORIZON_MIN = 60  # cât de departe în viitor verifică fallback-ul dacă traseul e lovit
 MAX_DURATION_MIN = 720  # siguranță: simularea se oprește după 12 ore
 
@@ -121,12 +125,16 @@ class LiveEngine:
         self.explain_fn = explain_fn or default_explain
         self._scheduled_override = scheduled_events  # None = evenimentele scenariului / demo
         self._subscribers: set[asyncio.Queue] = set()
+        # step() rulează pe un thread (run), ca o replanificare de ~0,5 s să nu blocheze bucla asyncio
+        # (AUDIT-008); comenzile care schimbă starea iau același lock, deci nu apar curse.
+        self._lock = threading.RLock()
         self._clear()
 
     # ------------------------------------------------------------------ control
 
     def reset(self) -> None:
-        self._clear()
+        with self._lock:
+            self._clear()
         self.publish(self.state_message())
 
     def _clear(self) -> None:
@@ -139,7 +147,19 @@ class LiveEngine:
         self.traveled: list[Cell] = []
         self.stops_left: list[dict] = []  # {"id", "cell", "dwell_min"}
         self.returning = False  # pe drumul spre casă (după RETURN sau EMERGENCY)
-        self.committed_return = False  # pe drumul spre casă după RETURN; furtuna regională doar se confirmă
+        # ARHITECTURA_RUTARE_V2 §6.1: faza drumului (OUTBOUND / INBOUND), separată de modul de alertă.
+        # INBOUND după RETURN / shelter / EMERGENCY sau după ultima oprire; nu se revine în OUTBOUND.
+        # Drumul spre casă se replanifică la fel ca la dus (nu mai există „după RETURN nu mai replanifici”).
+        self.phase = "OUTBOUND"
+        self._last_switch_t = -math.inf  # ultima schimbare de traseu (histerezis, DWELL_MIN)
+        self.mode = core_modes.NOMINAL  # NOMINAL | MONITOR | REACT | EMERGENCY (§3)
+        self._seq = 0  # ordinea totală a evenimentelor: (t, seq)
+        self._last_hash: str | None = None  # starea canonică la ultima replanificare (reutilizare)
+        self._last_periodic = -10**9
+        self._was_inside = False
+        self._state_event = False
+        self.injured = False
+        self.comm_lost = False  # pierderea legăturii: doar semnal, fără opriri noi
         self.o2_pct = 100.0
         self.dose_msv = 0.0
         self.fatigue = 1.0
@@ -171,6 +191,10 @@ class LiveEngine:
 
     def start(self, route_id: str | None = None, speed: float | None = None) -> None:
         """Pornește (sau reia) ieșirea. Fără route_id: ultimul traseu planificat, apoi mock-ul."""
+        with self._lock:
+            self._start(route_id, speed)
+
+    def _start(self, route_id: str | None, speed: float | None) -> None:
         if speed is not None:
             self.clock_speed = speed
         if self.state in ("paused", "running") and route_id is None:
@@ -189,9 +213,11 @@ class LiveEngine:
         self.publish(self.state_message())
 
     def pause(self) -> None:
-        if self.state == "running":
+        with self._lock:
+            if self.state != "running":
+                return
             self.state = "paused"
-            self.publish(self.state_message())
+        self.publish(self.state_message())
 
     def set_speed(self, speed: float) -> None:
         self.clock_speed = speed
@@ -203,8 +229,13 @@ class LiveEngine:
                 "route_id": (self.route or {}).get("route_id"), "reason": self.end_reason}
 
     def inject(self, event: str, params: dict | None = None) -> None:
-        """Evenimentul se aplică la următorul tick."""
-        self.pending_events.append({"event": event, "params": dict(params or {})})
+        """Evenimentul se aplică la următorul tick, în ordinea (t, seq).
+
+        `params` poate fi formatul vechi (live_event.json) sau un HazardSpec cu `op` add / update / remove
+        (ARHITECTURA_RUTARE_V2 §2.2): un update re-ancorează pericolul la poziția curentă și crește `rev`.
+        """
+        self._seq += 1
+        self.pending_events.append({"event": event, "params": dict(params or {}), "seq": self._seq})
 
     def load(self, route: dict) -> None:
         self._site = self.site_provider()
@@ -220,6 +251,7 @@ class LiveEngine:
             if 0 <= s.get("index_in_path", -1) < len(path)
         ]
         self.sunset_min = float(route.get("budget", {}).get("sunset_min") or self._planned_sunset_min())
+        self.phase = "OUTBOUND" if self.stops_left else "INBOUND"
 
         # Evenimentele demo ale sitului curent (Jezero sau sintetic); senzorii le includ deja, deci
         # praful și vântul cresc exact când trece pericolul programat.
@@ -233,14 +265,19 @@ class LiveEngine:
         except NotImplementedError:
             self._scenario, self.sensors_series = None, None
         self.scheduled = sorted(
-            ({"t_min": int(e.t_min), "event": e.event, "params": dict(e.params)} for e in events),
-            key=lambda e: e["t_min"],
+            ({"t_min": int(e.t_min), "event": e.event, "params": dict(e.params), "seq": i}
+             for i, e in enumerate(events)),
+            key=lambda e: (e["t_min"], e["seq"]),
         )
 
     # ------------------------------------------------------------------ tick
 
     def step(self) -> list[dict]:
         """Avansează un minut simulat și întoarce mesajele (tick, event, decision)."""
+        with self._lock:
+            return self._step()
+
+    def _step(self) -> list[dict]:
         if self.state != "running":
             return []
         self.t_min += 1
@@ -252,14 +289,20 @@ class LiveEngine:
         for ev in self.pending_events:
             self._add_to_scenario(ev, t)  # cele programate sunt deja în scenariu
         self._new_hazards = []
-        for ev in due + self.pending_events:
-            msgs.append(self._apply_event(ev, t))
+        self._state_event = False
+        # Ordinea totală (t, seq): cele programate (inclusiv din trecut, aplicate acum cu avertisment),
+        # apoi cele injectate, în ordinea sosirii.
+        for ev in sorted(due, key=lambda e: (e["t_min"], e["seq"])) + sorted(self.pending_events, key=lambda e: e["seq"]):
+            msg = self._apply_event(ev, t)
+            if ev.get("t_min", t) < t:
+                msg["warning"] = "EVENT_IN_PAST"
+            msgs.append(msg)
         self.pending_events = []
 
         sensors = self._sensors(t)
         moving = self._advance_minute()
         speed = self._speed_ms() if moving else 0.0
-        walk = O2_PCT_PER_MIN_WALK * (FATIGUE_O2_FACTOR if self.fatigue < 1 else 1.0)
+        walk = O2_PCT_PER_MIN_WALK * self._o2_factor()
         self.o2_pct -= (walk if moving else O2_PCT_PER_MIN_REST) + self.leak_pct_per_min
         self.dose_msv += sensors["dose_rate_usv_h"] / 60.0 / 1000.0
         self._expire_hazards(t)
@@ -267,6 +310,7 @@ class LiveEngine:
         msgs.insert(0, self._tick_message(t, sensors, speed))
 
         decision_msg = self._check_route(t)
+        msgs[0]["mode"] = self.mode  # modul calculat de watchdog în acest tick (§3)
         if decision_msg is not None:
             msgs.append(decision_msg)
 
@@ -316,6 +360,8 @@ class LiveEngine:
                 stop = next((s for s in self.stops_left if s["cell"] == target), None)
                 if stop is not None:
                     self.stops_left.remove(stop)
+                    if not self.stops_left:
+                        self.phase = "INBOUND"
                     self.dwell_left = stop["dwell_min"]
                     break
             else:
@@ -331,8 +377,11 @@ class LiveEngine:
         dwell = self.dwell_left + sum(s["dwell_min"] for s in self.stops_left)
         return walk, dwell
 
+    def _o2_factor(self) -> float:
+        return _INJURED_O2 if self.injured else (FATIGUE_O2_FACTOR if self.fatigue < 1 else 1.0)
+
     def _o2_after(self, walk_min: float, rest_min: float) -> float:
-        walk_rate = O2_PCT_PER_MIN_WALK * (FATIGUE_O2_FACTOR if self.fatigue < 1 else 1.0)
+        walk_rate = O2_PCT_PER_MIN_WALK * self._o2_factor()
         return self.o2_pct - walk_rate * walk_min - O2_PCT_PER_MIN_REST * rest_min - self.leak_pct_per_min * (walk_min + rest_min)
 
     # ------------------------------------------------------------------ senzori și evenimente
@@ -369,8 +418,17 @@ class LiveEngine:
 
     def _apply_event(self, ev: dict, t: int) -> dict:
         kind, params = ev["event"], ev["params"]
+        if "op" in params:
+            return self._apply_hazard_op(kind, params, t)
         if kind not in HAZARD_DEFAULTS:
             self._last_problem = kind  # pentru explicația unei replanificări de buget
+        if kind in _STATE_EVENTS:
+            self._state_event = True  # nivel 3 (§3)
+        if kind == "crewmate_injured":
+            self.fatigue *= _INJURED_SPEED
+            self.injured = True
+        elif kind == "comm_loss":
+            self.comm_lost = True
         if kind in HAZARD_DEFAULTS:
             self.hazards.append(self._new_hazard(kind, params, t))
             self._new_hazards.append(self.hazards[-1])
@@ -382,6 +440,65 @@ class LiveEngine:
         elif kind == "fatigue":
             self.fatigue *= float(params.get("speed_factor", FATIGUE_SPEED_FACTOR))
         return {"type": "event", "t_min": t, "event": kind, "severity": params.get("severity", "high"), "params": params}
+
+    def _apply_hazard_op(self, kind: str, params: dict, t: int) -> dict:
+        """HazardSpec cu `op` (§2.2): add / update (re-ancorare, rev + 1) / remove. Un update pe un id
+        inexistent e un add; un add pe un id existent e un update. Evenimentele de stare ca `kind`
+        (ex. crewmate_injured) se aplică astronautului."""
+        op, hid = params.get("op"), params.get("id")
+        kind = params.get("kind") or kind
+        msg = {"type": "event", "t_min": t, "event": kind, "severity": params.get("severity", "high"),
+               "params": {k: v for k, v in params.items() if k != "severity"}}
+        if kind in _STATE_EVENTS + ("comm_loss",):
+            return {**self._apply_event({"event": kind, "params": {}}, t), "params": msg["params"]}
+        existing = next((h for h in self.hazards if h["id"] == hid), None)
+        if op == "remove":
+            if existing is not None:
+                self.hazards.remove(existing)
+                self._new_hazards.append({**existing, "removed": True})
+            else:
+                msg["warning"] = core_spec.ERR_UNKNOWN_ID
+            return msg
+        shape = params.get("shape") if isinstance(params.get("shape"), dict) else {}
+        motion = params.get("motion") if isinstance(params.get("motion"), list) else []
+        velocity = (motion[-1].get("velocity_ms") if motion and isinstance(motion[-1], dict) else None) \
+            or params.get("velocity_ms")
+        if existing is not None:  # update (sau add pe un id existent): re-ancorare la poziția curentă
+            if op == "add":
+                msg["warning"] = core_spec.WARN_ADD_AS_UPDATE
+            r, c = self._hazard_center(existing, t)
+            existing.update(center0=(r, c), t0=t, rev=existing.get("rev", 1) + 1)
+            if shape.get("axes_m") is not None:
+                existing["axes_m"] = [float(v) for v in shape["axes_m"]]
+            if shape.get("theta_deg") is not None:
+                existing["angle_deg"] = float(shape["theta_deg"])
+            if velocity is not None:
+                existing["velocity_ms"] = [float(velocity[0]), float(velocity[1])]
+            if "intensity" in params:
+                existing["intensity"] = float(params["intensity"])
+            existing["raw"] = {**existing.get("raw", {}), **{k: v for k, v in params.items()
+                                                             if k in ("growth", "lifetime", "effects", "uncertainty", "hub_effect")}}
+            self._new_hazards.append(existing)
+            return msg
+        if op == "update":
+            msg["warning"] = core_spec.WARN_UPDATE_AS_ADD
+        center = shape.get("center") or params.get("center")
+        hz_kind = kind if kind in HAZARD_DEFAULTS else "custom"
+        d = HAZARD_DEFAULTS.get(hz_kind, HAZARD_DEFAULTS["local_storm"])
+        base = {"center": center, "axes_m": shape.get("axes_m") or params.get("axes_m") or d["axes_m"],
+                "angle_deg": shape.get("theta_deg", params.get("angle_deg", 0.0)),
+                "intensity": params.get("intensity", d["intensity"])}
+        if velocity is not None:
+            base["velocity_ms"] = velocity
+        h = self._new_hazard(hz_kind if hz_kind in HAZARD_DEFAULTS else "local_storm",
+                             {k: v for k, v in base.items() if v is not None}, t)
+        if hid:
+            h["id"] = str(hid)
+        h["kind"] = kind
+        h["raw"] = {k: v for k, v in params.items() if k in ("growth", "lifetime", "effects", "uncertainty", "hub_effect")}
+        self.hazards.append(h)
+        self._new_hazards.append(h)
+        return msg
 
     def _new_hazard(self, kind: str, params: dict, t: int) -> dict:
         d = HAZARD_DEFAULTS[kind]
@@ -406,6 +523,7 @@ class LiveEngine:
             "angle_deg": float(params.get("angle_deg", d.get("angle_deg", 0.0))),
             "intensity": float(params.get("intensity", d["intensity"])),
             "velocity_ms": [float(velocity[0]), float(velocity[1])],
+            "rev": 1,
         }
 
     def _point_ahead(self, minutes: float) -> tuple[float, float]:
@@ -523,21 +641,22 @@ class LiveEngine:
 
     # ------------------------------------------------------------------ decizie
 
-    def _first_hit(self, t: int) -> tuple[float, dict] | None:
-        """Nivelul 1 (pericole): primul pericol care atinge traseul rămas, cu minutul contactului."""
+    def _contacts(self, t: int) -> list[tuple[float, dict]]:
+        """Nivelul 1 (pericole): contactele cu traseul rămas pe H_WATCH, sortate după (minut, id)."""
         if not self.hazards or self.pos is None:
-            return None
+            return []
         path = [self.pos] + self.remaining
         hits = []
         for h in self.hazards:
-            if (self.returning and h["id"] in self._last_eval_t
-                    and core_hazards.HAZARD_RESPONSES.get(h["kind"]) == {"RETURN"}):
-                continue  # RETURN deja decis pentru el: reevaluarea nu schimbă nimic și costă ~1 s pe tick
             eta = self._hits(h, path, t)
-            if eta is not None:
+            if eta is not None and eta - t <= core_spec.H_WATCH_MIN + 1e-9:
                 hits.append((eta, h))
-        hits = [(eta, h) for eta, h in hits if eta - t <= REACT_WINDOW_MIN]
-        return min(hits, key=lambda x: (x[0], x[1]["id"])) if hits else None
+        return sorted(hits, key=lambda x: (x[0], x[1]["id"]))
+
+    def _first_hit(self, t: int) -> tuple[float, dict] | None:
+        """Primul contact în fereastra de reacție (H_REACT): acolo se declanșează replanificarea."""
+        hits = [(eta, h) for eta, h in self._contacts(t) if eta - t <= REACT_WINDOW_MIN]
+        return hits[0] if hits else None
 
     def _budget_broken(self, t: int) -> bool:
         """Nivelul 1 (buget): cu ritmul de acum (scurgere, oboseală incluse), traseul rămas mai ține?"""
@@ -555,7 +674,7 @@ class LiveEngine:
                 continue
             r, c = self._hazard_center(h, t)
             gap = math.hypot(r - self.pos[0], c - self.pos[1]) * self.cell_size_m - max(h["axes_m"])
-            if gap < PROXIMITY_M:
+            if gap < core_modes.PROXIMITY_M:
                 self._near.add(h["id"])
                 return h
         return None
@@ -572,24 +691,26 @@ class LiveEngine:
         if self.pos is None:
             return None
         smart = self._site is not None
-        hit = self._first_hit(t)
+        contacts = self._contacts(t)
+        hits = [(eta, x) for eta, x in contacts if eta - t <= REACT_WINDOW_MIN]
+        hit = hits[0] if hits else None
+        inside = any(self._inside(x, self.pos, t) for x in self.hazards)
+        entered = inside and not self._was_inside
+        self._was_inside = inside
+        last = (self.last_decision or {}).get("decision")
+        self.mode = core_modes.mode_for(contacts[0][0] - t if contacts else None, inside, self._state_event,
+                                        last == "EMERGENCY" and bool(self.hazards))
         trigger, h, eta = None, None, None
-        if smart and self._new_hazards:
-            newest = self._new_hazards[-1]
-            if self.committed_return and core_hazards.HAZARD_RESPONSES.get(newest["kind"]) == {"RETURN"}:
-                # Rolul 2: deja pe drumul spre casă, iar pericolul nou cere doar RETURN → confirmare.
-                self._last_eval_t[newest["id"]] = t
-                return self._decide(t, "event", newest, hit[0] if hit else None, self._confirm_return(t))
+        if smart and (self._new_hazards or self._state_event):
+            # Nivel 3: pericol adăugat / actualizat (rev) / șters, sau eveniment de stare.
+            newest = self._new_hazards[-1] if self._new_hazards else None
             trigger = "event"
-            eta, h = hit if hit else (None, newest)
+            eta, h = hit if hit else (None, newest if newest and not newest.get("removed") else None)
+        elif smart and entered:
+            trigger = "hazard"  # nivel 3: astronautul a intrat într-o amprentă
+            eta, h = hit if hit else (None, next(x for x in self.hazards if self._inside(x, self.pos, t)))
         elif hit is not None:
             eta, h = hit
-            if (self.committed_return and core_hazards.HAZARD_RESPONSES.get(h["kind"]) == {"RETURN"}
-                    and h["id"] not in self._last_eval_t):
-                # Rolul 2: deja pe drumul spre casă, iar pericolul cere doar RETURN (furtuna
-                # regională) → confirmare pe același drum, fără replanificare.
-                self._last_eval_t[h["id"]] = t
-                return self._decide(t, "hazard", h, eta, self._confirm_return(t))
             if t - self._last_eval_t.get(h["id"], -10**9) < REEVAL_MIN:
                 return None
             trigger = "hazard"
@@ -600,61 +721,90 @@ class LiveEngine:
             trigger = "budget"
         elif smart and (near := self._nearby(t)) is not None:
             trigger, h = "proximity", near
-        elif smart and self.hazards and t % REPLAN_EVERY_MIN == 0:
-            trigger = "periodic"
+        elif smart and self.hazards and core_modes.K_BY_MODE[self.mode] > 0 \
+                and t - self._last_periodic >= core_modes.K_BY_MODE[self.mode]:
+            trigger = "periodic"  # nivel 2: K adaptiv după mod
+            self._last_periodic = t
         if trigger is None:
             return None
+        if smart and trigger != "event":
+            # Aceeași stare canonică (cu rev) ca la ultima replanificare → se refolosește rezultatul.
+            key = self._state_key(t)
+            if key == self._last_hash:
+                return None
+            self._last_hash = key
         if h is not None:
             self._last_eval_t[h["id"]] = t
         return self._decide(t, trigger, h, eta)
 
-    def _situation(self, t: int) -> replan.Situation:
-        """Starea live pentru replan.py: traseul activ de la poziție până acasă, ținte, pericole."""
+    def _state_key(self, t: int) -> str:
+        here = _cell(self.pos)
+        specs = self._specs(t)
+        return core_modes.state_hash(position=here, remaining=self.remaining, stops=[x["id"] for x in self.stops_left],
+                                     revisions=[(x.id, x.rev) for x in specs], o2_pct=round(self.o2_pct, 1),
+                                     dose_msv=round(self.dose_msv, 3), phase=self.phase, effects=self._effects(t, specs))
+
+    def _specs(self, t: int) -> list:
+        """Pericolele motorului ca HazardSpec (ARHITECTURA_RUTARE_V2 §2), cu clasele implicite pe tip."""
+        shape = tuple(self._meta.get("shape", [500, 500]))
+        out = []
+        for h in self.hazards:
+            res = core_spec.normalize(
+                {"id": h["id"], "kind": h["kind"],
+                  "shape": {"center": {"row": h["center0"][0], "col": h["center0"][1]}, "axes_m": list(h["axes_m"]),
+                            "theta_deg": h["angle_deg"]},
+                  "motion": [{"from_min": h["t0"], "velocity_ms": list(h["velocity_ms"])}],
+                  "intensity": h["intensity"], "lifetime": {"start_min": h["t0"]}, **h.get("raw", {})},
+                h["kind"], cell_size_m=self.cell_size_m, t_now=h["t0"], shape=shape, hazard_id=h["id"],
+                rev=int(h.get("rev", 1)))
+            if res.ok:
+                out.append(res.spec)
+        return out
+
+    def _effects(self, t: int, specs: list) -> list:
+        """Efectele active (§2.1, §8.4): ale astronautului (oboseală, scurgere) și ale pericolelor globale.
+        Doza furtunii solare vine din senzori (rata curentă), deci nu se mai înmulțește aici."""
+        out = []
+        if self.fatigue < 1 or self.leak_pct_per_min > 0:
+            out.append(EffectWindow(t, speed_mult=self.fatigue, o2_mult=self._o2_factor(),
+                                    o2_add_pct_min=self.leak_pct_per_min, source="state"))
+        for spec in specs:
+            if spec.scope == "global" and spec.kind != "solar_particle_event":
+                e = spec.effects
+                out.append(EffectWindow(spec.start_min + spec.warning_min, spec.end_min, e.speed_mult, e.o2_mult,
+                                        e.o2_add_pct_min, e.dose_mult, e.daylight_shift_min, spec.id))
+        return out
+
+    def _replan_state(self, t: int) -> core_replanner.ReplanState:
+        """Starea live pentru replanificarea V2: traseul activ de la poziție până acasă, opriri, pericole."""
         here = _cell(self.pos)
         remaining = [here] + [c for i, c in enumerate(self.remaining) if i or c != here]
-        shape = tuple(self._meta.get("shape", [500, 500]))
-        hz = [core_hazards.from_contract(self._hazard_contract(x, t), self.cell_size_m, t, shape) for x in self.hazards]
+        specs = self._specs(t)
         waiting = max(0, self.wait_until - t) if self.wait_until is not None else 0
-        return replan.Situation(
-            site=self._site, position=here, current_path=remaining, stops=[s["id"] for s in self.stops_left],
-            hazards=hz, t_min=t, o2_pct=self.o2_pct, dose_msv=self.dose_msv, sunset_min=self.sunset_min,
-            preset=self.preset, dwell_now_min=float(self.dwell_left + waiting), fatigue=self.fatigue,
-            leak_pct_per_min=self.leak_pct_per_min,
+        return core_replanner.ReplanState(
+            site=self._site, position=here, remaining_path=remaining, stops=[x["id"] for x in self.stops_left],
+            specs=specs, t_now=float(t), o2_pct=self.o2_pct, dose_msv=self.dose_msv, sunset_min=self.sunset_min,
+            preset=self.preset, effects=self._effects(t, specs), phase=self.phase,
+            dwell_now_min=float(self.dwell_left + waiting), limits=self.limits, last_switch_t=self._last_switch_t,
+            dose_rate_usv_h=float(self._sensors(t)["dose_rate_usv_h"]),
         )
 
     def _choose(self, t: int, h: dict | None) -> Decision:
-        """Cu sit: replanificarea completă (replan.py). Fără sit sau pe un traseu care nu e din
-        celule vecine (traseul mock din contract): varianta minimă de înainte."""
+        """Cu sit: replanificarea V2 din core (ARHITECTURA_RUTARE_V2). Fără sit sau dacă replanificarea
+        nu merge (de ex. traseul mock din contract, fără celule vecine): varianta minimă de înainte."""
         if self._site is not None:
             try:
-                return replan.replan(self._situation(t), self.limits)
-            except (NotImplementedError, ValueError) as exc:
-                log.warning("Replanificarea completă nu a mers (%s); folosesc varianta minimă.", exc)
-        return choose(self._alternatives(t, h), self.preset, self.limits)
-
-    def _confirm_return(self, t: int) -> Decision:
-        """(Rolul 2) Decizia RETURN pe drumul spre casă deja ales, fără replanificare, validată ca
-        orice variantă. Riscul e 0 pentru pericolul „doar RETURN” care a declanșat-o: întoarcerea e
-        chiar răspunsul cerut. Dacă drumul nu mai respectă limitele (O₂, apus, doză): EMERGENCY.
-        """
-        here = _cell(self.pos)
-        walk, dwell = self._remaining_minutes()
-        rate = self._sensors(t)["dose_rate_usv_h"]
-        alt = Alternative(
-            id="return", kind="RETURN", path=[here] + [c for i, c in enumerate(self.remaining) if i or c != here],
-            extra_min=0.0,
-            o2_end_pct=self._o2_after(walk, dwell), dose_msv=self.dose_msv + rate * (walk + dwell) / 60.0 / 1000.0,
-            risk=0.0, arrival_habitat_min=t + walk + dwell, sunset_min=self.sunset_min,
-        )
-        validate([alt], self.limits)
-        if alt.valid:
-            return Decision("RETURN", alt.id, "HAZARD_ON_ROUTE", [alt])
-        return Decision("EMERGENCY", alt.id, "NO_VALID_OPTION", [alt])
+                return core_replanner.plan(self._replan_state(t))[0]
+            except (NotImplementedError, ValueError, KeyError, AttributeError, IndexError) as exc:
+                log.warning("Replanificarea V2 nu a mers (%s); folosesc varianta minimă.", exc)
+        decision = choose(self._alternatives(t, h), self.preset, self.limits)
+        decision.phase = self.phase
+        return decision
 
     def _decide(self, t: int, trigger: str, h: dict | None, eta: float | None,
                 decision: Decision | None = None) -> dict | None:
         started = time.perf_counter()
-        announce = trigger == "event" or decision is not None  # eveniment nou sau confirmare (rolul 2)
+        announce = trigger == "event" or decision is not None  # eveniment nou sau decizie dată din afară
         decision = decision or self._choose(t, h)
         # Doar pentru afișare („copilotul a decis în 0,05 s”); nu intră în niciun calcul.
         compute_ms = round((time.perf_counter() - started) * 1000.0, 1)
@@ -696,6 +846,9 @@ class LiveEngine:
             "hazard_id": h["id"] if h else None,
             "eta_hazard_min": eta_min,
             "route_version": self.route_version,
+            "phase": decision.phase,
+            "flags": list(decision.flags),
+            "omitted": [dict(o) for o in decision.omitted],
             "alternatives": [self._alt_json(a) for a in decision.alternatives],
             "compute_ms": compute_ms,
             "explanation": None,
@@ -760,15 +913,18 @@ class LiveEngine:
             return
         if decision.decision == "WAIT":
             self.wait_until = t + int(round(alt.extra_min))
+            self._last_switch_t = t
             return
         here = _cell(self.pos)
         path = [_cell(p) for p in alt.path]
         self.remaining = path[1:] if path and path[0] == here else path
         self.wait_until = None
         self.route_version += 1
-        if decision.decision == "RETURN":
-            self.committed_return = True
-        if decision.decision in ("RETURN", "EMERGENCY"):
+        self._last_switch_t = t
+        if alt.science_lost:  # replan_stops / ocolire care renunță la o oprire
+            self.stops_left = [x for x in self.stops_left if x["id"] not in alt.science_lost]
+        if decision.decision in ("RETURN", "EMERGENCY") or alt.kind == "RETURN":
+            self.phase = "INBOUND"
             self.returning = True
             self.suspended_stops = self.stops_left + self.suspended_stops
             self.stops_left = []
@@ -807,6 +963,7 @@ class LiveEngine:
             },
             "hazards": [self._hazard_contract(h, t) for h in self.hazards],
             "route_id": self.route.get("route_id") if self.route else None,
+            "mode": self.mode,
             "remaining_path": [list(_cell(self.pos))] + [list(p) for p in self.remaining],
             "route_version": self.route_version,
             "budget": {
@@ -886,7 +1043,8 @@ class LiveEngine:
                 await asyncio.sleep(0.05)
                 continue
             try:
-                for msg in self.step():
+                # Pe un thread: decizia (replanificarea V2) nu oprește bucla și nici UI-ul (AUDIT-008).
+                for msg in await asyncio.to_thread(self.step):
                     self.publish(msg)
             except Exception:
                 log.exception("Eroare în step(); simularea e pusă pe pauză.")

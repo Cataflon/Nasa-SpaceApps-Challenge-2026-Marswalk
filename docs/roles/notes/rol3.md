@@ -81,6 +81,21 @@
 - cifra de titlu: `GET /api/benchmark` → `headline` (503 + `Retry-After` cât rulează; arată un loader);
 - popup-ul de la click: `sources[strat].instrument · sources[strat].mission`, iar dacă `source === "assumption"`, scrie „model”.
 
+### Arhitectura de rutare V2 în motor și în API (făcut de rolul 2, cu acordul utilizatorului)
+
+- `live/engine.py` folosește pipeline-ul V2 din core (`core/replanner.plan`), nu `live/replan.py`.
+- Faza drumului `phase` (OUTBOUND / INBOUND), separată de modul de alertă `mode` (NOMINAL / MONITOR /
+  REACT / EMERGENCY, K 15 / 5 / 1 / 1 din `core/modes.py`); `mode` în `tick`, `phase` / `flags` /
+  `omitted` în `decision` (adăugate și în `live_messages.json`).
+- Eliminate: regula „după RETURN nu mai replanifici” (`committed_return`, `_confirm_return`); drumul spre
+  casă se replanifică la fel ca la dus. Nivel 3: pericol adăugat / actualizat / șters, eveniment de stare,
+  intrare în amprentă; reutilizare după hash-ul stării canonice; evenimente în ordinea (t, seq).
+- `step()` rulează pe un thread în `run()` (AUDIT-008 reparat), comenzile iau un `RLock`.
+- `POST /api/live/event`: formatul vechi (cu validarea parametrilor: AUDIT-004 reparat) și HazardSpec cu
+  `op` add / update / remove (`live_event.json` → `_hazard_spec_example`). Evenimente noi:
+  `crewmate_injured`, `comm_loss`, `custom`.
+- `REPLAN_EVERY_MIN` și `PROXIMITY_M` au plecat din motor (K pe mod și `core_modes.PROXIMITY_M`).
+
 ## În lucru
 
 ## Cereri

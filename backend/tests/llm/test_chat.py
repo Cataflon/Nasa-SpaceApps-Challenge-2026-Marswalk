@@ -74,7 +74,7 @@ def test_layer_value_at_target(monkeypatch):
     monkeypatch.setattr(planning, "get_site", lambda: site)
     result, _ = tools.execute("layer_value", {"target": "clay"})
     assert result == {"target": "clay_delta", "name": "Clay, delta front", "elevation_m": -2530.0, "slope_deg": 7.3,
-                      "max_slope_deg": 25, "terrain": "regolith", "minerals": "clay", "radiation_usv_h": 26.7, "unsafe": False}
+                      "max_slope_deg": meta["max_slope_deg"], "terrain": "regolith", "minerals": "clay", "radiation_usv_h": 26.7, "unsafe": False}
 
 
 def test_eva_status_during_live_eva():

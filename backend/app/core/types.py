@@ -59,6 +59,18 @@ class Alternative:
     science_lost: list[str] = field(default_factory=list)
     valid: bool = True
     violations: list[str] = field(default_factory=list)
+    # --- ARHITECTURA_RUTARE_V2 (§6, §7): câmpuri noi, opționale ---
+    exposure_min: float = 0.0  # expunerea în nucleu (minute), fără excepțiile V5 (ieșire, grația de refugiu)
+    exposure_over_limit: bool = False  # V5: cel puțin un pericol depășește exposure_limit_min
+    halo_integral: float = 0.0  # 0..1: expunerea în halou, normalizată
+    beyond_pnr: bool = False  # V6: trece de punctul de neîntoarcere (cu efectele active)
+    off_map: bool = False  # V7: iese din grilă sau are un segment estimat în afara ei
+    refuge_unusable: bool = False  # V8: refugiul de destinație e `unusable` la sosire
+    priority: int = 0  # prioritatea strategiei (tie-break după scor)
+    merged_with: list[str] = field(default_factory=list)  # id-urile candidaților identici, deduplicați
+    phase: str = "OUTBOUND"  # OUTBOUND | INBOUND
+    flags: list[str] = field(default_factory=list)  # ex. ESTIMATED_OFF_MAP, IMPROVISED_REFUGE
+    score: float | None = None  # S din §7 (completat la selecție)
 
 
 @dataclass
@@ -67,3 +79,8 @@ class Decision:
     alternative_id: str | None
     reason_code: str
     alternatives: list[Alternative]
+    # --- ARHITECTURA_RUTARE_V2 (§6, §9): câmpuri noi, opționale ---
+    omitted: list[dict] = field(default_factory=list)  # [{"id", "reason"}] cu coduri stabile
+    flags: list[str] = field(default_factory=list)  # ex. UNRECOVERABLE, NO_SHELTER, OFF_MAP
+    phase: str = "OUTBOUND"
+    relaxed: list[str] = field(default_factory=list)  # constrângerile relaxate la EMERGENCY

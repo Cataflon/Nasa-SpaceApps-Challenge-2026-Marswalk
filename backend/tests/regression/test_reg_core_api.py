@@ -92,7 +92,7 @@ def test_planner_sunset_does_not_move_with_start_time(synthetic_site):
     assert "DAYLIGHT" in out["violations"]
 
 
-@pytest.mark.xfail(strict=True, reason="AUDIT-009: mesajele ValueError din planner sunt în română, cu mojibake, și ajung în 422")
+# AUDIT-009: reparat înaintea sesiunii V2 (testul trecea ca XPASS); rămâne gardă de regresie.
 def test_route_error_detail_is_english_without_mojibake(client, contract, synthetic_site):
     """`detail` la 422 e în engleză și lizibil (ROL2/ROL3: „mesajele din API (detail la erori) în engleză”)."""
     cost = costmap.static_cost(synthetic_site, "safe")
@@ -103,7 +103,7 @@ def test_route_error_detail_is_english_without_mojibake(client, contract, synthe
     assert detail.isascii(), detail
 
 
-@pytest.mark.xfail(strict=True, reason="AUDIT-010: run_benchmark nu întoarce `headline`")
+# AUDIT-010: reparat înaintea sesiunii V2 (testul trecea ca XPASS); rămâne gardă de regresie.
 def test_run_benchmark_has_headline(synthetic_site):
     """`headline` = {copilot_safe_pct, plan_safe_pct ∈ [0,100], n_scenarios} (README „Noutăți” #5, ROL2 sarcina 11)."""
     out = benchmark.run_benchmark(2, 42, synthetic_site)
@@ -122,21 +122,21 @@ def test_api_benchmark_returns_headline(client, monkeypatch):
     assert r.status_code == 200 and r.json()["headline"] == fake["headline"]
 
 
-@pytest.mark.xfail(strict=True, reason="AUDIT-011: panta maximă e 20° în planner, 25° în Limits și în meta")
+# AUDIT-011: reparat înaintea sesiunii V2 (testul trecea ca XPASS); rămâne gardă de regresie.
 def test_max_slope_is_the_same_everywhere(contract):
     """Planner, validatorul live (Limits) și meta.json folosesc aceeași pantă maximă (o singură regulă de siguranță)."""
     values = {planner.PLANNER_LIMITS.max_slope_deg, Limits().max_slope_deg, float(contract("meta.json")["max_slope_deg"])}
     assert len(values) == 1, values
 
 
-@pytest.mark.xfail(strict=True, reason="AUDIT-015: /api/point nu trimite `sources`")
+# AUDIT-015: reparat înaintea sesiunii V2 (testul trecea ca XPASS); rămâne gardă de regresie.
 def test_api_point_has_sources_for_each_value(client):
     """`sources` are aceleași chei ca `values` (README „Noutăți” #4, ROL3 sarcina 10)."""
     body = client.get("/api/point", params={"row": 300, "col": 200}).json()
     assert set(body.get("sources", {})) == set(body["values"])
 
 
-@pytest.mark.xfail(strict=True, reason="AUDIT-016: POST /api/chat întoarce 501")
+# AUDIT-016: reparat înaintea sesiunii V2 (testul trecea ca XPASS); rămâne gardă de regresie.
 def test_api_chat_streams_ndjson(client):
     """POST /api/chat răspunde 200 cu NDJSON (chat_stream.json; README §5.8)."""
     r = client.post("/api/chat", json={"message": "plan a clay EVA", "history": []})

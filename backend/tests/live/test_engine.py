@@ -216,7 +216,17 @@ def test_failed_explanation_falls_back_to_template():
     assert out[0]["source"] == "template"
 
 
-# ---------------------------------------------------------------- cu replanificarea completă (replan.py)
+# ---------------------------------------------------------------- cu replanificarea V2 (core/replanner.py)
+# Motorul folosește acum pipeline-ul V2 din core (ARHITECTURA_RUTARE_V2), nu live/replan.py: candidații
+# falși se pun în locul lui `core_replanner.generate_candidates`.
+
+
+def _fake_candidates(builder):
+    from app.core import replanner as rp
+
+    def fake(s):
+        return rp.Candidates(builder(s), [], [], None, [])
+    return fake
 
 
 def test_engine_applies_replan_decision(monkeypatch):
@@ -226,12 +236,12 @@ def test_engine_applies_replan_decision(monkeypatch):
         pos = s.position
         base = dict(dose_msv=0.1, arrival_habitat_min=200, sunset_min=420)
         return [
-            Alternative("current", "CONTINUE", s.current_path, 0, 50, risk=0.8, crosses_hazard=True, **base),
+            Alternative("current", "CONTINUE", s.remaining_path, 0, 50, risk=0.8, crosses_hazard=True, **base),
             Alternative("detour_north", "REROUTE", [pos, (pos[0] - 5, pos[1] + 30), (100, 200), (300, 200)], 25, 31, risk=0.12, **base),
             Alternative("detour_south", "REROUTE", [pos, (pos[0], pos[1] - 30)], 40, 22, risk=0.10, **base),
         ]
 
-    monkeypatch.setattr(engine_mod.replan, "candidates", fake_candidates)
+    monkeypatch.setattr(engine_mod.core_replanner, "generate_candidates", _fake_candidates(fake_candidates))
     e = started(straight_route(length=200), site_provider=lambda: site)
     e.inject("local_storm", {})
     d = decisions(run(e, 2))[0]
@@ -242,16 +252,21 @@ def test_engine_applies_replan_decision(monkeypatch):
 
 
 def test_marsquake_on_route_is_avoided_end_to_end():
-    """Criteriul A1 cap-coadă: cutremur pe traseu → REROUTE imediat, ținta atinsă, acasă, fără să
-    treacă prin zonă. Sit plat mic, dus și întors pe același culoar (cazul din F0)."""
-    import math
+    """Criteriul A1 cap-coadă: cutremur pe traseu → REROUTE imediat, ținta atinsă, acasă.
+
+    ARHITECTURA_RUTARE_V2 §2.1 / §8.4: zona de cutremur e statică și blochează doar celulele cu pantă
+    > 15° (risc de surpare); restul zonei e halou. De aceea pantele abrupte sunt puse chiar pe culoarul
+    traseului (pe un sit complet plat, traversarea zonei e permisă și decizia ar fi CONTINUE).
+    """
     import sys
     from pathlib import Path
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "core"))
     from grids import make_site
 
-    site = make_site(np.zeros((40, 80), dtype=np.float32), habitat=(20, 2),
+    slope = np.zeros((40, 80), dtype=np.float32)
+    slope[17:24, 37:44] = 17.0  # pante de 17° în mijlocul zonei, pe culoar
+    site = make_site(slope, habitat=(20, 2),
                      targets=[{"id": "t", "name": "T", "kind": "clay", "row": 20, "col": 77,
                                "science_value": 10, "dwell_min": 10, "image": None}])
     out = [[20, c] for c in range(2, 78)]
@@ -263,14 +278,14 @@ def test_marsquake_on_route_is_avoided_end_to_end():
     d = decisions(msgs)[0]
     assert (d["decision"], d["trigger"], d["t_min"]) == ("REROUTE", "event", 1)
     assert (20, 77) in e.traveled and e.state == "finished" and e.end_reason == "egress_complete"
-    closest = min(math.hypot(r - 20, c - 40) for r, c in e.traveled) * 20
-    assert closest > 120  # nu a intrat în zona cutremurului
+    steep_in_zone = {(r, c) for r in range(17, 24) for c in range(37, 44)}
+    assert not steep_in_zone & set(e.traveled)  # nu a călcat pe pantele abrupte din zona cutremurului
 
 
-# ---------------------------------------------------------------- rolul 2 (T6d), adaptat la replan.py
-# Replanificarea rulează acum la eveniment, la watchdog și periodic (vezi docs/plan-replanificare-live.md),
-# deci testul „generate doar în fereastra de 30 min” nu mai se aplică. Pe drumul spre casă se
-# replanifică la fel ca la dus (cerința echipei, 14.11); furtuna regională se confirmă fără replanificare.
+# ---------------------------------------------------------------- dus-întors (ARHITECTURA_RUTARE_V2 §6.1)
+# Replanificarea rulează la eveniment, la watchdog și periodic. Pe drumul spre casă se replanifică la fel
+# ca la dus, inclusiv la furtuna regională: regula „după RETURN nu mai replanifici” și confirmarea
+# RETURN (`_confirm_return`) au fost eliminate intenționat (§6.1).
 
 
 def _counting_candidates(monkeypatch):
@@ -278,14 +293,14 @@ def _counting_candidates(monkeypatch):
     calls = []
 
     def fake(s):
-        calls.append(s.t_min)
+        calls.append(s.t_now)
         pos = s.position
         base = dict(dose_msv=0.1, arrival_habitat_min=200, sunset_min=420)
         home = [(r, pos[1]) for r in range(pos[0], 301)]
-        return [Alternative("current", "CONTINUE", s.current_path, 0, 50, risk=0.8, crosses_hazard=True, **base),
+        return [Alternative("current", "CONTINUE", s.remaining_path, 0, 50, risk=0.8, crosses_hazard=True, **base),
                 Alternative("return", "RETURN", home, 0, 60, risk=0.0, **base)]
 
-    monkeypatch.setattr(engine_mod.replan, "candidates", fake)
+    monkeypatch.setattr(engine_mod.core_replanner, "generate_candidates", _fake_candidates(fake))
     return calls
 
 
@@ -298,13 +313,16 @@ def dense_route(length=200):
     return {"path": out + out[-2::-1], "stops": [], "budget": {"sunset_min": 420, "return_by_min": 390}}
 
 
-def test_way_home_is_still_replanned_but_regional_is_confirmed(monkeypatch):
+def test_way_home_is_replanned_like_the_way_out(monkeypatch):
     calls = _counting_candidates(monkeypatch)
-    e = started(dense_route(), site_provider=lambda: FAKE_SITE)
+    route = dense_route()
+    route["stops"] = [{"id": "t", "index_in_path": 200, "dwell_min": 0}]  # oprire la capăt: pornim OUTBOUND
+    e = started(route, site_provider=lambda: FAKE_SITE)
+    assert e.phase == "OUTBOUND"
     run(e, 60)  # departe de habitat, ca drumul înapoi să dureze
     e.inject("local_storm", {})
     ds = decisions(run(e, 2))
-    assert ds and ds[0]["decision"] == "RETURN" and e.committed_return
+    assert ds and ds[0]["decision"] == "RETURN" and e.phase == "INBOUND"
 
     # Un pericol nou pe drumul spre casă: se replanifică, ca la dus.
     n_calls = len(calls)
@@ -312,13 +330,13 @@ def test_way_home_is_still_replanned_but_regional_is_confirmed(monkeypatch):
     run(e, 2)
     assert len(calls) > n_calls
 
-    # Furtuna regională (singurul răspuns: RETURN): confirmare pe același drum, fără replanificare.
-    n_calls, remaining_before = len(calls), list(e.remaining)
+    # Furtuna regională: tot replanificare (nu o confirmare fixă); decizia poartă phase = INBOUND.
+    n_calls = len(calls)
     e.inject("regional_storm", {})
     ds = decisions(run(e, 1))
-    assert [d["decision"] for d in ds] == ["RETURN"] and len(calls) == n_calls
-    assert [a["id"] for a in ds[0]["alternatives"]] == ["return"] and ds[0]["alternatives"][0]["valid"]
-    assert e.remaining == remaining_before[len(remaining_before) - len(e.remaining):]
+    assert len(calls) > n_calls
+    assert ds and all(d["phase"] == "INBOUND" for d in ds)
+    assert all(d["decision"] != "RETURN" for d in ds)  # în INBOUND: REROUTE / WAIT / CONTINUE / EMERGENCY
     assert e.remaining[-1] == (300, 200)
 
 
@@ -327,15 +345,15 @@ def test_emergency_keeps_reevaluating(monkeypatch):
     calls = []
 
     def nothing_valid(s):
-        calls.append(s.t_min)
+        calls.append(s.t_now)
         base = dict(dose_msv=0.1, arrival_habitat_min=200, sunset_min=420)
-        return [Alternative("current", "CONTINUE", s.current_path, 0, 50, risk=0.8, crosses_hazard=True, **base),
+        return [Alternative("current", "CONTINUE", s.remaining_path, 0, 50, risk=0.8, crosses_hazard=True, **base),
                 Alternative("return", "RETURN", [s.position, (300, 200)], 0, 60, risk=0.8, crosses_hazard=True, **base)]
 
-    monkeypatch.setattr(engine_mod.replan, "candidates", nothing_valid)
+    monkeypatch.setattr(engine_mod.core_replanner, "generate_candidates", _fake_candidates(nothing_valid))
     e = started(dense_route(), site_provider=lambda: FAKE_SITE)
     run(e, 20)
     e.inject("marsquake", {"center": {"row": round(e.pos[0]), "col": 200}, "axes_m": [400, 400]})
     ds = decisions(run(e, 12))
-    assert ds[0]["decision"] == "EMERGENCY" and not e.committed_return
+    assert ds[0]["decision"] == "EMERGENCY"
     assert len(calls) >= 2  # reevaluat după REEVAL_MIN

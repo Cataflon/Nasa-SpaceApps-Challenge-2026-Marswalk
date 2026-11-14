@@ -196,12 +196,27 @@ def _route_intensity(path, eta_min, hazards: list[Hazard], cell_size_m: float) -
 def route_hit(path: list[tuple[int, int]], eta_min: list[float], hazards: list[Hazard], cell_size_m: float, threshold: float = HIT_THRESHOLD) -> tuple[bool, float | None]:
     """Traseul intră în pericol prezis? Întoarce (da/nu, minutul primului contact).
 
-    Contact = primul punct în care intensitatea prezisă la eta_min[i] e ≥ threshold.
+    Contact = primul moment în care traseul (parcurs liniar între puncte, după eta_min) intră în zona
+    cu intensitate prezisă ≥ threshold: testul de conflict CONTINUU din `conflict.py` (ARHITECTURA_RUTARE_V2
+    §4, S1), pe elipsa pragului (semiaxe × √(1 − prag/I)) cu același con aditiv SIGMA_REL. Minutul poate
+    fi fracționar și cade cel mult cu un tick înaintea primului punct eșantionat lovit.
     """
-    hits = np.flatnonzero(_route_intensity(path, eta_min, hazards, cell_size_m) >= threshold)
-    if hits.size == 0:
+    from app.core.conflict import hazard_track, to_metres, track_intervals
+
+    if len(path) != len(eta_min):
+        raise ValueError("path și eta_min trebuie să aibă aceeași lungime.")
+    points = to_metres(path, cell_size_m)
+    first = None
+    for h in hazards:
+        track = hazard_track(h, threshold, SIGMA_REL)
+        if track is None:
+            continue
+        intervals, _ = track_intervals(points, eta_min, track)
+        if intervals and (first is None or intervals[0][0] < first):
+            first = intervals[0][0]
+    if first is None:
         return False, None
-    return True, float(eta_min[int(hits[0])])
+    return True, float(first)
 
 
 def route_risk(path: list[tuple[int, int]], eta_min: list[float], hazards: list[Hazard], cell_size_m: float) -> float:

@@ -8,7 +8,7 @@ from app.core.types import Alternative, Decision, Limits
 from app.core.validator import validate
 
 RISK_THRESHOLD = 0.3  # sub acest risc, traseul curent continuă
-MIN_IMPROVEMENT = 0.2  # histerezis: alternativa trebuie să fie cu ≥20% mai bună
+MIN_IMPROVEMENT = 0.12  # histerezis δ (ARHITECTURA_RUTARE_V2 §7): alternativa trebuie să fie cu ≥ 12 % mai bună
 
 
 def score(alt: Alternative, preset: str) -> float:

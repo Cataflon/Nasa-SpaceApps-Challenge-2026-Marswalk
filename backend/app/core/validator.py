@@ -14,8 +14,17 @@ def violations(alt: Alternative, limits: Limits) -> list[str]:
         out.append("SLOPE")
     if alt.dose_msv > limits.max_dose_msv:
         out.append("DOSE")
-    if alt.crosses_hazard:
+    # V5 (ARHITECTURA_RUTARE_V2 §7): expunerea peste limita pericolului; `crosses_hazard` rămâne pentru
+    # candidații vechi (coliziune binară).
+    if alt.crosses_hazard or alt.exposure_over_limit:
         out.append("HAZARD")
+    # V6: punctul de neîntoarcere (nu se aplică variantelor RETURN și nici pe drumul spre casă).
+    if alt.beyond_pnr and alt.kind != "RETURN" and alt.phase != "INBOUND":
+        out.append("NO_RETURN_POINT")
+    if alt.off_map:  # V7: toate celulele în grilă
+        out.append("OFF_MAP")
+    if alt.refuge_unusable:  # V8: refugiul de destinație e utilizabil la sosire
+        out.append("NO_SHELTER")
     return out
 
 

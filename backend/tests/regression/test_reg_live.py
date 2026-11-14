@@ -93,7 +93,7 @@ def test_jezero_demo_return_clock_updates_after_storm_front():
     pytest.fail("nicio decizie la minutul 80")
 
 
-@pytest.mark.xfail(strict=True, reason="AUDIT-004: parametri aberanți la /api/live/event sunt acceptați (200), apoi step() aruncă")
+# AUDIT-004: reparat în faza F8 a arhitecturii V2 (validarea HazardSpec la POST /api/live/event).
 def test_live_event_with_malformed_center_is_rejected(client, contract):
     """Un `center` care nu e {row: int, col: int} e respins la intrare cu 422 (live_event.json, forma lui center)."""
     client.post("/api/route", json=contract("route_request.json"))
@@ -102,7 +102,7 @@ def test_live_event_with_malformed_center_is_rejected(client, contract):
     assert r.status_code == 422
 
 
-@pytest.mark.xfail(strict=True, reason="AUDIT-004: o excepție în step() pune simularea pe pauză fără niciun mesaj către clienți")
+# AUDIT-004: reparat înaintea sesiunii V2 (testul trecea ca XPASS); rămâne gardă de regresie.
 def test_engine_run_notifies_clients_when_step_fails(monkeypatch, contract):
     """Dacă un tick eșuează, clienții WebSocket primesc un mesaj (event/eroare), nu doar tăcere (ROL3: broadcast)."""
     e = _engine(contract("route_response.json"), events=[])
@@ -137,7 +137,7 @@ def test_engine_o2_matches_plan_budget_without_events(synthetic_site, plan):
     assert abs(end["params"]["o2_pct"] - plan["budget"]["o2_end_pct"]) <= 2.0
 
 
-@pytest.mark.xfail(strict=True, reason="AUDIT-008: step() cu decizie rulează sincron în bucla asyncio și o blochează")
+# AUDIT-008: reparat înaintea sesiunii V2 (testul trecea ca XPASS); rămâne gardă de regresie.
 def test_engine_decision_does_not_block_event_loop(monkeypatch, synthetic_site, plan):
     """Un calcul de decizie de 0,5 s (măsurat: 436 ms) nu blochează bucla > 0,2 s (README §4: decizia nu oprește UI-ul)."""
 
@@ -168,7 +168,7 @@ def test_engine_decision_does_not_block_event_loop(monkeypatch, synthetic_site, 
     assert max(gaps) < 0.2, f"bucla blocată {max(gaps):.2f} s"
 
 
-@pytest.mark.xfail(strict=True, reason="AUDIT-017: mesajul decision nu are compute_ms")
+# AUDIT-017: reparat înaintea sesiunii V2 (testul trecea ca XPASS); rămâne gardă de regresie.
 def test_decision_message_has_compute_ms(contract):
     """Mesajul `decision` are `compute_ms` ≥ 0 (README „Noutăți” #2, ROL3 sarcina 4)."""
     e = _engine(contract("route_response.json"), events=[])

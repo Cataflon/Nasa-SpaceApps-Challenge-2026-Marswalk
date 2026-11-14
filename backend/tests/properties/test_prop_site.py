@@ -37,17 +37,21 @@ def test_fifty_random_pairs_on_site_give_valid_paths(synthetic_site):
 
 def test_benchmark_valid_alternatives_respect_limits_and_choice_is_valid(monkeypatch, synthetic_site):
     """Faza 3.2: pe 30 de scenarii, nicio alternativă validă nu încalcă O₂/doză/pantă/apus/pericol, iar
-    decizia e din mulțimea validă sau RETURN/EMERGENCY; traseele alternativelor sunt continue și permise."""
+    decizia e din mulțimea validă sau RETURN/EMERGENCY; traseele alternativelor sunt continue și permise.
+
+    V2 (ARHITECTURA_RUTARE_V2 §7): benchmark-ul trece prin `replanner.plan` (nu mai cheamă `choose`), iar
+    regula de pericol e V5: o alternativă validă nu depășește limita de expunere (`exposure_over_limit`);
+    `crosses_hazard` poate fi adevărat pe ieșirea tolerată dintr-o zonă (exit_zone)."""
     cost = costmap.static_cost(synthetic_site, "safe")
     seen = []
-    orig = benchmark.choose
+    orig = benchmark.replan
 
-    def spy(alts, *a, **k):
-        d = orig(alts, *a, **k)
-        seen.append((d, list(alts)))
-        return d
+    def spy(state):
+        d, cands = orig(state)
+        seen.append((d, list(cands.alternatives)))
+        return d, cands
 
-    monkeypatch.setattr(benchmark, "choose", spy)
+    monkeypatch.setattr(benchmark, "replan", spy)
     benchmark.run_benchmark(30, SEED, synthetic_site)
     L = Limits()
     assert seen
@@ -57,7 +61,7 @@ def test_benchmark_valid_alternatives_respect_limits_and_choice_is_valid(monkeyp
         for a in alts:
             if a.valid:
                 assert a.o2_end_pct >= L.o2_reserve_pct and a.dose_msv <= L.max_dose_msv
-                assert a.max_slope_deg <= L.max_slope_deg and not a.crosses_hazard
+                assert a.max_slope_deg <= L.max_slope_deg and not a.exposure_over_limit
                 assert a.arrival_habitat_min <= a.sunset_min - L.sunset_margin_min
             assert all(max(abs(p[0] - q[0]), abs(p[1] - q[1])) <= 1 for p, q in zip(a.path, a.path[1:])), a.id
             assert all(np.isfinite(cost[c]) for c in a.path), a.id

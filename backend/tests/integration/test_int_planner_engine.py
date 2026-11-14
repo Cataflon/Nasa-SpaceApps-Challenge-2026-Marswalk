@@ -34,7 +34,11 @@ def test_planner_verdict_is_coherent_with_budget(synthetic_site, preset):
 
 @pytest.mark.slow
 def test_engine_real_core_decides_at_each_scheduled_demo_minute(synthetic_site):
-    """Cu core real și evenimentele demo ale sitului, fiecare pericol programat produce o decizie la minutul lui."""
+    """Cu core real și evenimentele demo ale sitului, fiecare pericol programat produce o decizie la minutul lui.
+
+    V2 (ARHITECTURA_RUTARE_V2 §4, §6.1): vârtejul de la min 30 lovește traseul în câteva minute, ocolirea e
+    infezabilă și copilotul se întoarce; ajunge acasă înainte de min 80, deci verificăm doar pericolele
+    programate cât rularea e activă (cel puțin primul). Scena e de recalibrat (cerere la rolul 1)."""
     route = planner.plan_route(synthetic_site, synthetic_site.habitat, ["clay_delta"])
     store = RouteStore()
     rid = store.add(route)
@@ -45,7 +49,9 @@ def test_engine_real_core_decides_at_each_scheduled_demo_minute(synthetic_site):
     decided = []
     while e.state == "running" and e.t_min < 300:
         decided += [m["t_min"] for m in e.step() if m["type"] == "decision"]
-    for t in hazard_minutes:
+    active = [t for t in hazard_minutes if t <= e.t_min]
+    assert active and active[0] == min(hazard_minutes), (hazard_minutes, e.t_min)
+    for t in active:
         assert any(t <= d <= t + 15 for d in decided), (t, decided)
 
 

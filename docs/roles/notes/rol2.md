@@ -457,9 +457,145 @@ Textul lor complet e în istoricul git al acestui fișier; aici, doar rezolvarea
 
 ## În lucru
 
-- Nimic în lucru. Toate funcțiile din `ROL2_algoritmi.md` sunt implementate, iar cererile deschise
-  de la 14.11 sunt rezolvate (vezi „Sesiunea din 14.11” la „Gata”).
-- Rămân de făcut doar dacă se cer: registrul `core/params.py` propus în `PARAMETRI_REFERINTA.md`.
+### Arhitectura de rutare V2 (`docs/roles/ARHITECTURA_RUTARE_V2.md`, inclusiv §6.1 dus-întors)
+
+Decizie (utilizatorul): pipeline-ul V2 stă în `backend/app/core`; `live/engine.py` îl cheamă în locul
+lui `live/replan.py` (fișierul rolului 3 rămâne neatins). Constantele noi stau în module noi din `core`
+(`pipeline/tests/test_how_we_calculate.py` cere ca orice constantă din `budget`, `costmap`, `decision`,
+`hazards`, `daylight`, `planner`, `validator`, `live/engine.py` să fie în `docs/how-we-calculate.md`,
+pe care nu îl pot modifica).
+
+**Linia de bază (înainte de V2):** backend 433 trecute, 14 picate, 15 xfail, 37 deselectate. Dintre
+cele 14: 8 XPASS(strict) (buguri reparate înainte: AUDIT-004 notificarea la eroare, 008, 009, 010
+`run_benchmark`, 011, 015, 016, 017), `route_version` lipsă din `live_messages.json` (3 teste), panta
+25° într-un test de chat, scena demo (WAIT la min 80 cu `replan.py`, 2 teste). `-m slow`: 14 trecute,
+1 picat (`test_e2e_server`, uvicorn pe 8002), 1 xfail. Pipeline: 92 trecute, 1 picat
+(`REPLAN_EVERY_MIN`, `PROXIMITY_M` din motor nedocumentate), 5 sărite.
+
+**Harta specificație → cod (înainte de V2):**
+
+| § | Exista | Parțial | Lipsea |
+|---|---|---|---|
+| 2 HazardSpec | `hazards.Hazard`, `from/to_contract`, `HAZARD_RESPONSES`, `HAZARD_DEFAULTS` (motor) | profil parabolic de intensitate | efecte, `rev`, re-ancorare, normalizare, < 30 m ignorat, > 60 % global |
+| 3 Moduri | watchdog pe tick, REEVAL 5 min, periodic 5 min, proximitate 450 m | declanșatoare nivel 3 | NOMINAL/MONITOR/REACT/EMERGENCY, K adaptiv, `(t, seq)`, hash stare |
+| 4 Conflict | `route_hit`/`route_risk` pe puncte, con aditiv `SIGMA_REL` | — | test pătratic pe felii, plafon H_CONE, δ⊥, expunere, `can_sidestep` |
+| 5 Cost | `static_cost`, `hazard_cost`, `minutes_grid`, `reverse_dijkstra` (simetric) | start în pericol finit (T4) | `t_est`, Φ nucleu/halou/plafon, multi-sursă, N_MAX |
+| 6 Candidați | `current`, waypoint pe laturi (o iterație), `wait`, `exit_zone`, `return`, `nearest_exit`, deduplicare 50 % | etichete după produsul vectorial, wait până la 90 | iterare ×3, inele, `WAYPOINT_OFF_MAP`, `detour_free`, `replan_stops`, `shelter`, `merged_with`, coduri de omitere |
+| 6.1 Dus-întors | `generate` cu opriri goale | — | eliminarea regulii RETURN (`committed_return`, `_confirm_return`, benchmark `committed`), fază, `phase` |
+| 7 Validator | V1-V4 + HAZARD binar, `decision.choose` (histerezis 20 %) | — | V5-V8, scor normalizat, δ = 0,12, DWELL_MIN |
+| 8-9 Limită | `cost_to_home` înainte de A*, ValueError → 422 | — | off-map, refugii, hub_effect, NO_SHELTER, ISOLATED, UNRECOVERABLE |
+
+**Făcut până acum:**
+- Curățenie: scos `xfail` de pe cele 8 teste care treceau; `route_version` (tick, decision) și `trigger`
+  adăugate în `live_messages.json`; testul de chat citește panta din meta.
+- **F0** `core/hazard_spec.py`: `HazardSpec`, `Effects`, `CLASS_DEFAULTS`, `normalize` (coduri
+  `NAN_VALUE`, `BAD_SHAPE`, `MISSING_CENTER`; avertismente `SPEED_CAPPED`, `SMALL_IGNORED`,
+  `COVERAGE_GLOBAL`…), `HazardRegistry` (add/update/remove, `rev`, re-ancorare), conversii. 17 teste.
+- **F1** `core/conflict.py`: test pătratic pe felii ≤ 1 tick, expunere, adâncime, δ⊥ plafonat,
+  `can_sidestep`, `contains`; `hazards.route_hit` folosește testul continuu (semnătura neschimbată).
+  9 teste (60 de cazuri față de eșantionarea la 1 s). Test modificat: `test_route_hit_on_crossing_path_
+  gives_correct_minute` (contactul continuu cade la 14,28, între punctele 14 și 15; înainte, minutul 15).
+
+- **F2** `budget.timeline` (sursa unică: `EffectWindow` cu multiplicatori de viteză / O₂ / doză, adaos
+  O₂/min, apus mutat; `point_effects` pentru efectele locale; fără efecte = calculul vectorizat vechi,
+  `route_budget` delegă la el), `budget.active_multipliers`, `budget.effective_sunset`;
+  `costfield.t_est_grid` (Dijkstra înainte pe minute, blocuri 5 × 5). Consum pe plat = 0,194 %/min.
+- **F3** `costfield.temp_cost` (nucleu M_CORE, halou M_HALO·(1 − d)², plafon M_MAX, `block = all` → +∞
+  doar dacă nu conține startul, start în pericol → gradient de ieșire, zone statice blocate doar pe pante
+  > 15°, evaluare la t_est); `routing.reverse_dijkstra_multi` (refugii, N_MAX), `routing.project_to_grid`.
+  16 teste (F2 + F3).
+- **F4** `validator`: V5 (`exposure_over_limit`), V6 `NO_RETURN_POINT` (nu pe RETURN / INBOUND),
+  V7 `OFF_MAP`, V8 `NO_SHELTER`; `types.Alternative` / `Decision`: câmpuri noi la final;
+  `core/selection.py`: scor §7 pe preset, ordine `(S, prioritate, id)`, histerezis δ = 0,12 +
+  DWELL_MIN = 3, EMERGENCY cu relaxare V2 → V5, `UNRECOVERABLE`, RETURN → REROUTE în INBOUND.
+  `decision.MIN_IMPROVEMENT` 0,2 → 0,12 (aliniat cu §7; `test_decision.py` rămâne verde). 9 teste.
+
+- **F5** `core/replanner.py`: `ReplanState`, `watchdog` (nivel 1: contacte continue pe H_WATCH, astronaut
+  în amprentă, O₂, apus, hartă, refugiu; ~3 ms), `generate_candidates` (ordine fixă: current, două ocoliri
+  cu waypoint iterat ×3 + inele `(row, col)` + etichete după centrul pericolului, `detour_free`, `wait`
+  ∈ {5..30} doar cu poziția în afara amprentei, `exit_zone` (REROUTE, ieșirea tolerată în V5),
+  `replan_stops` (fără opririle blocate), `return` (Π_home doar fără contact, altfel A* pe C_temp),
+  `shelter` (pericole globale); deduplicare cu `merged_with`; omiteri `SIDESTEP_INFEASIBLE`,
+  `WAYPOINT_OFF_MAP`, `NO_PATH`, `DUPLICATE`, `STOP_BLOCKED`, `HAZARD_GLOBAL`), `plan` (selecție §9,
+  steaguri `OFF_MAP`, `NO_SHELTER`, `ISOLATED`). Evaluare cap-coadă cu `timeline` + efecte locale,
+  V5 cu excepțiile (ieșire, grația de refugiu HUB_GRACE_M, AIRLOCK_MIN), V6 cu efectele active.
+  Pe situl sintetic: replanificare 0,12 s (cache cald), primul apel 0,75 s. 12 teste.
+  - Abatere: ponderea științei din scorul §7 e aliniată cu `costmap.PRESETS[w_science]` (0,15 / 0,20 /
+    0,40), restul scalate proporțional (altfel întoarcerea câștigă mereu prin O₂-ul rămas).
+  - `alternatives.generate` rămâne API-ul vechi (testele lui neschimbate); motorul și benchmark-ul trec pe
+    `replanner.plan`.
+  - Rămas: `replan_stops` cu CP-SAT (acum doar elimină opririle blocate, păstrând ordinea).
+
+- **F6** dus-întors: `live/engine.py` folosește `core.replanner.plan` (nu mai importă `live/replan.py`);
+  `phase` OUTBOUND/INBOUND (INBOUND după RETURN/EMERGENCY/varianta RETURN sau după ultima oprire; nu se
+  revine); scoase `committed_return`, `_confirm_return` și excepția din watchdog pentru pericolele
+  doar-RETURN; `_specs` (pericolele motorului → HazardSpec), `_effects` (oboseală, scurgere, globale),
+  `_replan_state`; `phase`, `flags`, `omitted` în mesajul `decision` (+ în `live_messages.json`);
+  `step()` rulează pe un thread în `run()` cu un `RLock` (AUDIT-008 reparat de fapt: înainte testul trecea
+  doar pentru că replanificarea era rapidă). `benchmark.py`: `replanner.plan`, fără `committed`, cu fază.
+  Teste: SC-19, SC-20 (simetria), SC-21, SC-22, determinism în `tests/integration/test_sc_golden.py`.
+  Teste modificate (comportament schimbat intenționat de §6.1): în `tests/live/test_engine.py`, falsurile
+  trec de la `replan.candidates` la `core_replanner.generate_candidates`, iar
+  `test_way_home_is_still_replanned_but_regional_is_confirmed` devine
+  `test_way_home_is_replanned_like_the_way_out` (fără confirmare RETURN); testele demo din
+  `tests/scenario` verifică acum criteriile V2 (decizie validă la min 30, faza nu revine în OUTBOUND,
+  acasă cu O₂ ≥ rezervă), nu secvența fixă de la replanificatorul vechi.
+
+- **F7** cazurile limită în `replanner`: OFF_MAP (proiecție + segment estimat în linie dreaptă, consumat
+  înainte de candidați, steagul `ESTIMATED_OFF_MAP`, decizie RETURN cu motiv OFF_MAP); traseul legat cu
+  A* după proiecție; ISOLATED fără A* (cost_to_home = inf pe celulă și vecini) pentru start (EMERGENCY)
+  și pentru ținte (omisă cu `ISOLATED`); refugii multiple (`ReplanState.refuges`, Dijkstra multi-sursă),
+  `hub_effect` none/degraded (grație 100 m + ecluză 5 min) / unusable (V8, `NO_SHELTER`, refugiu
+  improvizat = cea mai apropiată celulă în afara amprentelor, EMERGENCY); furtuna regională → variantele
+  care mai vizitează opriri sunt respinse (`RETURN_REQUIRED`); `effects_from_specs` (furtuna solară după
+  avertizarea de 30 min, ×2,5, 48 h; regională: viteză × 0,8, apus −75 min; coechipier rănit × 0,5 / ×
+  1,5; scurgere; oboseală); zona de cutremur: V5 numără doar timpul pe pantele > 15° din nucleu.
+  17 teste (`tests/core/test_edge_cases.py`). Test modificat: `test_marsquake_on_route_is_avoided_end_to_end`
+  (pe un sit plat zona nu blochează, conform §2.1; testul pune acum pante abrupte în zonă).
+
+- **F8** `core/modes.py` (K pe mod 15/5/1/1, `mode_for`, `state_hash`, `PROXIMITY_M`); motorul: `mode`
+  calculat la fiecare tick din contactele pe H_WATCH (MONITOR) / H_REACT, astronaut în amprentă,
+  eveniment de stare, EMERGENCY (`mode` în mesajul `tick`, + în contract); nivel 2 periodic la K tick-uri
+  după mod; nivel 3: pericol adăugat / actualizat / șters, eveniment de stare, intrare în amprentă;
+  un singur replan pe tick; reutilizare când hash-ul stării canonice (cu `rev`) nu s-a schimbat;
+  evenimente în ordinea (t, seq), cele din trecut aplicate acum cu `warning: EVENT_IN_PAST`;
+  `op` add / update (re-ancorare, `rev` + 1) / remove; `crewmate_injured` (viteză × 0,5, O₂ × 1,5),
+  `comm_loss`. `POST /api/live/event`: formatul vechi + HazardSpec cu `op`, validat (422 cu cod stabil);
+  `live_event.json`: `_allowed_ops`, `_hazard_spec_example`, `_hazard_spec_update_example` (enumul vechi
+  neschimbat, legat de `schemas.EventKind` / `scenario.ALLOWED_EVENTS` / `utils.js`). Constantele
+  `REPLAN_EVERY_MIN`, `PROXIMITY_M` au plecat din motor (testul de documentare din pipeline trece).
+  **AUDIT-004 reparat** (marcajul `xfail` scos). 9 teste (`tests/live/test_engine_modes.py`).
+
+- **F9** `tests/integration/test_sc_synthetic.py`: SC-01…SC-12 și SC-14…SC-17 pe situl sintetic v9
+  (traseul habitat → clay_delta → habitat), SC-13 / SC-18 în `test_replanner.py` / `test_edge_cases.py`
+  (cer geometrie anume), SC-19…SC-22 în `test_sc_golden.py`; proprietățile §10 pe 50 de cazuri cu seed
+  fix (`-m slow`): nicio excepție, ieșire identică la două rulări, decizia aleasă trece V1-V8 sau e
+  EMERGENCY / UNRECOVERABLE, expunerea continuă ≥ cea eșantionată.
+  - Teste lente modificate (comportament schimbat intenționat): `test_prop_site::test_benchmark_valid_
+    alternatives_respect_limits_and_choice_is_valid` spionează acum `benchmark.replan` (benchmark-ul nu mai
+    cheamă `choose`) și verifică V5 (`exposure_over_limit`) în locul lui `crosses_hazard` (ieșirea tolerată
+    dintr-o zonă e validă); `test_int_planner_engine::test_engine_real_core_decides_at_each_scheduled_demo_
+    minute` verifică doar pericolele programate cât rularea e activă (în V2, RETURN la min 30, acasă la 60).
+  - **Teste la final:** backend 557 trecute, 14 xfail, 0 picate (571 colectate, 37 deselectate);
+    `-m slow`: 16 din 17 rulate: 13 trecute (după 2 teste adaptate), 1 picat și înainte de V2 (`test_e2e_server` reconectare, cerere la rolul 3), testul de memorie pe 130 de scenarii sub `tracemalloc` oprit după ~40 min (nu a picat, e lent: vezi „Rămas”); `test_jezero_demo_return_clock…` nerulat; pipeline 93 trecute, 5 sărite.
+  - **Timpi** (situl sintetic 500 × 500, 3 rulări, mediana): watchdog 3,3-6,0 ms (țintă < 50 ms);
+    replanificare 0,117-0,124 s cu cache-ul sitului cald (țintă ≤ 0,5 s), primul apel ~0,75 s;
+    `plan_route` primul apel într-un proces nou 1,16 s (1,15 / 1,16 / 1,22; țintă < 3 s).
+  - **Benchmark** `run_benchmark(100, 42)`: copilot 85 % în siguranță (înainte 82 %), planul fix 51 %
+    (neschimbat). Pe tipuri: vârtej 67/67, furtună locală 18/27, regională 0/6 (plecare prea târzie pentru
+    orice răspuns). Niciun scenariu mai puțin sigur decât planul. Explicația (nedescompusă pe
+    cauze): replanificarea pe întoarcere (înainte, după RETURN copilotul nu mai ocolea furtunile de pe
+    drumul spre casă; acum le ocolește ca la dus) și testul continuu (vârtejurile mici nu mai trec
+    printre eșantioane). Știința copilotului: 27 % (se întoarce des, iar furtunile locale lovesc traseul
+    spre țintă). Durata: 91 s.
+
+**Rămas:** `replan_stops` cu CP-SAT (acum doar scoate opririle blocate, păstrând ordinea); motivul e
+timpul (CP-SAT la fiecare replanificare ar depăși 0,5 s fără cache). Dacă se reia: `stops.plan_stops`
+pe opririle rămase, doar la oprire blocată sau eveniment de stare. De urmărit: `routing.astar` (Python
+pur) e ~50 % din timpul benchmark-ului (90 de apeluri × 55 ms pe 15 scenarii); sub `tracemalloc`, testul
+de memorie pe 130 de scenarii devine foarte lent.
+
+**Pasul următor:** niciunul pentru V2 (F0-F9 gata); cererile către rolurile 1, 3 și 4 sunt la „Cereri”.
 
 ## Cereri
 
@@ -487,6 +623,32 @@ Textul lor complet e în istoricul git al acestui fișier; aici, doar rezolvarea
 - **Pentru oameni (de știut):** benchmark-ul are un scenariu în care copilotul e mai puțin sigur
   decât planul (`storm_77`, WAIT sub un vârtej care deviază). Merită decis dacă WAIT trebuie să ceară
   o marjă mai mare față de vârtejuri (al căror singur răspuns permis e REROUTE).
+
+- **Pentru rolul 1 (nou, arhitectura V2):** (a) de documentat în `docs/how-we-calculate.md` constantele noi
+  (lista e la „Presupuneri”, blocul V2) și schimbarea `decision.MIN_IMPROVEMENT` 0,2 → 0,12 (documentul
+  arată încă 0,2); (b) scena demo trebuie recalibrată pentru V2: vârtejul de la minutul 30 lovește traseul
+  în ~4 min, deci ocolirea e infezabilă (§4) și copilotul se întoarce acasă înainte de front și de
+  furtuna regională; pentru momentul „ocolire” e nevoie de un contact la ~15-20 min (ca în SC-03);
+  (c) scenariile golden SC-01…SC-22 în `scenario.py` (evenimente `custom`, `crewmate_injured`,
+  `comm_loss`, op `update`); (d) surse pentru parametrii C ai claselor de hazard (α 15 / 30 m/min,
+  σ_rel, avertizarea de 30 min a furtunii solare, coechipier rănit × 0,5 / × 1,5).
+- **Pentru rolul 3 (nou):** (a) `live/replan.py` nu mai e folosit de motor (pipeline-ul V2 e în
+  `core/replanner.py`); propun retragerea lui și a `tests/live/test_replan.py`; (b) `schemas.LiveEvent`
+  / `EventKind` nu cunosc `custom`, `crewmate_injured`, `comm_loss` și formatul cu `op`: deocamdată
+  `POST /api/live/event` le tratează în `api/main.py` (body brut, validat prin `HazardSpec`);
+  (c) `LiveEngine.step()` rulează acum pe un thread în `run()` (AUDIT-008), cu un `RLock` pe comenzi;
+  (d) rezumatul pentru LLM poate folosi câmpurile noi `phase`, `flags`, `omitted`; (e) `tests/e2e/
+  test_e2e_server.py::test_disconnect_does_not_affect_others_and_reconnect_gets_current_state` pică și
+  înainte de V2: `subscribe()` trimite întâi un mesaj `state`, testul așteaptă `tick` (de aliniat testul
+  sau `subscribe`).
+- **Pentru rolul 4 (nou):** etichete noi de alternative: `detour_east`, `detour_west`, `detour_free`,
+  `exit_zone` (acum REROUTE), `replan_stops`, `shelter` (id-urile `detour_*` sunt șiruri libere);
+  `decision.phase` = `OUTBOUND` / `INBOUND` (pe întoarcere deciziile sunt REROUTE / WAIT, nu RETURN);
+  `decision.flags`: `NO_SHELTER`, `OFF_MAP`, `UNRECOVERABLE`, `ISOLATED`; `decision.omitted`
+  (`{id, reason}`: `SIDESTEP_INFEASIBLE`, `WAYPOINT_OFF_MAP`, `NO_PATH`, `DUPLICATE`, `STOP_BLOCKED`,
+  `HAZARD_GLOBAL`, `ISOLATED`); coduri de încălcare noi `NO_RETURN_POINT`, `OFF_MAP`, `NO_SHELTER`;
+  `tick.mode` (NOMINAL / MONITOR / REACT / EMERGENCY); formular pentru hazard personalizat
+  (`live_event.json` → `_hazard_spec_example`, op add / update / remove).
 
 ## Presupuneri
 
@@ -586,3 +748,41 @@ Doar în teste (nu afectează produsul):
 | Unde | Constantă | Valoare | Ce înseamnă |
 |---|---|---|---|
 | `tests/core/grids.py` | `WALL_SLOPE_DEG` | 40° | panta peretelui din grilele de test, aleasă peste limita de 25° |
+
+**Arhitectura V2 (ARHITECTURA_RUTARE_V2), constante noi; nivel C dacă nu e altfel spus:**
+
+| Unde | Constantă | Valoare | Nivel / ce înseamnă |
+|---|---|---|---|
+| `hazard_spec` | `V_HAZARD_MAX_MS` | 40 m/s | B (registrul §3, vânt în celule 20-45 m/s): viteza maximă a unui pericol, peste e plafonată |
+| `hazard_spec` | `IGNORE_RADIUS_M` | 30 m | C: pericol mai mic e ignorat (nu replanifică) |
+| `hazard_spec` | `GLOBAL_COVERAGE` | 60 % | C: peste atât din hartă, pericolul e global (doar multiplicatori) |
+| `hazard_spec` | `H_WATCH_MIN` / `H_REACT_MIN` / `H_CONE_MIN` | 90 / 30 / 15 min | C: avertizare / declanșare / plafonul conului |
+| `hazard_spec` | `COVERAGE_STEP_MIN`, `COVERAGE_SAMPLES` | 15 min, 40 × 40 | tehnic: aproximarea acoperirii |
+| `hazard_spec.CLASS_DEFAULTS` | α vârtej / front / custom | 15 / 30 / 15 m/min | C (§11, de calibrat pe MEDA) |
+| `hazard_spec.CLASS_DEFAULTS` | interior vârtej și front | viteză × 0,5 | C (§2.1) |
+| `hazard_spec.CLASS_DEFAULTS` | custom | σ_rel 0,2, viteză × 0,6 | C (exemplul §2.3) |
+| `hazard_spec.CLASS_DEFAULTS` | cutremur | 300 m, 60 min, blocate pantele > 15° | C (~300 m din cercetare, presupunere) |
+| `hazard_spec.CLASS_DEFAULTS` | resturi de aterizare | 150 m, block all | B (registru, ±150 m) |
+| `hazard_spec.CLASS_DEFAULTS` | regională | viteză × 0,8, apus −75 min | C / derivat: `daylight.effective_sunset_min` cu tau 3 |
+| `hazard_spec.CLASS_DEFAULTS` | furtună solară | doză × 2,5, avertizare 30 min, 48 h | B (registru [S14][S15]); avertizarea C |
+| `hazard_spec.CLASS_DEFAULTS` | coechipier rănit | viteză × 0,5, O₂ × 1,5 | C (decizia echipei) |
+| `hazard_spec.CLASS_DEFAULTS` | pierderea legăturii | durata maximă × 0,8 | C |
+| `conflict` | `SIDESTEP_MARGIN_M`, `D_CLEAR_M` | 50 m, 50 m | C (§4) |
+| `conflict` | `SLICE_MIN` | 1 min | §4: felii de cel mult un tick |
+| `costfield` | `M_CORE`, `M_HALO`, `M_MAX` | 1000, 200, 5000 | C (§5) |
+| `costfield` | `T_EST_DOWNSAMPLE` | blocuri 5 × 5 | C: aproximarea lui t_est (abatere notată) |
+| `costfield` | `COST_HORIZON_MIN`, `SWEEP_STEP_MIN` | 240 min, 10 min | C / tehnic |
+| `routing` | `N_MAX` | 600 000 expandări | C (§11): degradare deterministă |
+| `selection` | ponderile scorului | tabelul §7, știința = `PRESETS[w_science]` | C; abatere: aliniere cu decision.py |
+| `selection` | `DELTA`, `DWELL_MIN` | 0,12, 3 min | C (§7) |
+| `selection` | `EXPOSURE_SCALE_MIN`, `EXTRA_TIME_SCALE_MIN`, `URGENT_CONTACT_MIN` | 10, 60, 10 min | §7 |
+| `replanner` | `WAIT_STEP_MIN`, `W_MAX_MIN` | 5, 30 min | §6 |
+| `replanner` | `WAYPOINT_ITERATIONS`, `R_SNAP_CELLS` | 3, 25 celule (500 m) | §6; raza C |
+| `replanner` | `MAX_CANDIDATES` | 8 | §6 |
+| `replanner` | `HUB_GRACE_M`, `AIRLOCK_MIN` | 100 m, 5 min | C (§8.5) |
+| `replanner` | `HALO_SCALE_MIN` | 10 min | C: halou normalizat |
+| `replanner` | V6: minutele până acasă | O₂ până acasă / 0,194 %/min | C: aproximare pentru adaosul de O₂ pe minut |
+| `replanner` | furtuna regională | variantele care mai vizitează opriri sunt respinse | C: regula „doar RETURN” |
+| `modes` | `K_BY_MODE` | 15 / 5 / 1 / 1 | C (§3) |
+| `modes` | `PROXIMITY_M` | 450 m | C (rolul 3) |
+| `budget.timeline` | efectele | evaluate la începutul fiecărui segment | C: eroare sub un segment (~0,4 min) |

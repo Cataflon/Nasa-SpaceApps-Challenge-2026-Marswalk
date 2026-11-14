@@ -13,14 +13,15 @@ import os
 import threading
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, Response, WebSocket, WebSocketDisconnect
+from fastapi import Body, FastAPI, HTTPException, Response, WebSocket, WebSocketDisconnect
+from pydantic import ValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.api.bench_cache import BenchmarkCache
 from app.config import CONTRACTS_DIR, FRONTEND_ORIGINS, LIVE_MOCK, SITE_ID, site_dir
-from app.core import alternatives, planner
+from app.core import alternatives, hazard_spec, planner
 from app.core.hazards import Hazard
 from app.core.site_data import get_site
 from app.live import planning, scenario
@@ -199,8 +200,44 @@ async def chat(req: ChatRequest):
 # Rutele live sunt `async def`: rulează pe aceeași buclă ca motorul, deci fără curse între thread-uri.
 
 
+# Tipurile de pericol cu geometrie: parametrii lor se verifică la intrare (centru, semiaxe, viteze).
+_GEOMETRIC_EVENTS = {"dust_devil", "local_storm", "marsquake"}
+
+
 @app.post("/api/live/event")
-async def live_event(ev: LiveEvent):
+async def live_event(body: dict = Body(...)):
+    """Injectează un eveniment. Două formate (ARHITECTURA_RUTARE_V2 §2.2, `live_event.json`):
+
+    - vechi: `{"event": <_allowed_events>, "params": {...}}`;
+    - HazardSpec: `{"op": "add" | "update" | "remove", "id": ..., "kind": ..., "shape": ..., "motion": ...}`.
+    Parametrii invalizi (NaN, centru care nu e {row, col} numeric, forme nevalide) → 422 cu un cod stabil,
+    înainte să ajungă la motor.
+    """
+    if "op" in body:
+        op = body.get("op")
+        if op not in hazard_spec.OPS:
+            raise HTTPException(422, f"Invalid op: {op!r}. Allowed: {list(hazard_spec.OPS)}.")
+        if op in ("update", "remove") and not body.get("id"):
+            raise HTTPException(422, f"Operation {op!r} requires `id`.")
+        if op == "add" or (op == "update" and ("shape" in body or "motion" in body)):
+            check = hazard_spec.normalize({**body, "shape": {"center": {"row": 0, "col": 0}, **body.get("shape", {})}}
+                                          if op == "update" else body, body.get("kind"))
+            if not check.ok:
+                raise HTTPException(422, f"Invalid hazard spec: {check.error}.")
+        kind = str(body.get("kind") or "custom")
+        engine.inject(kind, body)
+        return {"accepted": True, "event": kind, "op": op, "id": body.get("id"), "state": engine.state,
+                "t_min": engine.t_min}
+    try:
+        ev = LiveEvent(**body)
+    except ValidationError as exc:
+        raise HTTPException(422, exc.errors(include_url=False, include_context=False)) from exc
+    if ev.event in _GEOMETRIC_EVENTS and ev.params:
+        check = hazard_spec.normalize({k: v for k, v in ev.params.items()
+                                       if k in ("center", "axes_m", "angle_deg", "velocity_ms", "intensity")}
+                                      | ({} if "center" in ev.params else {"center": {"row": 0, "col": 0}}), ev.event)
+        if not check.ok:
+            raise HTTPException(422, f"Invalid event parameters: {check.error}.")
     engine.inject(ev.event, ev.params)
     return {"accepted": True, "event": ev.event, "state": engine.state, "t_min": engine.t_min}
 

@@ -48,3 +48,13 @@ Mesajele WebSocket au mereu un câmp `type`:
 - `decision`: o decizie nouă a regulii, cu alternativele și ce le-a eliminat validatorul. Câmpul `explanation` e `null`, pentru că explicația vine separat. Alternative.path = traseul rămas complet, de la poziția curentă până la habitat; la wait, doar [position].
 - `explanation`: textul explicației, legat prin `decision_id`. `source` e `llm` sau `template`.
 - `event`: un eveniment injectat sau din scenariu (furtună, furtună solară, scurgere în costum etc.).
+
+### Câmpuri noi, opționale (arhitectura de rutare V2, `docs/roles/ARHITECTURA_RUTARE_V2.md`)
+
+Adăugiri compatibile: exemplele vechi rămân valide, consumatorii le tratează ca opționale.
+
+- `tick.mode`: modul de alertă `NOMINAL | MONITOR | REACT | EMERGENCY` (rata de re-evaluare). `tick.route_version`: crește la fiecare traseu nou aplicat.
+- `decision.phase`: `OUTBOUND | INBOUND`. Pe drumul spre casă (`INBOUND`) deciziile sunt `REROUTE` / `WAIT` (nu `RETURN`), iar drumul se replanifică la fel ca la dus.
+- `decision.flags`: steaguri stabile, de ex. `NO_SHELTER`, `OFF_MAP`, `UNRECOVERABLE`, `ISOLATED`. `decision.omitted`: candidații omiși, `{id, reason[, merged_with]}`, cu `reason` ∈ `SIDESTEP_INFEASIBLE`, `WAYPOINT_OFF_MAP`, `NO_PATH`, `DUPLICATE`, `STOP_BLOCKED`, `HAZARD_GLOBAL`, `ISOLATED`. `decision.trigger`: `event | hazard | budget | proximity | periodic`.
+- Id-urile alternativelor sunt șiruri libere: `current`, `detour_north|south|east|west`, `detour_free`, `wait`, `exit_zone`, `replan_stops`, `return`, `shelter`. Coduri de încălcare noi: `NO_RETURN_POINT`, `OFF_MAP`, `NO_SHELTER`.
+- `live_event.json`: pe lângă `{event, params}`, `POST /api/live/event` acceptă un HazardSpec cu `op` = `add | update | remove` (vezi `_hazard_spec_example`, `_hazard_spec_update_example`, `_allowed_ops`). Un `update` re-ancorează pericolul la poziția curentă și crește `rev`; parametrii invalizi dau 422 cu un cod stabil (`NAN_VALUE`, `BAD_SHAPE`, `MISSING_CENTER`).

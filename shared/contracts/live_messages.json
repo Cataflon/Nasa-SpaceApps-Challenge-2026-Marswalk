@@ -28,6 +28,8 @@
       }
     ],
     "route_id": "plan_0",
+    "mode": "MONITOR",
+    "route_version": 0,
     "remaining_path": [[230, 165], [220, 160], [200, 150], [180, 140]],
     "budget": { "o2_end_pct": 46, "return_by_min": 260, "sunset_min": 420 },
     "point_of_no_return": { "row": 200, "col": 150, "t_min": 160 }
@@ -39,8 +41,13 @@
     "decision": "REROUTE",
     "alternative_id": "detour_north",
     "reason_code": "HAZARD_ON_ROUTE",
+    "trigger": "hazard",
     "hazard_id": "storm_1",
     "eta_hazard_min": 16,
+    "route_version": 1,
+    "phase": "OUTBOUND",
+    "flags": [],
+    "omitted": [{ "id": "detour_free", "reason": "DUPLICATE", "merged_with": "detour_north" }],
     "alternatives": [
       { "id": "detour_north", "kind": "REROUTE", "valid": true, "violations": [], "extra_min": 25, "o2_end_pct": 31, "dose_msv": 0.2, "risk": 0.12, "path": [[230, 165], [210, 175], [185, 160], [180, 140]] },
       { "id": "detour_south", "kind": "REROUTE", "valid": false, "violations": ["O2_RESERVE"], "extra_min": 40, "o2_end_pct": 22, "dose_msv": 0.21, "risk": 0.1, "path": [[230, 165], [250, 150], [200, 120], [180, 140]] },

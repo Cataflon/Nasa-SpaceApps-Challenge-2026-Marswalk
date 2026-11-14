@@ -15,5 +15,20 @@
     "marsquake",
     "suit_leak",
     "fatigue"
-  ]
+  ],
+  "_allowed_ops": ["add", "update", "remove"],
+  "_hazard_spec_example": {
+    "op": "add",
+    "id": "user_storm_1",
+    "kind": "custom",
+    "scope": "local",
+    "shape": { "center": { "row": 220, "col": 30 }, "axes_m": [1800, 1100], "theta_deg": 90 },
+    "motion": [{ "from_min": 72, "velocity_ms": [0, 2.5] }],
+    "growth": { "alpha_m_per_min": 15, "cap_axes_m": [2400, 1600] },
+    "lifetime": { "start_min": 72, "duration_min": 120 },
+    "effects": { "block": "core", "core_fraction": 0.5, "soft_halo": true, "speed_mult": 0.6, "o2_mult": 1.1, "exposure_limit_min": 0 },
+    "uncertainty": { "sigma_rel": 0.2, "horizon_cap_min": 15 },
+    "hub_effect": "none"
+  },
+  "_hazard_spec_update_example": { "op": "update", "id": "user_storm_1", "motion": [{ "from_min": 90, "velocity_ms": [0, 4.0] }] }
 }

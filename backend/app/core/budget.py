@@ -11,11 +11,51 @@ A = măsurat, B = derivat, C = presupunere; [Sx] = sursa din registru.
 """
 
 import math
+from collections.abc import Callable
+from dataclasses import dataclass
 
 import numpy as np
 
 from app.core.site_data import Site
 from app.core.types import Budget, Cell, Limits
+
+
+@dataclass(frozen=True)
+class EffectWindow:
+    """Un efect activ pe intervalul [start_min, end_min) (ARHITECTURA_RUTARE_V2 §2, §8.4).
+
+    Se combină multiplicativ (viteză, O₂, doză) și aditiv (adaos de O₂ pe minut, mutarea apusului).
+    Exemple: scurgere în costum (o2_add 0,15 %/min), oboseală (viteză × 0,8, O₂ × 1,15), furtună
+    solară (doză × 2,5 după avertizare), furtună regională (viteză × 0,8, apus −75 min).
+    """
+
+    start_min: float
+    end_min: float = math.inf
+    speed_mult: float = 1.0
+    o2_mult: float = 1.0
+    o2_add_pct_min: float = 0.0
+    dose_mult: float = 1.0
+    daylight_shift_min: float = 0.0
+    source: str = ""
+
+
+def active_multipliers(effects, t: float) -> tuple[float, float, float, float]:
+    """(viteză, O₂, adaos O₂ %/min, doză) la momentul t, din toate efectele active."""
+    speed, o2, add, dose = 1.0, 1.0, 0.0, 1.0
+    for e in effects:
+        if e.start_min - 1e-9 <= t < e.end_min - 1e-9:
+            speed *= e.speed_mult
+            o2 *= e.o2_mult
+            add += e.o2_add_pct_min
+            dose *= e.dose_mult
+    return speed, o2, add, dose
+
+
+def effective_sunset(sunset_min: float, effects, start_min: float = -math.inf) -> float:
+    """Apusul mutat de efectele care încep înainte de apus (tau mare = apus mai devreme)."""
+    shift = sum(e.daylight_shift_min for e in effects
+                if e.daylight_shift_min and e.start_min <= sunset_min and e.end_min > start_min)
+    return sunset_min + shift
 
 # Viteza: Tobler (1993), 6·exp(−3,5·|tan + 0,05|) km/h. B: registru §4.1.
 TOBLER_MAX_KMH = 6.0
@@ -94,8 +134,37 @@ def route_budget(
       transformă în minute de așteptare la O₂ de repaus; se ia minimul celor două. Are sens
       pentru un traseu care se întoarce la start; pe un traseu dus, întoarcerea are durata 0.
     """
+    return timeline(path, elevation, cell_size_m, start_min, sunset_min, dose_rate_usv_h, dwell_min_at,
+                    o2_start_pct, fatigue, limits)
+
+
+def timeline(
+    path: list[Cell],
+    elevation,
+    cell_size_m: float,
+    start_min: float,
+    sunset_min: float,
+    dose_rate_usv_h,
+    dwell_min_at: dict[int, float] | None = None,
+    o2_start_pct: float = 100.0,
+    fatigue: float = 1.0,
+    limits: Limits | None = None,
+    effects=(),
+    point_effects: Callable[[int, float], tuple[float, float, float, float]] | None = None,
+) -> Budget:
+    """Sursa unică de timp și resurse (ARHITECTURA_RUTARE_V2 §1.8): `eta_min`, `o2_pct`, `dose_msv_cum`
+    pe fiecare punct, cu efectele active aplicate. Aceleași definiții ca `route_budget`.
+
+    `effects`: ferestre `EffectWindow` (globale sau ale astronautului), evaluate la începutul fiecărui
+    segment (un segment de 20-28 m durează < 1 min) și pe bucăți în staționări. `point_effects(i, t)`:
+    multiplicatori locali (viteză, O₂, adaos, doză) la punctul i, de ex. în interiorul unui vârtej.
+    `sunset_min` din rezultat e apusul EFECTIV (mutat de `daylight_shift_min`).
+    Fără efecte, calculul e cel vectorizat de dinainte (aceleași cifre).
+    """
     limits = limits or Limits()
     _check_fatigue(fatigue)
+    effects = tuple(effects or ())
+    sunset_min = effective_sunset(sunset_min, effects, start_min)
     points = np.asarray(path, dtype=np.int64).reshape(-1, 2)
     n = len(points)
     if n == 0:
@@ -124,13 +193,17 @@ def route_budget(
             raise ValueError(f"Staționare negativă la indexul {idx}: {minutes} min.")
         dwell[idx] = minutes
 
-    # Pe segmentul i → i+1 se adaugă întâi staționarea din i, apoi mersul.
-    seg_minutes = dwell[:-1] + dt_min
-    seg_o2 = O2_PCT_PER_MIN_REST * dwell[:-1] + do2
-    seg_dose = (point_rate[:-1] * dwell[:-1] + segment_rate * dt_min) / 60.0 / 1000.0
-    eta = start_min + np.concatenate(([0.0], np.cumsum(seg_minutes)))
-    o2 = o2_start_pct - np.concatenate(([0.0], np.cumsum(seg_o2)))
-    dose = np.concatenate(([0.0], np.cumsum(seg_dose)))
+    if effects or point_effects is not None:
+        eta, o2, dose = _timeline_with_effects(d, np.diff(elev), point_rate, segment_rate, dwell, start_min,
+                                               o2_start_pct, fatigue, effects, point_effects)
+    else:
+        # Pe segmentul i → i+1 se adaugă întâi staționarea din i, apoi mersul.
+        seg_minutes = dwell[:-1] + dt_min
+        seg_o2 = O2_PCT_PER_MIN_REST * dwell[:-1] + do2
+        seg_dose = (point_rate[:-1] * dwell[:-1] + segment_rate * dt_min) / 60.0 / 1000.0
+        eta = start_min + np.concatenate(([0.0], np.cumsum(seg_minutes)))
+        o2 = o2_start_pct - np.concatenate(([0.0], np.cumsum(seg_o2)))
+        dose = np.concatenate(([0.0], np.cumsum(seg_dose)))
 
     # Ora-limită de întoarcere, de la punctul cel mai îndepărtat de start.
     far = int(np.argmax(((points - points[0]) ** 2).sum(axis=1)))  # argmax: primul, la egalitate
@@ -153,6 +226,41 @@ def route_budget(
         o2_pct=o2.tolist(),
         dose_msv_cum=dose.tolist(),
     )
+
+
+def _rest(t: float, minutes: float, rate_usv_h: float, effects, local) -> tuple[float, float]:
+    """(O₂ %, doză mSv) pentru o staționare, integrată pe bucăți la granițele ferestrelor de efect."""
+    bounds = sorted({t, t + minutes} | {b for e in effects for b in (e.start_min, e.end_min)
+                                         if t < b < t + minutes})
+    o2 = dose = 0.0
+    for a, b in zip(bounds, bounds[1:]):
+        _, o2_mult, add, dose_mult = active_multipliers(effects, a)
+        o2_mult, add, dose_mult = o2_mult * local[1], add + local[2], dose_mult * local[3]
+        o2 += (O2_PCT_PER_MIN_REST * o2_mult + add) * (b - a)
+        dose += rate_usv_h * dose_mult * (b - a) / 60.0 / 1000.0
+    return o2, dose
+
+
+def _timeline_with_effects(d, dz, point_rate, segment_rate, dwell, start_min, o2_start, fatigue, effects,
+                           point_effects):
+    """Varianta pas cu pas a timeline-ului, cu multiplicatori care depind de timp și de punct."""
+    n = len(point_rate)
+    eta, o2, dose = np.empty(n), np.empty(n), np.empty(n)
+    t, ox, ds = float(start_min), float(o2_start), 0.0
+    eta[0], o2[0], dose[0] = t, ox, ds
+    for i in range(n - 1):
+        local = point_effects(i, t) if point_effects is not None else (1.0, 1.0, 0.0, 1.0)
+        if dwell[i] > 0:
+            do2, ddose = _rest(t, float(dwell[i]), float(point_rate[i]), effects, local)
+            t, ox, ds = t + float(dwell[i]), ox - do2, ds + ddose
+        speed, o2_mult, add, dose_mult = active_multipliers(effects, t)
+        speed, o2_mult, add, dose_mult = speed * local[0], o2_mult * local[1], add + local[2], dose_mult * local[3]
+        minutes, walk_o2 = _walk(float(d[i]), float(dz[i]), fatigue * max(speed, 1e-6))
+        t += float(minutes)
+        ox -= float(walk_o2) * o2_mult + add * float(minutes)
+        ds += float(segment_rate[i]) * dose_mult * float(minutes) / 60.0 / 1000.0
+        eta[i + 1], o2[i + 1], dose[i + 1] = t, ox, ds
+    return eta, o2, dose
 
 
 def point_of_no_return(path: list[Cell], eta_min: list[float], o2_pct: list[float], cost_to_home_o2: list[float], reserve_pct: float) -> int | None:

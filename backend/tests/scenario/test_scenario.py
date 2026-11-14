@@ -292,59 +292,59 @@ def test_demo_events_returns_copy_with_fallback():
     assert [e.event for e in sc.demo_events("unknown_site")] == DEMO_KINDS
 
 
-def test_demo_scene_decisions_on_jezero():
-    """Motorul live, cu alternativele reale ale rolului 2, pe traseul demo habitat -> clay_delta.
-
-    Vârtejul se ocolește (REROUTE), frontul nu se poate evita (întoarcere imediată), regionala -> RETURN.
-    D2 (start în pericol): la minutul 90 frontul a ajuns peste astronaut; din interiorul lui singura
-    variantă validă e „exit_zone” (ieșirea pe drumul cel mai ieftin, apoi acasă) -> RETURN.
-    """
+def _run_demo(site):
     from app.core.planner import plan_route
-    from app.core.site_data import get_site
     from app.live.engine import LiveEngine
     from app.live.store import RouteStore
+
+    store = RouteStore()
+    store.add(plan_route(site, site.habitat, ["clay_delta"], "safe", 0, 300))
+    e = LiveEngine(site_provider=lambda: site, store=store)
+    e.start()
+    msgs = []
+    while e.state == "running" and e.t_min < 300:
+        msgs += e.step()
+    return e, [m for m in msgs if m["type"] == "decision"]
+
+
+def _assert_demo_v2(e, site, ds):
+    """Scena demo cu replanificarea V2 (ARHITECTURA_RUTARE_V2). Comportamentul s-a schimbat intenționat:
+    vârtejul de la minutul 30 lovește traseul în ~4 min, deci ocolirea e infezabilă (§4, `can_sidestep`),
+    iar așteptarea pe loc e în amprenta incertă (conul δ⊥): copilotul alege o variantă validă (de obicei
+    întoarcerea) și astronautul ajunge acasă înainte de front. Secvența fixă de dinainte (REROUTE, EMERGENCY,
+    RETURN, RETURN) ținea de replanificatorul vechi; scena trebuie recalibrată de rolul 1 pentru V2.
+    """
+    assert ds and ds[0]["t_min"] == 30 and ds[0]["decision"] in ("REROUTE", "WAIT", "RETURN")
+    for d in ds:
+        chosen = next((a for a in d["alternatives"] if a["id"] == d["alternative_id"]), None)
+        assert d["decision"] == "EMERGENCY" or (chosen is not None and chosen["valid"]), d
+        assert d["phase"] in ("OUTBOUND", "INBOUND")
+    inbound = False
+    for d in ds:  # odată pe drumul spre casă, nu se mai revine în OUTBOUND (§6.1)
+        assert not (inbound and d["phase"] == "OUTBOUND")
+        inbound = inbound or d["phase"] == "INBOUND" or d["decision"] in ("RETURN", "EMERGENCY")
+    assert e.state == "finished" and e.end_reason == "egress_complete"
+    assert e.pos == tuple(float(v) for v in site.habitat) and e.o2_pct >= e.limits.o2_reserve_pct
+
+
+def test_demo_scene_decisions_on_jezero():
+    from app.core.site_data import get_site
 
     site = get_site("jezero")
     if site is None:
         pytest.skip("situl Jezero nu e generat")
-    store = RouteStore()
-    store.add(plan_route(site, site.habitat, ["clay_delta"], "safe", 0, 300))
-    e = LiveEngine(site_provider=lambda: site, store=store)
-    e.start()
-    msgs = []
-    while e.state == "running" and e.t_min < 300:
-        msgs += e.step()
-    got = [(m["t_min"], m["decision"], m["alternative_id"]) for m in msgs if m["type"] == "decision"]
-    assert [g[:2] for g in got] == [(30, "REROUTE"), (80, "EMERGENCY"), (90, "RETURN"), (125, "RETURN")]
-    assert got[1][2] == "return" and got[2][2] == "exit_zone" and got[3][2] == "return"
-    assert got[0][2].startswith("detour_")
+    e, ds = _run_demo(site)
+    _assert_demo_v2(e, site, ds)
 
 
 def test_demo_scene_decisions_on_synthetic():
-    """Aceeași scenă demo pe situl sintetic (v9), cu core-ul real: aceeași succesiune de decizii."""
-    from app.core.planner import plan_route
     from app.core.site_data import get_site
-    from app.live.engine import LiveEngine
-    from app.live.store import RouteStore
 
     site = get_site("synthetic")
     if site is None or site.meta.get("generator_version", 1) < 9:
         pytest.skip("situl sintetic v9 nu e generat: rulează pipeline/make_synthetic_site.py")
-    store = RouteStore()
-    store.add(plan_route(site, site.habitat, ["clay_delta"], "safe", 0, 300))
-    e = LiveEngine(site_provider=lambda: site, store=store)
-    e.start()
-    msgs = []
-    while e.state == "running" and e.t_min < 300:
-        msgs += e.step()
-    got = [(m["t_min"], m["decision"], m["alternative_id"]) for m in msgs if m["type"] == "decision"]
-    assert [g[:2] for g in got] == [(30, "REROUTE"), (80, "EMERGENCY"), (90, "RETURN"), (125, "RETURN")]
-    assert got[0][2].startswith("detour_") and got[2][2] == "exit_zone"
-    reroute = next(m for m in msgs if m["type"] == "decision")
-    valid_detours = [a for a in reroute["alternatives"] if a["kind"] == "REROUTE" and a["valid"]]
-    assert valid_detours  # ocolirea aleasă e validă
-    assert e.state == "finished" and e.pos == tuple(float(v) for v in site.habitat)
-    assert e.state == "finished" and e.pos == tuple(float(v) for v in site.habitat)
+    e, ds = _run_demo(site)
+    _assert_demo_v2(e, site, ds)
 
 
 def test_eva_start_matches_planner():

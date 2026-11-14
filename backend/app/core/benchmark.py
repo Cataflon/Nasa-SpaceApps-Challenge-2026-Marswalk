@@ -6,9 +6,10 @@ Metrici: ieșiri încheiate în siguranță, O₂ minim la sosire, doză, știin
 Scenariul: traseul de la plan_route (habitat → clay_delta → habitat) și o furtună din storms.py
 care îl taie într-un minut aleator. Pași de 5 minute.
 - „doar planul”: merge pe traseu orice ar fi;
-- „copilot”: la fiecare pas verifică route_hit pe pericolul OBSERVAT (poziția reală de acum +
-  viteza estimată, nu viitorul real); dacă e lovit: alternatives.generate → decision.choose →
-  aplică decizia. După un RETURN, decizia e definitivă (nu se mai replanifică).
+- „copilot”: la fiecare pas verifică testul de conflict continuu pe pericolul OBSERVAT (poziția reală
+  de acum + viteza estimată, nu viitorul real); la un contact în fereastra de reacție: replanificarea V2
+  (`replanner.plan`, ARHITECTURA_RUTARE_V2) → aplică decizia. După RETURN replanifică în continuare
+  drumul spre refugiu (§6.1), doar fără opriri noi.
 Siguranța se judecă pe mișcarea REALĂ a furtunii: expunere < HIT_THRESHOLD, O₂ la sosire ≥
 rezervă, sosire ≤ apus − marjă.
 """
@@ -17,10 +18,13 @@ import math
 
 import numpy as np
 
-from app.core.alternatives import _visited_stops, generate
+from app.core.alternatives import _visited_stops
 from app.core.budget import O2_PCT_PER_MIN_REST, route_budget
-from app.core.decision import choose
-from app.core.hazards import FORECAST_STEPS_MIN, HIT_THRESHOLD, route_hit
+from app.core.conflict import contacts
+from app.core.hazard_spec import from_hazard
+from app.core.hazards import FORECAST_STEPS_MIN, HIT_THRESHOLD
+from app.core.replanner import ReplanState
+from app.core.replanner import plan as replan
 from app.core.planner import PLANNER_LIMITS, plan_route
 from app.core.site_data import Site, get_site
 from app.core.storms import Storm, generate_storm
@@ -63,7 +67,9 @@ def _simulate(site: Site, plan: dict, path, storm: Storm, sunset: float, copilot
     remaining, stops = list(path), [stop]
     dwell_left: float | None = None
     wait_until: float | None = None
-    committed, decisions = False, []
+    # ARHITECTURA_RUTARE_V2 §6.1: după RETURN scenariul continuă să replanifice drumul spre refugiu
+    # (altfel scorul copilotului nu măsoară întoarcerea). Faza doar schimbă ținta, nu eșantionarea.
+    phase, last_switch, decisions = "OUTBOUND", -math.inf, []
     exposure, collected, finished, arrival = 0.0, 0.0, False, math.inf
 
     def budget():
@@ -81,20 +87,27 @@ def _simulate(site: Site, plan: dict, path, storm: Storm, sunset: float, copilot
     t_cap = sunset + EXTRA_TIME_AFTER_SUNSET_MIN
     while t < t_cap:
         b, visited, dwell = budget()
-        if copilot and wait_until is None and not committed and len(decisions) < MAX_DECISIONS:
-            observed = storm.observed(t)
-            hit, contact_min = route_hit(remaining, b.eta_min, [observed], cell)
-            if hit and contact_min - t <= REACT_WINDOW_MIN:
-                alts = generate(site, remaining[0], remaining, stops, [observed], t, o2, dose, sunset)
-                d = choose(alts)
+        if copilot and wait_until is None and len(decisions) < MAX_DECISIONS:
+            observed = from_hazard(storm.observed(t), cell_size_m=cell)
+            if not stops:
+                phase = "INBOUND"
+            found = contacts(remaining, b.eta_min, [observed], cell, t)
+            if found and found[0].t_in - t <= REACT_WINDOW_MIN:
+                state = ReplanState(site=site, position=remaining[0], remaining_path=remaining, stops=list(stops),
+                                    specs=[observed], t_now=t, o2_pct=o2, dose_msv=dose, sunset_min=sunset,
+                                    phase=phase, last_switch_t=last_switch, limits=limits,
+                                    dwell_now_min=float(dwell_left or 0.0))
+                d, _ = replan(state)
                 decisions.append(d.decision)
-                alt = next(a for a in alts if a.id == d.alternative_id)
-                if d.decision == "WAIT":
-                    wait_until = t + alt.extra_min
-                elif d.decision == "REROUTE":
-                    remaining, dwell_left = list(alt.path), None
-                elif d.decision in ("RETURN", "EMERGENCY"):
-                    remaining, stops, dwell_left, committed = list(alt.path), [], None, True
+                alt = next((a for a in d.alternatives if a.id == d.alternative_id), None)
+                if alt is not None and d.decision == "WAIT":
+                    wait_until, last_switch = t + alt.extra_min, t
+                elif alt is not None and d.decision in ("REROUTE", "RETURN", "EMERGENCY") and alt.kind != "CONTINUE":
+                    remaining, dwell_left, last_switch = list(alt.path), None, t
+                    if alt.kind == "RETURN" or d.decision in ("RETURN", "EMERGENCY"):
+                        stops, phase = [], "INBOUND"  # angajarea în RETURN: doar fără opriri noi
+                    else:
+                        stops = [s for s in stops if s not in alt.science_lost]
                 b, visited, dwell = budget()
 
         if wait_until is not None:  # stă pe loc
