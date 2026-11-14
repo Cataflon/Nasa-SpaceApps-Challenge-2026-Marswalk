@@ -48,8 +48,8 @@ MISSION_CONTROL_REACTION_MIN = 5.0  # presupunere: timpul echipei de la sol să 
 EARTH_ROUND_TRIP_MIN = 2 * EARTH_ONE_WAY_DELAY_MIN + MISSION_CONTROL_REACTION_MIN  # 27 min
 EARTH_DELAY_SOURCE = "JPL approximate Keplerian elements (Standish); Earth-Mars distance 1.319 AU on 2026-11-14"
 
-# Opacitatea prafului (tau). Sezonul liniștit la Jezero: tau ≈ 0,5 (registrul echipei [S8],
-# Savijärvi et al.; Lemmon et al. 2022, GRL: ~0,3-1,0 în primul an Mars 2020). Crește doar la
+# Opacitatea prafului (tau). Sezonul liniștit la Jezero: tau ≈ 0,5 (registrul echipei [S8]:
+# Lemmon et al. 2022, GRL, în NASA NTRS; de verificat în textul complet). Crește doar la
 # evenimentele de praf. Cu 0,5, apusul efectiv (daylight.effective_sunset_min) nu se mută fără furtună.
 TAU_MEAN = 0.5
 TAU_SIGMA = 0.05  # variația lentă într-o zi fără furtună (presupunere)
@@ -98,8 +98,8 @@ PRESSURE_SIGMA_PA = 1.0
 PRESSURE_TAU_MIN = 60.0
 PRESSURE_RANGE = (550.0, 900.0)
 
-# Doza. RAD la Gale, aug. 2012 - iun. 2013: doza echivalentă GCR 0,67 mSv/zi (Hassler, comunicatul
-# SwRI din 9.12.2013, registrul [S11]; verificat pe pagină) -> 0,67 / 24 = 27,9 ≈ 28 µSv/h. Doza
+# Doza. RAD la Gale, aug. 2012 - iun. 2013: doza echivalentă GCR 0,67 mSv/zi (comunicatul NASA și
+# cel SwRI din 9.12.2013, registrul [S11]; verificat pe pagină) -> 0,67 / 24 = 27,9 ≈ 28 µSv/h. Doza
 # absorbită: 0,21 mGy/zi (Hassler et al. 2014, Science [S12]). Unitatea e µSv/h (doză ECHIVALENTĂ).
 # Același fond îl folosesc straturile radiation.npy (pipeline/make_synthetic_site.py, build_layers.py).
 DOSE_RATE_USV_H = 28.0

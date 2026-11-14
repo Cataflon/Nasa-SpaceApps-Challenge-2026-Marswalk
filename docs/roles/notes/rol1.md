@@ -192,6 +192,33 @@ Verificată rulând motorul cu alternativele reale ale rolului 2: test `test_dem
 - Teste noi în `tests/scenario`: mediile pe ore (2,68 / 4,67 / 6,08 m/s) și tabelul identic cu `data/processed/jezero/wind_stats.json`.
 - `how-we-calculate.md` (vântul trece pe `source`) și `sources.md` ([S7] e „verified (full text read)”).
 
+### `docs/survival-guide.md` (în engleză, sarcina 6)
+- Pentru fișa printabilă a fiecărei ieșiri; rolul 4 îl importă cu `?raw`. Conține:
+  - un tabel cu limitele: O₂ ≥ 30% la sosire, înapoi cu 30 min înainte de apus, pantă ≤ 20°, doză ≤ 1 mSv pe ieșire, ajutorul de pe Pământ în ~27 min;
+  - „Before you leave” și „Your three numbers” (ora de întoarcere, punctul de neîntoarcere, O₂ la sosire);
+  - câte 2-3 reguli la imperativ pentru: vârtej de praf, front de furtună, furtună regională, furtună solară, scurgere în costum, oboseală, cutremur, pierderea legăturii cu habitatul.
+- Pragurile **nu sunt inventate**: `pipeline/tests/test_survival_guide.py` le citește din cod (`types.Limits`, `meta.json`, `scenario.py`, `engine.py`) și pică dacă textul nu le mai potrivește.
+- Același test verifică formatul pentru mini-renderer-ul rolului 4 (titluri, liste „- ”, bold, tabele; fără liste numerotate, link-uri sau cursive) și lungimea (sub 750 de cuvinte, o pagină A4 de reguli).
+- **Pentru rolul 4:** fișierul există; înlocuiți textul placeholder din Survival Guide cu `docs/survival-guide.md?raw`, randat ca `how-we-calculate.md` în `Information.jsx`.
+
+### Registrul echipei cu surse oficiale (14.11, la cererea oamenilor)
+- `PARAMETRI_REFERINTA.md`: fiecare sursă [S1]-[S34] trimite acum la DOI-ul oficial (verificat în Crossref) sau la o pagină NASA (NTRS, nasa.gov, jpl.nasa.gov, NSSDC).
+  - Scoase: Fox News, MarsDaily, EurekAlert, Physics World, phys.org, typeset.io, proxy-ul universitar `elogim.com`, cataloagele `eld.bl.uk` / `jioinstitute`, `bexus.org`, `core.ac.uk`, preprinturile arXiv (înlocuite cu versiunile publicate) și PDF-ul neoficial Savijärvi (nu mai răspunde).
+  - Înlocuitorii NASA: comunicatul NASA din 9.12.2013 (0,67 mSv/zi), JPL 2017 (furtuna solară „dublează” doza), JPL 2021 (primul raport meteo, 718 Pa), Hassler 2014 în NTRS, presiunea MEDA în NTRS (maximum 761 Pa), Walkback Test în NTRS și modelul NASA al vitezei Apollo (NTRS 20250001829: v = 0,75 − 0,01·θ m/s → 2,7 km/h pe plat).
+- Valori reale adăugate, marcate cu ✔ (citite în textul complet sau pe pagina NASA): Weibull MEDA pe ore și turbulența, presiunea 718 / 761 Pa, doza 0,67 mSv/zi, dublarea dozei în sept. 2017, viteza Apollo, intervalul metabolic Apollo (TN D-7883). Corecturile deja aplicate (doza, SPE, vântul, panta 20°) sunt marcate ✅.
+- **Opacitatea de bază 0,5 rămâne „de verificat”:** sursa ei inițială a dispărut. Am legat-o de Lemmon et al. 2022 (DOI + NTRS), dar nu i-am citit textul complet.
+- Aceleași înlocuiri în fișierele mele: `sources.md`, `how-we-calculate.md` (opacitatea trece pe `to verify`) și comentariile din `scenario.py`.
+
+### Imaginile Perseverance de la opriri (sarcina 11)
+- `pipeline/fetch_stop_images.py` (rulat o dată, cere internet și Pillow):
+  - pentru fiecare țintă ia solul roverului cu waypoint-ul cel mai apropiat (`clay_delta` → sol 647, la 9 m; `carbonate_rim` → sol 843, la 90 m; `olivine_floor` → sol 204, la 4 m);
+  - din API-ul public Mars 2020 (`raw_images`) alege determinist un cadru Mastcam-Z stânga, în culoare naturală, privind spre teren (−30° … −1°); dacă nu există, ia Navcam;
+  - îl reduce la 960 px, JPEG ≤ 300 KB (81 / 108 / 128 KB).
+- Imaginile sunt în `data/processed/jezero/png/stops/<id>.jpg` (intră în git), iar sursa lor în `png/stops/stops.json`. `build_layers.attach_stop_images` completează `targets[].image = "/static/layers/stops/<id>.jpg"` și `targets[].image_source` (imageid, sol, instrument, credit NASA/JPL-Caltech/ASU, link, data). Un build offline le păstrează.
+- Verificat: backendul le servește (200, `image/jpeg`); le-am văzut pe toate trei (ondule la baza deltei, blocuri la marginea carbonaților, afloriment în Séítah).
+- Teste: `pipeline/tests/test_stop_images.py` (alegerea, legarea, fișierele din git). `sources.md`: rândul imaginilor e „verified”.
+- **Pentru rolul 4:** afișați `target.image` la oprire, cu creditul din `target.image_source.credit` („NASA/JPL-Caltech/ASU”).
+
 ### Panta maximă = 20° (decizia echipei, 14.11)
 - `MAX_SLOPE_DEG = 20` în `make_synthetic_site.py` (**v8**) și în `build_layers.py`. Ambele scriu acum explicit `max_slope_deg: 20` în `meta.json`, peste valoarea din contract.
 - Situl sintetic e regenerat, Jezero e reconstruit: habitatul și țintele **nu s-au mutat** (pantă ≤ 7,4°). Terenul interzis pe Jezero e 2,05% (era 0,86%). Doar `meta.json` și `grid.json` (amprenta) s-au schimbat.

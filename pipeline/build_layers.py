@@ -658,6 +658,23 @@ def build(raw: Path = RAW, log=print) -> tuple[dict[str, np.ndarray], dict]:
     return layers, meta
 
 
+def attach_stop_images(targets: list[dict], out: Path) -> list[dict]:
+    """targets[].image = "/static/layers/stops/<id>.jpg" + image_source, din png/stops/stops.json.
+
+    Imaginile le aduce pipeline/fetch_stop_images.py (rulat o dată, cere internet); aici doar se
+    leagă, ca un build offline să le păstreze. O țintă fără imagine rămâne cu image = None.
+    """
+    path = out / "png" / "stops" / "stops.json"
+    sources = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    result = []
+    for t in targets:
+        src = sources.get(t["id"])
+        if src and (out / "png" / "stops" / f"{t['id']}.jpg").exists():
+            t = {**t, "image": f"/static/layers/stops/{t['id']}.jpg", "image_source": src}
+        result.append(t)
+    return result
+
+
 def write(layers: dict[str, np.ndarray], meta: dict, out: Path = OUT) -> None:
     out.mkdir(parents=True, exist_ok=True)
     (out / "png").mkdir(exist_ok=True)
@@ -671,6 +688,7 @@ def write(layers: dict[str, np.ndarray], meta: dict, out: Path = OUT) -> None:
             os.replace(tmp, out / f"{name}.npy")
         finally:
             tmp.unlink(missing_ok=True)
+    meta["targets"] = attach_stop_images(meta["targets"], out)
     fs.atomic_write_text(out / "meta.json", json.dumps(meta, ensure_ascii=False, indent=2))
 
     elev, slope = layers["elevation"], layers["slope"]

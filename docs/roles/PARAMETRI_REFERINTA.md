@@ -2,7 +2,9 @@
 
 Toate valorile pe care le folosește simularea (generatorul de scenarii, harta de cost, bugetul, pericolele, validatorul), fiecare cu sursa ei și cu un nivel de încredere. Scopul: orice cifră care apare pe ecran sau în prezentare să poată fi urmărită până la o măsurătoare NASA sau la o presupunere declarată.
 
-Căutat și verificat pe 14 noiembrie 2026. Linkurile sunt la final, numerotate [S1]…[S20].
+Căutat și verificat pe 14 noiembrie 2026. Linkurile sunt la final, numerotate [S1]…[S34].
+
+> **Actualizat 14.11 (rolul 1):** fiecare sursă trimite acum la **DOI-ul oficial** al articolului (verificat în Crossref) sau la o **pagină NASA** (NTRS, nasa.gov, jpl.nasa.gov, NSSDC). Link-urile de presă, oglinzile neoficiale, cataloagele de bibliotecă și accesele prin proxy universitar au fost înlocuite. **✔** = valoare citită de noi în textul complet sau pe pagina NASA; fără ✔ = cifră preluată din rezumat, de verificat înainte de prezentare.
 
 ## Nivelurile de încredere
 
@@ -21,36 +23,38 @@ Regula: **nicio constantă nu intră în cod fără nivel și sursă**, scrise �
 | Parametru | Valoare | Nivel | Sursă |
 |---|---|---|---|
 | Coordonatele locului de aterizare Perseverance | 18,44°N, 77,45°E | A | [S1] |
-| Durata solului | 24 h 39,5 min | A | [S2] |
+| Durata solului | 24 h 39,5 min (24,6597 h) | A | [S2] |
 | Temperatura aerului, ciclu zilnic tipic | −83 °C înainte de răsărit → −23 °C la prânz | A | [S3] |
 | Temperatura solului, ciclu zilnic tipic | −83 °C → +5 °C | A | [S3] |
 | Temperatura medie a aerului | ≈ −55 °C; diferență zi-noapte 50-60 °C | A | [S2] |
 | Variația sezonieră a temperaturii aerului | foarte mică | A | [S4] |
-| Presiunea, prima zi de măsurători (Ls ≈ 5°) | ≈ 718 Pa | A | [S5] |
+| Presiunea, prima zi de măsurători (Ls ≈ 5°) | 718 Pa (modelele prevedeau 705-735 Pa) | A ✔ | [S5] |
+| Maximul sezonier al presiunii medii zilnice | 761 Pa, în jurul solului 105 (Ls ≈ 55°) | A ✔ | [S6] |
 | Ciclul zilnic al presiunii | maxim la 7-8 h LMST, minim între 12 și 16 h LMST | A | [S6] |
 | Vântul | mai calm în medie decât la alte situri; rafale turbulente de la calm la 10-15 m/s în secunde-minute | A | [S7] |
-| Distribuția vitezei vântului | Weibull (parametrii se ajustează pe datele MEDA descărcate) | A (forma) / B (parametrii) | [S7] |
-| Opacitatea prafului (tau), sezon liniștit | ≈ 0,5 | A | [S8] |
+| Distribuția vitezei vântului (1,5 m, solurile ≤ 315) | Weibull pe intervale orare (Tabelul 1): dimineața 07-10 h c = 3,02 m/s, k = 2,01 (media 2,7); prânz 10-15 h c = 5,28, k = 2,16 (media 4,7); după-amiază 15-18 h c = 6,80, k = 3,02 (media 6,1); total c = 3,57, k = 1,49 | A ✔ | [S7] |
+| Intensitatea turbulenței (σ / medie pe 10 min) | 36 ± 10 % ziua, 22 ± 10 % noaptea; la vârtejuri vârfuri de 9,2 × vântul de fond | A ✔ | [S7] |
+| Opacitatea prafului (tau), sezon liniștit | ≈ 0,5 (sursa inițială, un PDF neoficial, nu mai răspunde; de verificat în [S8]) | A | [S8] |
 | Prima furtună regională deasupra Jezero | Ls ≈ 153-156° | A | [S9] |
 
 **Recomandare pentru `scenario.py`:**
 - temperatura: sinusoidă zilnică între −83 și −23 °C, cu maximul la prânz, plus zgomot de ±2,5 K (amplitudinea fluctuațiilor de la prânz) [S10];
 - presiunea: medie ≈ 720 Pa + componenta de maree termică (maxim dimineața, minim după-amiaza), amplitudine de calibrat pe MEDA;
-- vântul: eșantionat dintr-o distribuție Weibull ajustată pe MEDA, nu o sinusoidă. Turbulența e cea care dă vârfurile [S7];
+- vântul: eșantionat dintr-o distribuție Weibull ajustată pe MEDA, nu o sinusoidă. Turbulența e cea care dă vârfurile [S7]. ✅ **Făcut** în `scenario.py` cu Tabelul 1 din [S7]; cifrele sunt și în `data/processed/jezero/wind_stats.json`;
 - tau: 0,5 ca valoare de bază; crește doar la evenimentele de praf.
 
 ## 2. Radiația (stratul `radiation`, scenariul, validatorul)
 
 | Parametru | Valoare | Nivel | Sursă |
 |---|---|---|---|
-| Doza echivalentă GCR la suprafață (Gale, 2012-2013) | **0,67 mSv/zi ≈ 28 µSv/h** | A | [S11] |
+| Doza echivalentă GCR la suprafață (Gale, aug. 2012 - iun. 2013) | **0,67 mSv/zi ≈ 28 µSv/h** | A ✔ | [S11] |
 | Doza absorbită GCR la suprafață | 0,210 ± 0,040 mGy/zi ≈ 8,75 µGy/h | A | [S12] |
 | Variația zi-noapte a dozei absorbite | între 180 și 225 µGy/zi (ciclul presiunii) | A | [S12] |
 | Variația pe ciclul solar | GCR la suprafață a crescut cu ~50% de la maxim la minim solar | A | [S13] |
-| Furtuna solară (SPE) din septembrie 2017, cea mai mare văzută de RAD | doza **× 2-3** față de fond, creștere pe parcursul câtorva ore | A | [S14] |
+| Furtuna solară (SPE) din septembrie 2017, cea mai mare văzută de RAD | doza **× 2-3** față de fond („mai mult decât dublă” față de orice măsurătoare anterioară, NASA/JPL), creștere pe parcursul câtorva ore | A ✔ (dublarea) | [S14] [S15] |
 | Evoluția după vârf | scădere lentă pe ~36 h | A | [S15] |
 
-> ⚠️ **Două corecturi față de repo:**
+> ✅ **Două corecturi față de repo (ambele aplicate de rolul 1, 14.11):**
 > 1. `scenario.BASELINE["dose_rate_usv_h"] = 10.0` e, de fapt, ordinul de mărime al dozei **absorbite** (µGy/h), etichetat ca doză **echivalentă** (µSv/h). Valoarea corectă pentru µSv/h e **≈ 28**.
 > 2. Exemplul din `shared/contracts/live_messages.json` are `"dose_rate_multiplier": 20` pentru furtuna solară. Cea mai mare furtună solară măsurată la suprafața lui Marte a dat **× 2-3** [S14]. Valoarea implicită realistă: **2,5**.
 
@@ -104,17 +108,17 @@ Pe harta noastră de 100 km², asta înseamnă **130-340 de vârtejuri pe sol, d
 
 | Parametru | Valoare | Nivel | Sursă |
 |---|---|---|---|
-| Viteza Apollo pe teren plat | ≈ 2,2 km/h (A7L, Lună) | A | [S22] |
+| Viteza de mers Apollo (model NASA din traversele Apollo 12 și 14, EVA 2) | v = 0,75 − 0,01·θ m/s (θ = panta în grade) → **2,7 km/h** pe plat | A ✔ | [S22] |
 | Progres Apollo 15 | 1 → 1,5 → 2 km/h, cu antrenamentul de pe suprafață | A | [S23] |
 | Viteza nominală maximă considerată pentru Apollo | 2,2 mph ≈ 3,5 km/h | A | [S24] |
 | Pragul VO₂max pe Marte, test cu costum | atins la 3,5 mph ≈ 5,6 km/h | A | [S24] |
 | Viteza nominală de mers folosită în planificarea NASA a traverselor | 4 km/h | A | [S25] |
 | **Recomandat: viteza pe plat** | **3,0 km/h** = Tobler pe plat (5,04 km/h) × `SUIT_FACTOR` 0,6 | B | între datele Apollo și limita nominală |
-| Panta maximă de mers (concept NASA pentru ieșirile de pe Lună) | **20°** | A | [S26] |
+| Panta maximă de mers (concept NASA pentru ieșirile de pe Lună) | **20°** (✅ decizia echipei, 14.11) | A | [S26] |
 | Panta maximă traversată de Apollo 15 | ~17° | A | [S26] |
 | Distanța maximă de la habitat, întoarcere pe jos | 10 km (presupunerea NASA, din experiența Apollo) | A | [S27] |
 
-> ⚠️ **Corectură:** `max_slope_deg = 25` (în `meta.json` și în `Limits`) depășește limita de 20° din conceptul NASA de operațiuni [S26]. **Recomandat: 20°.** Ambele locuri sunt înghețate, deci schimbarea se cere echipei. Până atunci, `SLOPE_K` face ca pantele de 20-25° să fie oricum foarte scumpe.
+> ✅ **Decis 20° (echipa, 14.11).** Datele (`data/processed/jezero/meta.json`, situl sintetic) și planner-ul au 20°. Mai rămân `Limits.max_slope_deg` (rolul 2) și contractele `shared/contracts/meta.json` / `site.json` (rolurile 2-3), încă la 25°.
 
 Raza zonei noastre (3-5 km de habitat) e confortabil sub limita de 10 km [S27]: o validare bună pentru slide.
 
@@ -123,7 +127,7 @@ Raza zonei noastre (3-5 km de habitat) e confortabil sub limita de 10 km [S27]: 
 | Parametru | Valoare | Nivel | Sursă |
 |---|---|---|---|
 | Rata metabolică medie pe ieșirile Apollo | 234 kcal/h ≈ 272 W ≈ 930 BTU/h | A | [S28] |
-| Intervalul pe ieșirile Apollo | 780-1200 BTU/h | A | [S29] |
+| Intervalul pe ieșirile Apollo | 780-1200 BTU/h = 822-1267 kJ/h ≈ 228-352 W, pe 158,8 h de ieșiri (Tabelul I, p. 8-9) | A ✔ | [S29] |
 | Rata de proiectare a rucsacului Apollo (PLSS) | 1200 BTU/h, pentru 4 h | A | [S30] |
 | Activitate ușoară în costum | 600 BTU/h ≈ 176 W | A | [S31] |
 | Parametri standard pentru simularea unei ieșiri | 8 h la 1000 BTU/h | A | [S31] |
@@ -219,37 +223,37 @@ Din el se poate genera automat tabelul din `docs/how-we-calculate.md` (rolul 1):
 
 ## Surse
 
-- [S1] Rodriguez-Manfredi et al. (2023), *The diverse meteorology of Jezero crater over the first 250 sols of Perseverance on Mars*, Nature Geoscience — https://link.springer.com/article/10.1038/s41561-022-01084-0
-- [S2] EurekAlert / UPV-EHU (2023), *The rich meteorology of Mars studied in detail from the Perseverance rover* — https://www.eurekalert.org/news-releases/977001
-- [S3] Munguira (2023), *Daily records of atmospheric temperature with Perseverance* — https://www.marsdaily.com/reports/Daily_records_of_atmospheric_temperature_with_Perseverance_999.html
-- [S4] Munguira et al. (2023), *Near Surface Atmospheric Temperatures at Jezero From Mars 2020 MEDA Measurements*, JGR Planets — https://eld.bl.uk/catalog/100183927930_0x000001
-- [S5] NASA / Fox News (2021), primul raport meteo MEDA — https://www.foxnews.com/science/nasa-gets-first-weather-report-from-mars-rover-landing-site
-- [S6] Sánchez-Lavega et al., presiunea la Jezero, JGR Planets (preprint) — https://arxiv.org/pdf/2401.12931.pdf
-- [S7] Viúdez-Moreiras et al. (2022), *Winds at the Mars 2020 Landing Site. 2. Wind Variability and Turbulence* — https://ntrs.nasa.gov/api/citations/20230001086/downloads/Guzewich.winds.STI.pdf
-- [S8] Savijärvi et al., Jezero (tau ≈ 0,5 la Ls 308°) — https://dydaktyka.fizyka.umk.pl/Karwasz/FiChA/Biblio/Jezero_Mars.pdf
-- [S9] Hernández-Bernal / Sánchez-Lavega et al. (2025), perturbații atmosferice la Jezero, MY36 — https://arxiv.org/pdf/2501.05337
-- [S10] Munguira et al., EGU23 — https://presentations.copernicus.org/EGU23/EGU23-5885_presentation.pdf
-- [S11] Hassler et al. (2014), Science; comunicat — https://phys.org/news/2013-12-scientists-publish-surface-mars.amp
-- [S12] Hassler et al. (2014), *Mars' Surface Radiation Environment Measured with the MSL Curiosity Rover* — https://typeset.io/pdf/mars-surface-radiation-environment-measured-with-the-mars-244eildtx0.pdf
-- [S13] Guo et al. (2021), review MSL/RAD, Astron. Astrophys. Rev. — https://springerlink.bibliotecabuap.elogim.com/content/pdf/10.1007/s00159-021-00136-5.pdf
-- [S14] Zeitlin et al. (2018), *Analysis of the Radiation Hazard Observed by RAD … September 2017 SPE*, GRL — https://eld.bl.uk/catalog/100084451995_0x000001
-- [S15] Zeitlin et al. (2018), rezumat — https://www.bexus.org/et/people/forstner/publication/zeitlin-2018
-- [S16] Toledo et al. (2023), *Dust Devil Frequency of Occurrence and Radiative Effects at Jezero Crater*, JGR Planets — https://digital.inta.es:8443/jspui/bitstream/20.500.12666/868/1/
-- [S17] Hueso et al. (2023), *Convective Vortices and Dust Devils Detected and Characterized by Mars 2020*, JGR Planets — https://searchworks.jioinstitute.edu.in/articles/edb__162055620
-- [S18] Sánchez-Lavega et al., furtuni texturate (VMC/HRSC/MARCI) — https://core.ac.uk/download/483448177.pdf
-- [S19] Sánchez-Lavega et al., EPSC2021-251 — https://meetingorganizer.copernicus.org/EPSC2021/EPSC2021-251.html
-- [S20] ESA Mars Express / phys.org (2022) — https://phys.org/news/2022-11-martian-storms-churn-earth-like-clouds.pdf
+- [S1] Rodriguez-Manfredi et al. (2023), *The diverse meteorology of Jezero crater over the first 250 sols of Perseverance on Mars*, Nature Geoscience — https://doi.org/10.1038/s41561-022-01084-0
+- [S2] NASA NSSDC, *Mars Fact Sheet* (durata zilei solare 24,6597 h) — https://nssdc.gsfc.nasa.gov/planetary/factsheet/marsfact.html
+- [S3] NASA Mars 2020, jurnalul misiunii: *Daily Records of Atmospheric Temperature With Perseverance* — https://mars.nasa.gov/mars2020/mission/status/472/daily-records-of-atmospheric-temperature-with-perseverance/
+- [S4] Munguira et al. (2023), *Near Surface Atmospheric Temperatures at Jezero From Mars 2020 MEDA Measurements*, JGR Planets — https://doi.org/10.1029/2022JE007559
+- [S5] NASA/JPL (2021), *NASA's First Weather Report From Jezero Crater on Mars* — https://www.jpl.nasa.gov/news/nasas-first-weather-report-from-jezero-crater-on-mars/
+- [S6] Sánchez-Lavega et al. (2023), *Mars 2020 Perseverance Rover Studies of the Martian Atmosphere Over Jezero From Pressure Measurements*, JGR Planets — https://doi.org/10.1029/2022JE007480 · text complet în NASA NTRS 20230001083: https://ntrs.nasa.gov/citations/20230001083
+- [S7] Viúdez-Moreiras et al. (2022), *Winds at the Mars 2020 Landing Site. 2. Wind Variability and Turbulence*, JGR Planets — text complet în NASA NTRS 20230001086: https://ntrs.nasa.gov/citations/20230001086
+- [S8] Lemmon et al. (2022), *Dust, Sand, and Winds Within an Active Martian Storm in Jezero Crater*, GRL — https://doi.org/10.1029/2022GL100126 · înregistrarea NASA NTRS: https://ntrs.nasa.gov/citations/25241411458763 (sursa inițială, Savijärvi et al., era un PDF neoficial care nu mai răspunde)
+- [S9] Sánchez-Lavega et al. (2025), *Martian Atmospheric Disturbances From Orbital Images and Surface Pressure at Jezero Crater, Mars, During Martian Year 36*, JGR Planets — https://doi.org/10.1029/2024JE008565
+- [S10] Munguira et al. (2023), *Seasonal evolution of near surface atmospheric temperatures at Jezero as measured by the MEDA instrument*, EGU23-5885 — https://doi.org/10.5194/egusphere-egu23-5885
+- [S11] NASA (9 dec. 2013), *NASA Rover Results Include First Age Measurement on Mars and Help for Human Exploration* („0.67 millisieverts per day from August 2012 to June 2013”) — https://www.nasa.gov/news-release/nasa-rover-results-include-first-age-measurement-on-mars-and-help-for-human-exploration/ · comunicatul SwRI: https://www.swri.org/newsroom/press-releases/swri-scientists-publish-first-radiation-measurements-the-surface-of-mars
+- [S12] Hassler et al. (2014), *Mars' Surface Radiation Environment Measured with the Mars Science Laboratory's Curiosity Rover*, Science — https://doi.org/10.1126/science.1244797 · NASA NTRS 20180007641: https://ntrs.nasa.gov/citations/20180007641
+- [S13] Guo et al. (2021), *Radiation environment for future human exploration on the surface of Mars: the current understanding based on MSL/RAD dose measurements*, Astron. Astrophys. Rev. — https://doi.org/10.1007/s00159-021-00136-5
+- [S14] Zeitlin et al. (2018), *Analysis of the Radiation Hazard Observed by RAD on the Surface of Mars During the September 2017 Solar Particle Event*, GRL — https://doi.org/10.1029/2018GL077760
+- [S15] NASA/JPL (2017), *Large Solar Storm Sparks Global Aurora and Doubles Radiation Levels on the Martian Surface* — https://www.jpl.nasa.gov/news/large-solar-storm-sparks-global-aurora-and-doubles-radiation-levels-on-the-martian-surface/
+- [S16] Toledo et al. (2023), *Dust Devil Frequency of Occurrence and Radiative Effects at Jezero Crater, Mars, as Measured by MEDA Radiation and Dust Sensor*, JGR Planets — https://doi.org/10.1029/2022JE007494
+- [S17] Hueso et al. (2023), *Convective Vortices and Dust Devils Detected and Characterized by Mars 2020*, JGR Planets — https://doi.org/10.1029/2022JE007516
+- [S18] Sánchez-Lavega et al. (2022), *Cellular patterns and dry convection in textured dust storms at the edge of Mars North Polar Cap*, Icarus — https://doi.org/10.1016/j.icarus.2022.115183
+- [S19] Sánchez-Lavega et al., *Dynamical Phenomena in Martian dust storms*, EPSC2021-251 — https://doi.org/10.5194/epsc2021-251
+- [S20] ESA (15 nov. 2022), *Martian dust storms churn up Earth-like clouds* (Mars Express + NASA MARCI; celule de 20-40 km) — https://www.esa.int/Science_Exploration/Space_Science/Mars_Express/Martian_dust_storms_churn_up_Earth-like_clouds
 - [S21] NASA JPL, *NASA Mars Orbiter Tracks Back-to-Back Regional Storms* — https://www.jpl.nasa.gov/news/nasa-mars-orbiter-tracks-back-to-back-regional-storms/
-- [S22] Physics World, mersul pe Lună (date Apollo) — https://physicsworld.com/?p=100152
-- [S23] OSTI, mobilitatea astronauților Apollo — https://www.osti.gov/servlets/purl/7168757
+- [S22] NASA, ICES-2025-129, *A Consolidated Tool for Planning and Analyzing Simulated Exploration Traverses and Associated Metabolic Workload* (modelul vitezei Apollo, ecuația 2, din traversele Apollo 12 și 14; Tobler pentru Pământ, ecuația 1) — NASA NTRS 20250001829: https://ntrs.nasa.gov/citations/20250001829
+- [S23] OSTI (U.S. DOE), mobilitatea astronauților Apollo — https://www.osti.gov/servlets/purl/7168757
 - [S24] NASA ICES-2026, *Mars Mass* (studiul 10 km Walkback) — https://ntrs.nasa.gov/api/citations/20260005410/downloads/Mars_Mass_ICES2026_Presentation_Final.pdf
 - [S25] Bellcomm TR-69-340-4 (1969), costuri de traversare lunară — https://ntrs.nasa.gov/api/citations/19700009560/downloads/19700009560.pdf
 - [S26] NASA, *EVA Lunar Surface Concept of Operations* — https://www.nasa.gov/wp-content/uploads/2020/01/topic_1-_eva_lunar_surface_concept_of_operations.pdf
-- [S27] *The Walkback Test* (NASA JSC, ICES 2007) — https://core.ac.uk/works/15254764
+- [S27] Vos et al. (2007), *The Walkback Test: A Study to Evaluate Suit and Life Support System Performance Requirements for a 10 km Lunar Traverse* (NASA JSC, ICES 2007) — NASA NTRS 20070016007: https://ntrs.nasa.gov/citations/20070016007 · https://doi.org/10.4271/2007-01-3133
 - [S28] NASA NTRS 19910001262 (rate metabolice EVA) — https://ntrs.nasa.gov/api/citations/19910001262/downloads/19910001262.pdf
-- [S29] NASA TN D-7883, evaluarea metabolică Apollo — https://www.nasa.gov/wp-content/uploads/static/history/alsj/tnD7883Metabolic.pdf
-- [S30] NASA, rucsacul Apollo (PLSS) — https://ntrs.nasa.gov/api/citations/19720019460/downloads/19720019460.pdf
-- [S31] Aerospace Medicine and Human Performance 90(2), parametri de simulare EVA — https://meridian-asma-published.prime-prod-local.pubfactory.com/downloadpdf/view/journals/amhp/90/2/article-p84.pdf
+- [S29] Waligora et al. (1975), NASA TN D-7883, *Apollo Experience Report: Assessment of Metabolic Expenditures* (citit în PDF, Tabelul I) — NASA NTRS 19750010199: https://ntrs.nasa.gov/citations/19750010199
+- [S30] NASA, *Apollo Portable Life Support System Performance Report* (rucsacul Apollo, PLSS) — https://ntrs.nasa.gov/api/citations/19720019460/downloads/19720019460.pdf
+- [S31] *Carbon Monoxide Levels in the Extravehicular Mobility Unit by Modeling and Operational Testing*, Aerospace Medicine and Human Performance 90(2):84-91 (2019) — https://doi.org/10.3357/AMHP.5220.2019
 - [S32] NASA NTRS 20220009964, cerințe fizice în teste EVA — https://ntrs.nasa.gov/citations/20220009964
-- [S33] DTIC ADA386372, echivalentul caloric al O₂ — https://apps.dtic.mil/sti/pdfs/ADA386372.pdf
+- [S33] DTIC ADA386372 (U.S. DoD), echivalentul caloric al O₂ — https://apps.dtic.mil/sti/pdfs/ADA386372.pdf
 - [S34] = [S24], tabelul greutăților echivalente pe Marte

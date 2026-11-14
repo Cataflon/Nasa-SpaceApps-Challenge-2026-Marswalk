@@ -132,12 +132,26 @@
       "col": 123,
       "science_value": 10,
       "dwell_min": 30,
-      "image": null,
+      "image": "/static/layers/stops/clay_delta.jpg",
       "lat": 18.4513,
       "lon": 77.40501,
       "snapped_m": 0,
       "note": "Clay-bearing mudstone at the base of the delta front, studied by Perseverance during the delta campaign",
-      "source": "NASA/JPL Perseverance localization waypoints (M20_waypoints.json), sols 500-599"
+      "source": "NASA/JPL Perseverance localization waypoints (M20_waypoints.json), sols 500-599",
+      "image_source": {
+        "imageid": "ZL0_0647_0724373849_519EBY_N0311710ZCAM08646_1100LMJ",
+        "sol": 647,
+        "instrument": "MCZ_LEFT",
+        "filter": "ZCAM_L0_RGB",
+        "credit": "NASA/JPL-Caltech/ASU",
+        "date_taken_utc": "2022-12-15T11:06:44.916",
+        "link": "https://mars.nasa.gov/mars2020/multimedia/raw-images/ZL0_0647_0724373849_519EBY_N0311710ZCAM08646_1100LMJ",
+        "url": "https://mars.nasa.gov/mars2020-raw-images/pub/ods/surface/sol/00647/ids/edr/browse/zcam/ZL0_0647_0724373849_519EBY_N0311710ZCAM08646_1100LMJ01_1200.jpg",
+        "mast_el_deg": -1.4,
+        "mast_az_deg": -63.8,
+        "rover_waypoint_sol": 647,
+        "rover_to_target_m": 9
+      }
     },
     {
       "id": "carbonate_rim",
@@ -147,12 +161,26 @@
       "col": 10,
       "science_value": 7,
       "dwell_min": 20,
-      "image": null,
+      "image": "/static/layers/stops/carbonate_rim.jpg",
       "lat": 18.48268,
       "lon": 77.36482,
       "snapped_m": 0,
       "note": "Carbonate-bearing margin unit along the inner crater rim, explored by Perseverance",
-      "source": "NASA/JPL Perseverance localization waypoints (M20_waypoints.json), sols 800-899"
+      "source": "NASA/JPL Perseverance localization waypoints (M20_waypoints.json), sols 800-899",
+      "image_source": {
+        "imageid": "ZL0_0843_0741775190_348EBY_N0401608ZCAM08848_1100LMJ",
+        "sol": 843,
+        "instrument": "MCZ_LEFT",
+        "filter": "ZCAM_L0_RGB",
+        "credit": "NASA/JPL-Caltech/ASU",
+        "date_taken_utc": "2023-07-04T20:51:24.094",
+        "link": "https://mars.nasa.gov/mars2020/multimedia/raw-images/ZL0_0843_0741775190_348EBY_N0401608ZCAM08848_1100LMJ",
+        "url": "https://mars.nasa.gov/mars2020-raw-images/pub/ods/surface/sol/00843/ids/edr/browse/zcam/ZL0_0843_0741775190_348EBY_N0401608ZCAM08848_1100LMJ01_1200.jpg",
+        "mast_el_deg": -10.2,
+        "mast_az_deg": 55.5,
+        "rover_waypoint_sol": 843,
+        "rover_to_target_m": 90
+      }
     },
     {
       "id": "olivine_floor",
@@ -162,12 +190,26 @@
       "col": 228,
       "science_value": 4,
       "dwell_min": 15,
-      "image": null,
+      "image": "/static/layers/stops/olivine_floor.jpg",
       "lat": 18.43342,
       "lon": 77.44235,
       "snapped_m": 0,
       "note": "Olivine-rich cumulate (Séítah formation), sampled by Perseverance",
-      "source": "NASA/JPL Perseverance localization waypoints (M20_waypoints.json), sols 200-299"
+      "source": "NASA/JPL Perseverance localization waypoints (M20_waypoints.json), sols 200-299",
+      "image_source": {
+        "imageid": "ZL0_0204_0685052331_206ECM_N0071716ZCAM08228_110085J",
+        "sol": 204,
+        "instrument": "MCZ_LEFT",
+        "filter": "ZCAM_L0_RGB",
+        "credit": "NASA/JPL-Caltech/ASU",
+        "date_taken_utc": "2021-09-16T08:22:57.954",
+        "link": "https://mars.nasa.gov/mars2020/multimedia/raw-images/ZL0_0204_0685052331_206ECM_N0071716ZCAM08228_110085J",
+        "url": "https://mars.nasa.gov/mars2020-raw-images/pub/ods/surface/sol/00204/ids/edr/browse/zcam/ZL0_0204_0685052331_206ECM_N0071716ZCAM08228_110085J01_1200.jpg",
+        "mast_el_deg": -11.4,
+        "mast_az_deg": 300.0,
+        "rover_waypoint_sol": 204,
+        "rover_to_target_m": 4
+      }
     }
   ],
   "artifacts": [
