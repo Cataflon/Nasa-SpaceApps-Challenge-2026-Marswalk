@@ -7,6 +7,90 @@ Teste: `python -m pytest tests/core` → 184 trecute, plus 2 lente (`-m slow`)
 `test_daylight` 9, `test_stops` 14, `test_planner` 7, `test_hazards` 11, `test_alternatives` 15,
 `test_benchmark` 5 + 2 lente).
 
+### Sesiunea din 15.11: traseul cel mai scurt în metri (`core/tour.py`)
+
+**Înainte:** ordinea opririlor venea din `stops.plan_stops` (CP-SAT: valoare științifică maximă, apoi
+durata minimă, apoi id-urile), iar segmentele din A* pe `static_cost` al presetului (pas × media costului
+celulelor) și din arborele `reverse_dijkstra` spre casă. Traseul era deci cel mai **ieftin** pe preset,
+iar ordinea cea mai **rapidă**. (Specificația V2 nu are §6.2; cerința e cea din sesiune.)
+
+**Acum (`route_metric="distance"`, implicit în `plan_route`):**
+- metrica (`tour.py`): pas ortogonal 1000 de unități, diagonal 1414 (1000 = o celulă = 20 m); celulele
+  interzise și regula anti-colț ca la A*. Cheia e lexicografică (distanță, preset, row, col), codată într-un
+  singur `int`: `pas × (SCALE + h[a] + h[b])`, cu `h = round(PRESET_RES × cost / 2)` (rotunjit pe celulă,
+  nu pe pas, ca să rămână exact simetric). SCALE > suma presetului pe orice drum de pe hartă (vezi
+  „Presupuneri”), deci presetul alege doar între drumuri la fel de lungi;
+- `distance_field`: Dijkstra pe grila bordată, cu heapq și întregi, oprire timpurie la ținte și potențialul
+  SCALE × octila minimă spre ținte (A* consistent, cheile rămân exacte). Arborele de părinți e canonic (la
+  chei egale câștigă predecesorul cu indexul minim), deci un segment nu depinde de mulțimea de ținte sau de
+  cache;
+- `tour_matrix`: habitat + toate țintele din meta, o dată per (sit, preset), în cache (referință slabă +
+  același tablou `static_cost` + semnătura site_id/versiune/formă/habitat/ținte). Simetrie: nodul i caută
+  doar nodurile j > i; segmentele se reconstruiesc din părinți, fără A*;
+- `shortest_tour`: ≤ 2 opriri direct, ≤ 12 Held-Karp vectorizat pe măști (straturi după numărul de biți),
+  reconstrucție înainte cu cel mai mic id care încă duce la optim (ordinea lexicografică în sensul vizitei;
+  un vector de predecesori ar da ordinea minimă citită de la capăt); > 12: cel mai apropiat vecin + 2-opt +
+  Or-opt, `approx = True`. Tur închis sau deschis; inaccesibile → `UNREACHABLE`, id-uri necunoscute →
+  `UNKNOWN`, fără excepții;
+- `plan_route`: ordinea din `shortest_tour`; dacă turul complet încalcă O₂ / apus / doză, `plan_stops` alege
+  submulțimea după science_value cu timpii acelorași segmente, iar submulțimea se reordonează după distanță
+  (dacă ordinea cea mai scurtă încalcă validatorul și ordinea CP-SAT nu, rămâne cea CP-SAT: siguranța
+  înaintea distanței). `budget.distance_m` = unități / 1000 × cell_size_m. Cu 0-1 opriri, fără matrice
+  (o căutare directă, calea în cache). Accesibilitatea se verifică tot din `home_tree` (aceeași mulțime de
+  celule accesibile; testul din `tests/api` cere asta);
+- `route_metric="cost"`: codul vechi neschimbat (doar mutat în `_assemble_by_cost`);
+- live (`replanner._replan_stops`): un singur `distance_field` din poziție pe C_temp cu nucleele interzise
+  (cost temporar ≥ M_CORE; dacă o oprire devine inaccesibilă, C_temp ca atare), distanțele dintre opriri din
+  matricea statică, Held-Karp pe opririle rămase; segmentele trec apoi prin A* pe C_temp, candidați și
+  validator. Doar în OUTBOUND.
+
+**Abateri:** opririle scoase de CP-SAT nu apar în răspuns ca `science_lost` (contractul
+`route_response.json` nu are câmpul; vezi „Cereri”). Ordinea Held-Karp folosește doar distanța (presetul
+departajează segmentele, nu ordinea).
+
+**Situl sintetic, habitat + cele 3 ținte (cererea în ordinea clay, carbonate, olivine):**
+
+| Preset | Durată max. | Înainte: ordine, distanță | Acum: ordine, distanță |
+|---|---|---|---|
+| safe | 480 | olivine → carbonate → clay, 13 705 m, 338 min | clay → carbonate → olivine, 13 704 m, 338 min |
+| fast | 480 | olivine → carbonate → clay, 13 705 m | clay → carbonate → olivine, 13 704 m |
+| science | 480 | olivine → carbonate → clay, 13 705 m | clay → carbonate → olivine, 13 704 m |
+| safe | 300 | carbonate → clay, 10 215 m, 253 min, O₂ 53,5 % | carbonate → clay, 9 890 m, 258 min, O₂ 50,3 % |
+| fast | 300 | carbonate → clay, 9 891 m | carbonate → clay, 9 890 m |
+| science | 300 | carbonate → clay, 10 203 m | carbonate → clay, 9 890 m |
+
+La 480 min turul vechi avea deja lungimea minimă (terenul sintetic e deschis între ținte): același tur,
+parcurs invers; la egalitate câștigă ordinea lexicografică. Diferența de 1 m vine din 1,414 față de √2.
+La 300 min (olivine nu încape, CP-SAT o scoate), drumul cel mai scurt e cu 3,2 % mai scurt la `safe`, dar
+urcă mai mult: +5 min și −3 puncte de O₂. Distanța e acum aceeași la toate presetele.
+
+**Timpi (500 × 500, mediana din 3 rulări; primul apel în procese noi):**
+
+| Măsurătoare | Țintă | Măsurat |
+|---|---|---|
+| `distance_field`, oprire timpurie (habitat → 3 ținte / cel mai rău din matrice) | < 0,5 s | 130 / 114 ms |
+| `distance_field` pe harta întreagă (fără ținte, informativ) | — | 528 ms |
+| `tour_matrix` rece (4 noduri) / din cache | < 2 s / < 1 ms | 456 ms / < 0,01 ms |
+| `shortest_tour` 3 / 8 / 12 opriri | < 1 / 20 / 300 ms | 0,22 / 1,5 / 6,1 ms |
+| `plan_route` primul apel (3 ținte / 1 țintă) | < 3 s | 1,56 / 1,30 s |
+| `plan_route` cu cache (3 ținte, 480 min / 300 min cu CP-SAT / 1 țintă) | < 50 ms | 3,3 / 25 / 1,4 ms |
+| `replan_stops` în live (o oprire blocată; din care ordinea) | < 0,6 s | 374 ms (145 ms) |
+
+Primul apel: 1,3 s din 1,56 s sunt cele două `reverse_dijkstra` care existau și înainte (`home_tree` pentru
+accesibilitate, `_o2_to_home` pentru punctul de neîntoarcere); matricea adaugă ~0,4 s. Într-un proces cu
+mai multe situri 500 × 500 încărcate, primul apel urcă spre 3 s (presiune pe colectorul de gunoi), de aceea
+încălzirea la pornire contează (vezi „Cereri”, rolul 3).
+
+**Teste:** `tests/core/test_tour.py` (23): permutările cererii (SC-23, pe un sit mic și pe cel sintetic),
+Held-Karp = forță brută pe 120 de cazuri (3-7 opriri, tur închis și deschis, start oarecare), segment =
+Dijkstra independent cu cheie tuplu (distanța și presetul), octila exactă pe grilă liberă, presetul doar
+între drumuri la fel de lungi, simetrie + inegalitatea triunghiului + cache, tur închis / deschis,
+`UNREACHABLE`, 20 de rulări identice, `route_metric="cost"` = drumul vechi, CP-SAT doar când turul nu
+încape, start în afara habitatului, ordinea live din poziție (cu și fără nucleu de pericol), arborele canonic.
+Modificat: `test_planner.py::test_synthetic_three_targets_follow_plan_stops_order` cere acum
+`route_metric="cost"`, pentru că verifică exact ordinea din `plan_stops`; cu metrica implicită, `plan_stops`
+se cheamă doar când turul complet nu trece validatorul.
+
 ### Sesiunea din 14.11: cererile deschise, rezolvate (T1-T9, cu acordul utilizatorului)
 
 Toate intrările de mai jos erau la „Cereri”; sunt **rezolvate în această sesiune**.
@@ -589,9 +673,8 @@ cele 14: 8 XPASS(strict) (buguri reparate înainte: AUDIT-004 notificarea la ero
     printre eșantioane). Știința copilotului: 27 % (se întoarce des, iar furtunile locale lovesc traseul
     spre țintă). Durata: 91 s.
 
-**Rămas:** `replan_stops` cu CP-SAT (acum doar scoate opririle blocate, păstrând ordinea); motivul e
-timpul (CP-SAT la fiecare replanificare ar depăși 0,5 s fără cache). Dacă se reia: `stops.plan_stops`
-pe opririle rămase, doar la oprire blocată sau eveniment de stare. De urmărit: `routing.astar` (Python
+**Rămas:** ~~`replan_stops` cu CP-SAT~~ rezolvat pe 15.11 altfel: opririle rămase (fără cele blocate) se
+reordonează după distanță cu Held-Karp (`tour.py`), ~0,15 s; CP-SAT nu mai e necesar aici. De urmărit: `routing.astar` (Python
 pur) e ~50 % din timpul benchmark-ului (90 de apeluri × 55 ms pe 15 scenarii); sub `tracemalloc`, testul
 de memorie pe 130 de scenarii devine foarte lent.
 
@@ -668,6 +751,16 @@ de memorie pe 130 de scenarii devine foarte lent.
   `tick.mode` (NOMINAL / MONITOR / REACT / EMERGENCY); formular pentru hazard personalizat
   (`live_event.json` → `_hazard_spec_example`, op add / update / remove).
 
+- **Pentru rolul 3 (nou, 15.11, încălzire):** `tour.tour_matrix(site, preset)` pentru fiecare preset
+  (`safe`, `fast`, `science`) la pornire, din `lifespan`, într-un thread (ca încălzirea existentă a lui
+  `plan_route`): ~0,45 s per preset pe 500 × 500; după aceea orice plan cu mai multe opriri ia câțiva ms.
+- **Pentru cine întreține `shared/contracts/` (nou, 15.11):** `route_response.json` nu are un câmp pentru
+  opririle scoase din plan (nu încap în timp sau O₂). Propunere: `science_lost: [id]` opțional. Până
+  atunci, planificatorul le lasă doar în afara listei `stops`, ca înainte.
+- **Pentru cine întreține `backend/tests/regression/` (nou, 15.11):** AUDIT-005 e reparat de alinierea
+  motorului la `core.budget._walk` (deja în HEAD, nu de schimbarea din sesiunea asta: O₂ la sosire 73,3 %
+  față de 73,5 % în plan, la ambele metrici). `test_engine_o2_matches_plan_budget_without_events` apare
+  ca FAILED (XPASS strict); trebuie scos marcajul `xfail`. Fișierul nu era în lista permisă.
 ## Presupuneri
 
 Constante și alegeri fără sursă, pentru rolul 1 (de documentat sau de înlocuit cu valori cu sursă).
@@ -805,3 +898,13 @@ Doar în teste (nu afectează produsul):
 | `modes` | `K_BY_MODE` | 15 / 5 / 1 / 1 | C (§3) |
 | `modes` | `PROXIMITY_M` | 450 m | C (rolul 3) |
 | `budget.timeline` | efectele | evaluate la începutul fiecărui segment | C: eroare sub un segment (~0,4 min) |
+
+**Traseul cel mai scurt în metri (`tour.py`, 15.11):**
+
+| Unde | Constantă | Valoare | Nivel / ce înseamnă |
+|---|---|---|---|
+| `tour` | `ORTHO` / `DIAG` | 1000 / 1414 unități | convenție (cerința sesiunii): 1000 = o celulă = `cell_size_m`; diagonala = √2 × 1000 trunchiat. Distanța raportată = unități / 1000 × cell_size_m |
+| `tour` | `PRESET_RES` | 100 | C: rezoluția componentei de preset (0,01 unități de cost pe celulă); contează doar între drumuri la fel de lungi |
+| `tour` | `SCALE` | (rows × cols − 1) × DIAG × 2 × h_max + 1, rotunjit la par | derivat, nu presupunere: un drum optim e simplu, deci are ≤ N − 1 pași, fiecare cu componenta de preset ≤ DIAG × 2 × h_max (h_max = round(PRESET_RES × cost_max_finit / 2)); suma pe orice drum rămâne < SCALE, deci comparația e exact (distanță, preset). Pe 500 × 500, `safe`: h_max = 902, SCALE ≈ 6,4·10¹¹ |
+| `tour` | `HELD_KARP_MAX_STOPS` | 12 | C: pragul ordinii exacte (memorie 2¹² × 12 stări, ~6 ms); peste el, euristică marcată `approx` |
+

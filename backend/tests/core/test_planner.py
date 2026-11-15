@@ -78,6 +78,9 @@ def test_synthetic_clay_delta_is_go_or_caution_under_3_s():
 
 
 def test_synthetic_three_targets_follow_plan_stops_order(monkeypatch):
+    """route_metric="cost" (comportamentul vechi): ordinea vine din plan_stops. Cu metrica implicită
+    ("distance") ordinea vine din tour.shortest_tour, iar plan_stops se cheamă doar dacă turul complet nu
+    trece validatorul (vezi test_tour.py)."""
     site = synthetic_site_or_skip()
     ids = [t["id"] for t in site.meta["targets"]]
     seen = []
@@ -88,7 +91,7 @@ def test_synthetic_three_targets_follow_plan_stops_order(monkeypatch):
         return result
 
     monkeypatch.setattr(planner, "plan_stops", recording_plan_stops)
-    plan = plan_route(site, site.habitat, ids, max_duration_min=480)
+    plan = plan_route(site, site.habitat, ids, max_duration_min=480, route_metric="cost")
 
     order = [s["id"] for s in plan["stops"]]
     assert len(seen) == 1 and seen[0].optimal

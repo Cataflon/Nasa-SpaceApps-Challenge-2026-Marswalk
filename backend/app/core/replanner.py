@@ -18,7 +18,7 @@ import numpy as np
 from app.core import conflict as cf
 from app.core.alternatives import _overlap, _remove_loops, _visited_stops
 from app.core.budget import EffectWindow, _walk, active_multipliers, effective_sunset, o2_cost_grid, timeline, tobler_speed_ms
-from app.core.costfield import t_est_grid, temp_cost
+from app.core.costfield import M_CORE, t_est_grid, temp_cost
 from app.core.costmap import static_cost
 from app.core.hazard_spec import H_REACT_MIN, H_WATCH_MIN, HazardSpec
 from app.core.hazards import HAZARD_RESPONSES
@@ -26,6 +26,7 @@ from app.core.planner import home_tree, site_cache
 from app.core.routing import astar, nearest_exit, path_home, project_to_grid, reverse_dijkstra_multi
 from app.core.selection import Context, select
 from app.core.site_data import Site
+from app.core.tour import HOME, distance_field, shortest_tour, tour_matrix
 from app.core.types import Alternative, Cell, Decision, Limits
 
 EPS = 1e-9
@@ -675,10 +676,49 @@ def _wait(state, ev, current_path, geo) -> Alternative:
     return alt
 
 
-def _replan_stops(state, ev, cost, start, refuges, home_cost, home_parent, omitted) -> list[Alternative]:
-    """Opririle rămase fără cele blocate (pericol în nucleu la sosirea estimată). Ordinea se păstrează.
+def _shortest_stop_order(state: ReplanState, cost: np.ndarray, start: Cell, stop_ids: list[str],
+                         refuges: list[Cell]) -> list[str]:
+    """Ordinea opririlor rămase care minimizează distanța (tour.shortest_tour, Held-Karp).
 
-    Varianta CP-SAT (reordonarea opririlor rămase cu stops.plan_stops) e la „În lucru” în rol2.md.
+    Un singur `distance_field` din poziția curentă, pe C_temp cu celulele de nucleu interzise (cost
+    temporar ≥ M_CORE peste cel static); dacă așa o oprire devine inaccesibilă (de exemplu, astronautul e
+    înconjurat de nucleu), se folosește C_temp ca atare. Distanțele dintre opriri și spre habitat vin din
+    matricea statică a presetului (în cache): o aproximare, pentru că segmentele finale trec oricum prin
+    A* pe C_temp, candidați și validator. Turul e închis la habitat dacă habitatul e un refugiu utilizabil,
+    altfel deschis (refugiul cel mai apropiat se adaugă după ultima oprire). Fără excepții: la orice
+    eroare, ordinea primită rămâne.
+    """
+    if len(stop_ids) < 2:
+        return list(stop_ids)
+    try:
+        site = state.site
+        matrix = tour_matrix(site, state.preset)
+        home = tuple(int(v) for v in site.habitat)
+        closed = home in [tuple(r) for r in refuges]
+        cells = [matrix.cells[s] for s in stop_ids]
+        wanted = cells + ([home] if closed else [])
+        base = static_cost(site, state.preset)
+        cost = np.asarray(cost, dtype=np.float64)
+        both = np.isfinite(cost) & np.isfinite(base)
+        core = np.zeros(cost.shape, dtype=bool)
+        core[both] = cost[both] - base[both] >= M_CORE - EPS
+        no_core = np.where(core, np.inf, cost)
+        no_core[start] = cost[start]
+        f = distance_field(site, start, state.preset, wanted, cost=no_core)
+        if any(f.units(c) is None for c in wanted):
+            f = distance_field(site, start, state.preset, wanted, cost=cost)
+        units = {s: f.units(c) for s, c in zip(stop_ids, cells)}
+        units[HOME] = f.units(home) if closed else 0
+        tour = shortest_tour(matrix, "__position__", stop_ids, closed, start_units=units)
+        rest = [s for s in stop_ids if s not in tour.order]  # inaccesibile: la final, A* le va respinge
+        return tour.order + rest
+    except Exception:
+        return list(stop_ids)
+
+
+def _replan_stops(state, ev, cost, start, refuges, home_cost, home_parent, omitted) -> list[Alternative]:
+    """Opririle rămase fără cele blocate (pericol în nucleu la sosirea estimată), în ordinea care minimizează
+    distanța din poziția curentă (`_shortest_stop_order`). Doar în OUTBOUND (în INBOUND nu există opriri).
     """
     blocked = []
     for sid, c in zip(ev.stops, ev.stop_cells):
@@ -695,7 +735,9 @@ def _replan_stops(state, ev, cost, start, refuges, home_cost, home_parent, omitt
         return []
     for sid in blocked:
         omitted.append({"id": sid, "reason": STOP_BLOCKED})
-    keep = [c for sid, c in zip(ev.stops, ev.stop_cells) if sid not in blocked]
+    cell_of = dict(zip(ev.stops, ev.stop_cells))
+    order = _shortest_stop_order(state, cost, start, [sid for sid in ev.stops if sid not in blocked], refuges)
+    keep = [cell_of[sid] for sid in order]
     dest = _nearest_refuge(home_cost, home_parent, keep[-1] if keep else start, refuges)
     if dest is None:
         return []
