@@ -67,6 +67,10 @@ class Alternative:
     off_map: bool = False  # V7: iese din grilă sau are un segment estimat în afara ei
     refuge_unusable: bool = False  # V8: refugiul de destinație e `unusable` la sosire
     priority: int = 0  # prioritatea strategiei (tie-break după scor)
+    # „step_back”: astronautul merge până la path[hold_index] (în afara drumului furtunii), stă acolo
+    # hold_min minute, apoi continuă pe același path. None = fără oprire planificată.
+    hold_index: int | None = None
+    hold_min: float = 0.0
     merged_with: list[str] = field(default_factory=list)  # id-urile candidaților identici, deduplicați
     phase: str = "OUTBOUND"  # OUTBOUND | INBOUND
     flags: list[str] = field(default_factory=list)  # ex. ESTIMATED_OFF_MAP, IMPROVISED_REFUGE

@@ -137,6 +137,56 @@
   - `O2_PCT_PER_MIN_WALK` rămâne exportat, ca rată pe teren plat a modelului nou (0,194 %/min).
   - Test: `test_live_o2_matches_planner_budget`.
 
+- **Puncte proprii în planificare (P3, 15.11)**, după `shared/contracts/README.md` → „Puncte proprii”:
+  - **Cererea:** `POST /api/route` acceptă `custom_stops` (`id: note_…`, `name`, `row`, `col`, `tag`, `dwell_min`), cu id-urile lor în `stops`.
+  - **Validare:** în grilă, teren permis, accesibil din habitat, fără duplicate sau definiții lipsă, nume fără `<>`; altfel 422 cu text.
+  - **Înregistrare:** punctele devin ținte ale sitului marcate `custom: true` (`planning.register_custom_stops`). Așa le folosesc neschimbate planificatorul, `core/replanner` (live) și motorul. Sunt ascunse în `/api/site` și în chat.
+  - **Ordinea** o alege planificatorul; răspunsul are `visit_order`, `source`, `omitted`, `validation_status`.
+  - **Verificat:** Olivine + 2 puncte proprii → GO; EVA live cu cutremur: toate opririle vizitate, acasă cu 79% O₂.
+- **Planning, ecran nou (frontend, 15.11, cerut de utilizator):**
+  - harta pe tot ecranul, iar listele de sub ea au dispărut (Your trip, Elevation profile, Science sites, Mission plan, Mission budget, Route analysis);
+  - la click pe hartă → „Add to trip” (popup-ul existent);
+  - în stânga hărții e un panou semi-transparent (`MissionOverlay.jsx`) cu opririle, estimarea backendului (verdict, O₂, distanță, durată, „Return by” LTST, punct de neîntoarcere, doză), setările (prioritate, durată, întoarcere) și „Open simulation”;
+  - estimarea se cere automat la fiecare schimbare (`useMissionEstimate.js`, cu 400 ms întârziere) și e blocată cât rulează o EVA.
+
+- **Pentru rolul 2: „destinația întâi” în `core/selection.py` (15.11, cu acordul utilizatorului).**
+  - **Problema** (reprodusă în aplicație): cu un cutremur lângă astronaut, o reevaluare de proximitate alegea RETURN deși traseul curent (ocolirea) era valid. Scorul S unic dădea câștig întoarcerii prin O₂-ul rămas (știința are doar 0,15 la `safe`), iar RETURN e definitiv.
+  - **Reparația:**
+    - `selection.tier()`: 0 = ajunge la toate țintele, 1 = sare peste ținte, 2 = RETURN / adăpost; pe INBOUND totul e la nivelul 0;
+    - `order_key` = (nivel, S, prioritate, id);
+    - un traseu curent valid nu e înlocuit de o variantă de nivel mai slab.
+    
+    Scorul S, histerezisul și EMERGENCY rămân neschimbate în interiorul aceluiași nivel.
+  - **Verificat pe Jezero** (Olivine + Clay, cutremur de 80–300 m pus pe traseu lângă astronaut): în toate cele 4 cazuri REROUTE, ambele ținte vizitate, acasă cu 63–66% O₂. Scena demo: min 30 REROUTE (`detour_free`, ca în `demo.md`), 80 EMERGENCY, 93 REROUTE, egress la min 150, Clay vizitat.
+  - Test: `tests/core/test_selection.py::test_destination_first_valid_detour_beats_cheaper_return`.
+  - **Atenție:** benchmark-ul și testele de scenă (`tests/scenario`, `tests/integration/test_sc_*`) pot avea alte cifre sau decizii. Trebuie rulate din nou, iar `benchmark.json` și `demo.md` actualizate.
+
+- **Așteptare, „step back” și reluarea țintelor (15.11, cu acordul utilizatorului; cod și în fișierele rolului 2):**
+  - **`core/replanner.py`:**
+    - `W_MAX_MIN` 30 → 120: o așteptare mai lungă e respinsă doar de validator (O₂, apus);
+    - candidat nou `step_back` (tip WAIT): când poziția e în drumul pericolului, astronautul se retrage la cea mai apropiată celulă din afara amprentei pe toată durata așteptării (+100 m), așteaptă cât trebuie, apoi continuă spre ținte;
+    - `ReplanState.hold` și `_route_dwell`: oprirea planificată intră în watchdog și în evaluarea traseului curent.
+  - **`core/types.py`:** `Alternative.hold_index` / `hold_min`.
+  - **`core/selection.py`:** `step_back` are prioritatea lui `wait`. ROUTE_OK și histerezisul nu blochează o variantă de nivel mai bun (necesar pentru reluare).
+  - **Motorul:**
+    - execută `step_back` (`self.hold`: oprirea la locul sigur);
+    - **RESUME**: după RETURN / EMERGENCY, țintele sunt puse deoparte (bug reparat: înainte erau șterse), iar la fiecare 5 min și la sosirea acasă se încearcă reluarea lor (`_try_resume`, `reason_code: HAZARD_CLEARED`, `trigger: resume`).
+  - **Verificat pe Jezero** (spre Clay):
+
+    | Scenariu | Rezultat |
+    |---|---|
+    | furtună lentă peste traseu | ocolire, Clay atinsă |
+    | furtună rapidă de 1,6 km care îl prinde | EMERGENCY, apoi reluare la min 7, Clay atinsă, acasă cu 70% O₂ |
+    | furtună pe lângă traseu | continuă |
+    | O₂ 52% | RETURN definitiv |
+    | fronturi de 2 km | `step_back` și `wait` valide, Clay atinsă |
+
+    Scena demo e neschimbată.
+  - **LLM:** promptul v3 descrie `step_back` și reluarea.
+  - **Frontend:** etichetele din `utils.js` și `DecisionPanel` sunt în engleză.
+  - **Teste:** `test_selection.py` (2), `test_engine.py::test_return_keeps_targets_for_resume`.
+  - **Cunoscut:** cu o furtună mare și rapidă, decizia poate oscila EMERGENCY ↔ reluare de câteva ori până trece furtuna.
+
 ## În lucru
 
 ## Cereri

@@ -49,6 +49,19 @@ Mesajele WebSocket au mereu un câmp `type`:
 - `explanation`: textul explicației, legat prin `decision_id`. `source` e `llm` sau `template`.
 - `event`: un eveniment injectat sau din scenariu (furtună, furtună solară, scurgere în costum etc.).
 
+### Puncte proprii în planificare (15.11, contractul frontendului 1.1 §5)
+
+Adăugiri compatibile la `POST /api/route`:
+- **Cererea:** `custom_stops: [{"id": "note_…", "name", "row", "col", "tag": "waypoint|science|hazard|shelter", "dwell_min"}]`. Id-urile lor apar în `stops`, amestecate cu cele din catalog.
+- **Răspunsul:**
+  - fiecare oprire are în plus `name`, `row`, `col`, `source` (`catalog | custom`), `visit_order`;
+  - `omitted` = opririle cerute pe care planificatorul le-a lăsat deoparte;
+  - `validation_status: "validated"`.
+- **Comportament:**
+  - ordinea o alege planificatorul (CP-SAT) și e cea din `stops`;
+  - punctele proprii nu apar în `GET /api/site`;
+  - erorile (în afara grilei, teren interzis sau inaccesibil, id lipsă sau duplicat) dau 422 cu `detail` text.
+
 ### Câmpuri noi, opționale (arhitectura de rutare V2, `docs/roles/ARHITECTURA_RUTARE_V2.md`)
 
 Adăugiri compatibile: exemplele vechi rămân valide, consumatorii le tratează ca opționale.

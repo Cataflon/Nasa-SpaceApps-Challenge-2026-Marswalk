@@ -387,3 +387,15 @@ def test_live_o2_matches_planner_budget():
     run(e, 200)
     assert e.end_reason == "egress_complete"
     assert e.o2_pct == pytest.approx(planned.o2_end_pct, abs=0.5)
+
+
+def test_return_keeps_targets_for_resume():
+    """O întoarcere pune țintele deoparte (nu le șterge), ca RESUME să le poată relua."""
+    from app.core.types import Decision
+
+    e = started(straight_route(length=200, stop_at=1))
+    run(e, 3)
+    back = Alternative("return", "RETURN", [(300, 200)], 0, 90, 0.0, 0.0, 200, 420, science_lost=["clay_delta"],
+                       science_lost_value=1.0)
+    e._apply_decision(Decision("RETURN", "return", "HAZARD_ON_ROUTE", [back]), e.t_min)
+    assert e.returning and e.stops_left == [] and [s["id"] for s in e.suspended_stops] == ["clay_delta"]

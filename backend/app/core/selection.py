@@ -43,8 +43,8 @@ EXPOSURE_SCALE_MIN = 10.0  # §7: E_risc = min(1, expunere/10 + 0,5·halou)
 EXTRA_TIME_SCALE_MIN = 60.0  # §7: ΔT = clip(timp_extra / 60)
 URGENT_CONTACT_MIN = 10.0  # §7: în REACT cu contact sub 10 min histerezisul nu se aplică
 # Prioritatea strategiilor (§6, ordinea fixă a candidaților): tie-break după scor.
-PRIORITY = {"current": 1, "detour": 2, "detour_free": 4, "wait": 5, "exit_zone": 6, "replan_stops": 7,
-            "return": 8, "shelter": 9}
+PRIORITY = {"current": 1, "detour": 2, "detour_free": 4, "wait": 5, "step_back": 5, "exit_zone": 6,
+            "replan_stops": 7, "return": 8, "shelter": 9}
 
 
 def priority_of(alt_id: str) -> int:
@@ -68,8 +68,26 @@ def score(alt: Alternative, preset: str = "safe", limits: Limits = Limits(), pha
     return (w["risk"] * risk + w["o2"] * o2 + w["time"] * extra + w["dose"] * dose + w["science"] * science)
 
 
+def tier(alt: Alternative) -> int:
+    """Destinația întâi (cerința echipei, 15.11; vezi docs/plan-replanificare-live.md, F2).
+
+    0 = ajunge la TOATE țintele rămase (traseul curent, ocoliri, așteptare, ieșire din zonă);
+    1 = sare peste unele ținte, dar continuă (replan_stops);
+    2 = întoarcere / adăpost (renunță la ținte).
+    Scorul S decide doar în interiorul aceluiași nivel. Fără niveluri, la `safe` (știință 0,15)
+    întoarcerea câștiga mereu prin O₂-ul rămas, chiar și când o ocolire validă ducea la țintă.
+    Pe drumul spre casă (INBOUND) nu mai sunt ținte: toate variantele sunt la nivelul 0.
+    """
+    if getattr(alt, "phase", "OUTBOUND") == "INBOUND":
+        return 0
+    if alt.kind == "RETURN" or alt.id in ("return", "shelter"):
+        return 2
+    return 1 if (alt.science_lost or alt.science_lost_value > 0) else 0
+
+
 def order_key(alt: Alternative) -> tuple:
-    return (round(alt.score if alt.score is not None else math.inf, 6), alt.priority or priority_of(alt.id), alt.id)
+    return (tier(alt), round(alt.score if alt.score is not None else math.inf, 6),
+            alt.priority or priority_of(alt.id), alt.id)
 
 
 @dataclass
@@ -101,7 +119,9 @@ def select(alternatives: list[Alternative], ctx: Context = Context(), limits: Li
             kind = "REROUTE"  # pe drumul spre casă: REROUTE / WAIT cu phase = INBOUND (§6.1)
         return Decision(kind, alt_id, reason, alternatives, omitted=omitted, phase=ctx.phase, **kw)
 
-    if current and current.valid and current.risk <= RISK_THRESHOLD + 1e-9 and not ctx.in_hazard:
+    better_tier = current is not None and any(
+        a.valid and a.kind != "CONTINUE" and tier(a) < tier(current) for a in alternatives)
+    if current and current.valid and current.risk <= RISK_THRESHOLD + 1e-9 and not ctx.in_hazard and not better_tier:
         return decide("CONTINUE", current.id, "ROUTE_OK")
 
     candidates = sorted((a for a in alternatives if a.valid and a.kind != "CONTINUE"), key=order_key)
@@ -111,8 +131,11 @@ def select(alternatives: list[Alternative], ctx: Context = Context(), limits: Li
         return _emergency(alternatives, decide)
 
     best = candidates[0]
+    if current and current.valid and tier(current) < tier(best):
+        # Traseul curent e sigur și duce la ținte, iar cea mai bună alternativă ar renunța la ele.
+        return decide("CONTINUE", current.id, "NO_BETTER_OPTION")
     urgent = ctx.in_hazard or (ctx.react and ctx.contact_min is not None and ctx.contact_min < URGENT_CONTACT_MIN)
-    if current and current.valid and not urgent:
+    if current and current.valid and not urgent and tier(best) == tier(current):  # nivel mai bun: fără histerezis
         gain = (current.score - best.score) / max(current.score, 1e-6)
         if gain < DELTA - 1e-9 or ctx.t_now - ctx.last_switch_t < DWELL_MIN - 1e-9:
             return decide("CONTINUE", current.id, "HYSTERESIS")

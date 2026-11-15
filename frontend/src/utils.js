@@ -1,8 +1,8 @@
-export const number = (value, digits = 0) => Number.isFinite(value) ? new Intl.NumberFormat('ro-RO', { maximumFractionDigits: digits }).format(value) : '—';
-export const decisions = { CONTINUE: 'Continuă traseul', REROUTE: 'Urmează ocolirea', WAIT: 'Așteaptă', RETURN: 'Revino la habitat', EMERGENCY: 'Urgență' };
-export const alternatives = { detour_north: 'Ocolire nord', detour_south: 'Ocolire sud', detour_east: 'Ocolire est', detour_west: 'Ocolire vest', wait: 'Așteptare', return: 'Întoarcere', exit_zone: 'Ieșire din zonă', current: 'Traseu curent' };
-export const events = { local_storm: 'Furtună locală', regional_storm: 'Furtună regională', solar_particle_event: 'Furtună solară', suit_leak: 'Scurgere costum', fatigue: 'Oboseală', dust_devil: 'Vârtej de praf', marsquake: 'Cutremur' };
-export const violation = code => ({ O2_RESERVE: 'Rezervă O₂ insuficientă', DAYLIGHT: 'Întoarcere după apus', SLOPE: 'Pantă prea mare', DOSE: 'Doză prea mare', HAZARD: 'Pericol pe traseu' }[code] ?? code);
+export const number = (value, digits = 0) => Number.isFinite(value) ? new Intl.NumberFormat('en-US', { maximumFractionDigits: digits }).format(value) : '—';
+export const decisions = { CONTINUE: 'Continue on route', REROUTE: 'Take the detour', WAIT: 'Wait', RETURN: 'Return to habitat', EMERGENCY: 'Emergency' };
+export const alternatives = { detour_north: 'North detour', detour_south: 'South detour', detour_east: 'East detour', detour_west: 'West detour', detour_free: 'Direct detour', wait: 'Wait in place', step_back: 'Step back & wait', return: 'Return to habitat', exit_zone: 'Exit the zone', replan_stops: 'Skip a blocked stop', shelter: 'Shelter', current: 'Current route' };
+export const events = { local_storm: 'Local dust storm', regional_storm: 'Regional dust storm', solar_particle_event: 'Solar particle event', suit_leak: 'Suit leak', fatigue: 'Fatigue', dust_devil: 'Dust devil', marsquake: 'Marsquake', egress_complete: 'Back at the habitat', o2_depleted: 'O₂ depleted', time_limit: 'Time limit reached' };
+export const violation = code => ({ O2_RESERVE: 'O₂ below reserve', DAYLIGHT: 'Back after sunset', SLOPE: 'Slope too steep', DOSE: 'Dose too high', HAZARD: 'Crosses the hazard', NO_RETURN_POINT: 'Past the point of no return', OFF_MAP: 'Leaves the map', NO_SHELTER: 'No usable shelter' }[code] ?? code);
 
 // Punctul de neîntoarcere poate fi `null` în route_response: nici de la start O₂-ul nu ajunge pentru
 // drumul spre casă cu rezerva. Atunci planul nu are întoarcere sigură: verdictul afișat e NO-GO și pe

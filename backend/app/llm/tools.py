@@ -100,7 +100,7 @@ class ToolError(ValueError):
 
 
 def targets() -> list[dict]:
-    return planning.site_meta()["targets"]
+    return planning.catalog_targets(planning.site_meta())
 
 
 def _as_list(stops) -> list:

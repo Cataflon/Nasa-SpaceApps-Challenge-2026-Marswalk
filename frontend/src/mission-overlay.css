@@ -1,0 +1,36 @@
+/* Translucent mission card on the right of the planning map (MissionOverlay.jsx). */
+.mission-overlay{position:absolute;z-index:7;right:18px;top:78px;width:268px;max-height:calc(100% - 170px);overflow:auto;padding:14px 14px 12px;border-radius:14px;background:#1c1510c7;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border:1px solid #b58a5b55;box-shadow:0 14px 36px #0009;color:#ead5c1;display:flex;flex-direction:column;gap:10px;font-size:12px}
+.mission-overlay-hint{flex-direction:row;align-items:flex-start;gap:10px;width:250px;color:#cdb39b}
+.mission-overlay-hint p{margin:0;line-height:1.5;font-size:11px}
+.mission-overlay-hint strong{color:#ffd1a1;font-weight:600}
+.mo-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.mo-head h3{margin:0;font-size:14px;font-weight:600}
+.mo-status{font-size:10px;letter-spacing:.06em;text-transform:uppercase;padding:3px 8px;border-radius:99px;border:1px solid #6b4c35;color:#dcad83}
+.mo-status.GO{border-color:#4bc3a2;color:#7fe0c4}.mo-status.CAUTION{border-color:#e9b545;color:#f3cf7a}.mo-status.NO-GO{border-color:#e25d5d;color:#ff9a9a}
+.mo-stops{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px}
+.mo-stops li{display:flex;align-items:center;gap:8px;min-height:30px}
+.mo-stops li.omitted{opacity:.55}
+.mo-end{color:#ab8c72;font-size:11px}.mo-end i{width:8px;height:8px;margin:0 7px;border-radius:50%;background:#ead5c1}
+.mo-order{flex:none;width:22px;height:22px;display:grid;place-items:center;border-radius:50%;background:#e97845;color:#1c1510;font-weight:700;font-size:11px}
+.omitted .mo-order{background:#5a4535;color:#cdb39b}
+.mo-name{flex:1;min-width:0;display:flex;flex-direction:column;align-items:flex-start;border:0;background:transparent;padding:0;color:#ead5c1;text-align:left;font-size:12px;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mo-name small{font-size:10px;color:#ab8c72}
+.mo-remove{flex:none;width:22px;height:22px;display:grid;place-items:center;padding:0;border:0;border-radius:6px;background:transparent;color:#b99a80}
+.mo-remove:hover:not(:disabled){background:#3b291b;color:#ffd1a1}
+.mo-o2{display:flex;align-items:baseline;justify-content:space-between}.mo-o2 span{color:#cdb39b}
+.mo-o2 strong{font-size:22px;font-weight:600}.mo-o2 small{font-size:12px;margin-left:2px}
+.mo-budget{margin:0;display:grid;grid-template-columns:1fr 1fr;gap:6px 12px}
+.mo-budget div{display:flex;flex-direction:column}.mo-budget dt{font-size:10px;color:#ab8c72}.mo-budget dd{margin:0;font-size:12px}
+.mo-budget dd small{font-size:9px;color:#ab8c72}
+.mo-error{margin:0;color:#ff9a9a;font-size:11px;line-height:1.45}
+.mo-note{margin:0;color:#ab8c72;font-size:10px;line-height:1.45}
+.mo-settings summary{cursor:pointer;color:#dcad83;font-size:11px}
+.mo-settings label{display:flex;flex-direction:column;gap:4px;margin-top:8px;font-size:10px;color:#ab8c72}
+.mo-settings select,.mo-settings input[type=number]{border:1px solid #6b4c35;border-radius:8px;background:#2c2119d9;padding:7px 8px;color:#f1dcc6;font-size:12px}
+.mo-settings .mo-check{flex-direction:row;align-items:center;gap:8px;color:#ead5c1;font-size:11px}
+.mission-overlay .button.full{width:100%;justify-content:center}
+.planning-map.is-pip .mission-overlay,.map-expanded .mission-overlay-hint{display:none}
+/* Planning: harta ocupă tot ecranul (fără titlul paginii). */
+.planning-fullscreen{padding-top:14px}
+.planning-fullscreen .planning-map-anchor{height:calc(100vh - 64px);min-height:520px}
+@media(max-width:760px){.mission-overlay{left:10px;right:10px;top:auto;bottom:70px;width:auto;max-height:45%}}

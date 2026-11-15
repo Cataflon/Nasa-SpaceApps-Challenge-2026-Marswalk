@@ -38,7 +38,10 @@ def test_api_route_matches_route_response_contract(client, contract, audit):
     r = client.post("/api/route", json=contract("route_request.json"))
     assert r.status_code == 200
     assert r.headers.get("X-Mock") != "1"
-    assert audit.shape_diff(contract("route_response.json"), r.json(), nullable={"$.point_of_no_return"}) == []
+    # Câmpurile opționale adăugate de API (puncte proprii, contractul frontendului 1.1; README, „Puncte proprii”).
+    optional = {"$.omitted", "$.validation_status"} | {f"$.stops[].{k}" for k in ("name", "row", "col", "source", "visit_order")}
+    assert audit.shape_diff(contract("route_response.json"), r.json(), nullable={"$.point_of_no_return"},
+                            optional=optional) == []
 
 
 def test_api_route_enums_verdict_and_preset_are_from_contract(client, contract):

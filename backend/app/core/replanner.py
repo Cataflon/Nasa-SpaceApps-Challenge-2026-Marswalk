@@ -29,9 +29,17 @@ from app.core.site_data import Site
 from app.core.types import Alternative, Cell, Decision, Limits
 
 EPS = 1e-9
-# presupunere (C, §6): așteptarea minimă e căutată în {5, 10, …, W_MAX}.
+# presupunere (C, §6): așteptarea minimă e căutată în {5, 10, …, W_MAX}. W_MAX = 120 (nu 30): o furtună
+# care trece în 40-60 min nu trebuie să ducă la întoarcere; validatorul respinge așteptările pentru care
+# O₂-ul sau lumina nu ajung (rezervă, apus), deci limita reală e bugetul, nu W_MAX.
 WAIT_STEP_MIN = 5
-W_MAX_MIN = 30
+W_MAX_MIN = 120
+# „step_back” (15.11): când poziția e chiar în drumul pericolului, astronautul se retrage până la cea mai
+# apropiată celulă din afara amprentei lui pe toată durata așteptării (cu marjă), așteaptă acolo, apoi
+# continuă spre ținte. Eșantionarea amprentei în timp și marja sunt presupuneri (C).
+STEP_BACK_SAMPLE_MIN = 2
+STEP_BACK_MARGIN_M = 100.0
+STEP_BACK_EXTRA_MIN = (0, 10, 20, 30)  # așteptare suplimentară încercată dacă drumul încă atinge pericolul
 WAYPOINT_ITERATIONS = 3  # §6: punct fix, pericolul se mișcă până ajungi la W
 R_SNAP_CELLS = 25  # presupunere (C): raza maximă (Chebyshev) a căutării pe inele pentru waypoint (500 m)
 MAX_CANDIDATES = 8  # §6
@@ -106,6 +114,8 @@ class ReplanState:
     # doar candidații care merg mai adânc decât planul (pragul = min(rezervă, marja planului)).
     # None = pragul e rezerva (§7, ca în specificație).
     pnr_floor_pct: float | None = None
+    # Oprirea planificată pe traseul activ (după un „step_back”): (celula, minute). None = fără oprire.
+    hold: tuple | None = None
 
 
 @dataclass
@@ -190,12 +200,25 @@ def _inside_fast(spec: HazardSpec, cell: Cell, t: float, cell_size: float, margi
 # ------------------------------------------------------------------ watchdog (nivel 1)
 
 
+def _route_dwell(state: ReplanState, path: list[Cell]) -> dict | None:
+    """Staționările traseului activ: cea în curs (la start) și oprirea planificată de un step_back."""
+    dwell = {}
+    if state.dwell_now_min > 0 and len(path) > 1:
+        dwell[0] = float(state.dwell_now_min)
+    if state.hold is not None:
+        cell, minutes = (int(state.hold[0][0]), int(state.hold[0][1])), float(state.hold[1])
+        idx = next((i for i, c in enumerate(path) if c == cell), None)
+        if idx is not None and idx < len(path) - 1 and minutes > 0:
+            dwell[idx] = dwell.get(idx, 0.0) + minutes
+    return dwell or None
+
+
 def watchdog(state: ReplanState) -> Watch:
     """Contactele continue pe traseul rămas (orizont H_WATCH), astronaut în amprentă, O₂, apus, hartă, refugiu."""
     site = state.site
     cell, off = project_to_grid(state.position, site.shape)
     path = _clean_path([cell] + [_cell(p) for p in state.remaining_path], site.shape, site, state.preset)
-    b = _timeline(state, path, {0: state.dwell_now_min} if state.dwell_now_min > 0 and len(path) > 1 else None)
+    b = _timeline(state, path, _route_dwell(state, path))
     geo = _geometric(state.specs, state.t_now)
     contacts = cf.contacts(path, b.eta_min, geo, site.cell_size_m, state.t_now, horizon_min=H_WATCH_MIN)
     inside = [s.id for s in geo if _inside_fast(s, cell, state.t_now, site.cell_size_m)]
@@ -476,10 +499,13 @@ def generate_candidates(state: ReplanState) -> Candidates:
     if isolated(start):
         flags.append(ISOLATED)
 
-    # 1. current
-    alts.append(ev.evaluate("current", "CONTINUE", current_path))
-    contacts = cf.contacts(current_path, _timeline(state, current_path).eta_min, geo, cell_size, state.t_now,
-                           horizon_min=H_WATCH_MIN)
+    # 1. current (cu oprirea planificată de un step_back în curs, dacă există)
+    hold_dwell = None
+    if state.hold is not None:
+        hold_dwell = {i: m for i, m in (_route_dwell(replace(state, dwell_now_min=0.0), current_path) or {}).items()}
+    alts.append(ev.evaluate("current", "CONTINUE", current_path, extra_dwell=hold_dwell))
+    contacts = cf.contacts(current_path, _timeline(state, current_path, hold_dwell).eta_min, geo, cell_size,
+                           state.t_now, horizon_min=H_WATCH_MIN)
 
     # Ținta: următoarea oprire, apoi refugiul (cel mai apropiat valid). În INBOUND: refugiul.
     reachable = []
@@ -557,6 +583,12 @@ def generate_candidates(state: ReplanState) -> Candidates:
 
     # 5. wait: cel mai mic W pentru care traseul rămas nu mai are contact, cu poziția în afara amprentei
     alts.append(_wait(state, ev, current_path, geo))
+
+    # 5b. step_back: poziția e în drumul pericolului → retragere în afara lui, așteptare, apoi continuare
+    if contacts and target is not None:
+        sb = _step_back(state, ev, current_path, geo, cost, through, target)
+        if sb is not None:
+            alts.append(sb)
 
     # 6. exit_zone
     if ev.holding:
@@ -642,10 +674,11 @@ def _nearest_refuge(home_cost, home_parent, cell, refuges) -> Cell | None:
     return refuges[0] if refuges else None
 
 
-def _ellipse_mask(spec, t, shape, cell_size) -> np.ndarray:
+def _ellipse_mask(spec, t, shape, cell_size, margin: float = 0.0) -> np.ndarray:
     rows, cols = shape
     cy, cx = spec.center_at(t)
     a, b = spec.axes_at(t)
+    a, b = a + margin, b + margin
     yy = (np.arange(rows)[:, None] + 0.5) * cell_size - cy
     xx = (np.arange(cols)[None, :] + 0.5) * cell_size - cx
     th = math.radians(spec.theta_deg)
@@ -672,6 +705,53 @@ def _wait(state, ev, current_path, geo) -> Alternative:
                       display_path=[start])
     if chosen is None and geo:
         alt.exposure_over_limit = True  # nicio așteptare ≤ W_MAX nu scapă de pericol (sau poziția e lovită)
+    return alt
+
+
+def _step_back(state, ev, current_path, geo, cost, through, target) -> Alternative | None:
+    """„Step back” (15.11): retragere din drumul pericolului, așteptare, apoi continuare spre ținte.
+
+    1. W = cel mai mic timp (5…W_MAX) după care traseul curent, pornit atunci, nu mai atinge pericolul;
+    2. locul sigur = cea mai apropiată celulă (Dijkstra pe C_temp) din afara amprentei tuturor
+       pericolelor pe [t, t+W], cu marja STEP_BACK_MARGIN_M; dacă poziția e deja afară, ajunge `wait`;
+    3. traseul = poziție → loc sigur (oprire W − mersul până acolo) → țintă → restul; dacă încă atinge
+       pericolul, se încearcă o așteptare mai lungă (STEP_BACK_EXTRA_MIN).
+    Validatorul decide apoi ca la orice candidat (O₂, apus, pericol). Tip WAIT: păstrează țintele.
+    """
+    site = state.site
+    shape, cell = site.shape, site.cell_size_m
+    start = current_path[0]
+    need = None
+    for w in range(WAIT_STEP_MIN, W_MAX_MIN + 1, WAIT_STEP_MIN):
+        after = _timeline(state, current_path, start=state.t_now + w)
+        if not cf.contacts(current_path, after.eta_min, geo, cell, state.t_now):
+            need = w
+            break
+    if need is None:
+        return None
+    danger = np.zeros(shape, dtype=bool)
+    for s in geo:
+        for t in np.arange(state.t_now, state.t_now + need + EPS, STEP_BACK_SAMPLE_MIN):
+            if s.active(float(t)) and s.center_at(float(t)) is not None:
+                danger |= _ellipse_mask(s, float(t), shape, cell, STEP_BACK_MARGIN_M)
+    if not danger[start]:
+        return None  # poziția rămâne în afara pericolului: e cazul așteptării pe loc
+    to_safe = nearest_exit(cost, start, ~danger)
+    if to_safe is None or len(to_safe) < 2:
+        return None
+    rest = through([to_safe[-1], target])
+    if rest is None:
+        return None
+    path = to_safe + rest[1:]
+    idx = len(to_safe) - 1
+    walk = float(_timeline(state, to_safe).eta_min[-1] - state.t_now)
+    alt = None
+    for extra in STEP_BACK_EXTRA_MIN:
+        hold = float(max(WAIT_STEP_MIN, need - walk) + extra)
+        alt = ev.evaluate("step_back", "WAIT", path, extra_dwell={idx: hold})
+        alt.hold_index, alt.hold_min = idx, hold
+        if alt.exposure_min <= EPS and not alt.exposure_over_limit:
+            break
     return alt
 
 

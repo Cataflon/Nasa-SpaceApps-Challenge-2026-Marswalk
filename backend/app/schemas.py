@@ -25,9 +25,25 @@ class CellModel(BaseModel):
     col: int
 
 
+class CustomStop(BaseModel):
+    """Un punct propriu de pe hartă (contractul frontendului 1.1, §5). Nu primește valoare științifică
+    aleasă de utilizator."""
+
+    model_config = ConfigDict(extra="ignore")
+    id: Annotated[str, Field(pattern=r"^note_[A-Za-z0-9_-]+$", max_length=80)]
+    name: Annotated[str, Field(min_length=1, max_length=60, pattern=r"^[^<>]*$")]  # fără markup
+    row: int
+    col: int
+    tag: Literal["waypoint", "science", "hazard", "shelter"] = "waypoint"
+    dwell_min: Annotated[float, Field(ge=0, le=1440, allow_inf_nan=False)] = 0
+
+
 class RouteRequest(BaseModel):
     start: CellModel
-    stops: list[str] = Field(default_factory=list)
+    # Id-uri, în ordinea cerută: din catalog (`clay_delta`) sau puncte proprii (`note_…`, definite în
+    # `custom_stops`). Ordinea finală o decide planificatorul și e întoarsă în `stops`.
+    stops: list[str] = Field(default_factory=list, max_length=100)
+    custom_stops: list[CustomStop] = Field(default_factory=list, max_length=100)
     return_to_habitat: bool = True
     preset: Preset = "safe"
     start_time_min: float = Field(default=0, ge=0)

@@ -11,7 +11,7 @@ import json
 
 from app.llm.summary import NO_ALTERNATIVE
 
-PROMPT_VERSION = 2
+PROMPT_VERSION = 3  # +1: step_back, reluarea țintelor (15.11)
 
 SYSTEM = """You are the copilot of an astronaut walking on Mars.
 The safety system has ALREADY decided what to do. You never change the decision and you never compute anything.
@@ -52,6 +52,10 @@ def alt_name(alt_id: str) -> str:
     return {
         "current": "current route",
         "wait": "waiting",
+        "step_back": "step back out of the hazard's path",
+        "exit_zone": "exit from the hazard zone",
+        "replan_stops": "route that skips a blocked stop",
+        "shelter": "shelter",
         "return": "return to the habitat",
         NO_ALTERNATIVE: "no route",
     }.get(alt_id, alt_id.replace("_", " "))
@@ -59,8 +63,12 @@ def alt_name(alt_id: str) -> str:
 
 def _action(s: dict) -> str:
     d, alt = s["decision"], s.get("alternative_id", NO_ALTERNATIVE)
+    if s.get("reason_code") == "HAZARD_CLEARED":
+        return "Action: the hazard has passed: resume the route to the science targets."
     if d == "REROUTE":
         return f"Action: take the {alt_name(alt)}."
+    if d == "WAIT" and alt == "step_back":
+        return f"Action: step back out of the hazard's path, wait there, then continue (adds {s.get('extra_min', 0)} min)."
     if d == "WAIT":
         return f"Action: stop and wait {s.get('extra_min', 0)} min, then continue."
     if d == "RETURN":

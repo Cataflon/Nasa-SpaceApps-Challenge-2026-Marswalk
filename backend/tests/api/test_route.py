@@ -99,3 +99,24 @@ def test_store_returns_copies():
     rid = routes.add({"path": [[1, 1]]})
     routes.get(rid)["path"].append([2, 2])
     assert routes.get(rid)["path"] == [[1, 1]]
+
+
+def test_custom_stops_are_planned_and_hidden_from_site(monkeypatch):
+    """Puncte proprii pe hartă (contractul frontendului 1.1): plan validat cu ele, ținte ascunse în /api/site."""
+    from app.core.site_data import get_site
+
+    site = get_site("synthetic")
+    if site is None:
+        pytest.skip("situl sintetic nu e generat")
+    monkeypatch.setattr(planning, "get_site", lambda: site)
+    monkeypatch.setattr(main, "get_site", lambda: site)
+    h = site.habitat
+    body = {"start": {"row": h[0], "col": h[1]}, "stops": ["note_a", "clay_delta"],
+            "custom_stops": [{"id": "note_a", "name": "Ridge", "row": h[0] - 20, "col": h[1] - 10, "dwell_min": 5}]}
+    r = client.post("/api/route", json=body)
+    assert r.status_code == 200
+    stops = {s["id"]: s for s in r.json()["stops"]}
+    assert stops["note_a"]["source"] == "custom" and stops["clay_delta"]["source"] == "catalog"
+    assert all(not t.get("custom") for t in client.get("/api/site").json()["targets"])
+    bad = {**body, "custom_stops": [{**body["custom_stops"][0], "row": 9999}]}
+    assert client.post("/api/route", json=bad).status_code == 422

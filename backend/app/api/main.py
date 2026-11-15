@@ -135,7 +135,7 @@ def site(response: Response):
         "center": meta["center"],
         "habitat": meta["habitat"],
         "max_slope_deg": meta["max_slope_deg"],
-        "targets": meta["targets"],
+        "targets": planning.catalog_targets(meta),
         # Hardware NASA ca POI (rolul 1) + traseul real al roverului Perseverance (doar pe Jezero).
         "artifacts": meta.get("artifacts", []),
         "rover_traverse": meta.get("rover_traverse"),
@@ -196,6 +196,7 @@ def route(req: RouteRequest, response: Response):
             start_time_min=req.start_time_min,
             max_duration_min=req.max_duration_min,
             return_to_habitat=req.return_to_habitat,
+            custom_stops=list(req.custom_stops),
         )
     except planning.PlanningError as exc:
         raise HTTPException(422, str(exc)) from exc

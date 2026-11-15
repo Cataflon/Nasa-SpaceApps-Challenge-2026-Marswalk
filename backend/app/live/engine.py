@@ -75,6 +75,7 @@ SOLAR_DOSE_MULTIPLIER = scenario_mod.SOLAR_PARTICLE_EVENT["dose_rate_multiplier"
 SOLAR_DURATION_MIN = int(scenario_mod.SOLAR_PARTICLE_EVENT["duration_min"])
 
 # --- Parametrii motorului ---
+RESUME_EVERY_MIN = 5  # pe drumul spre casă după un pericol: cât de des se verifică dacă țintele se pot relua
 REEVAL_MIN = 5  # cât de des se reevaluează un pericol care lovește încă traseul
 # Bucla pe 3 niveluri (docs/plan-replanificare-live.md §4, „Arhitectura deterministă” §6):
 # Nivelul 2 (periodic) folosește K pe mod (core/modes.py: 15 / 5 / 1 / 1), nivelul 3 de proximitate
@@ -184,6 +185,7 @@ class LiveEngine:
         self.dose_mult = 1.0
         self.dose_mult_until = -1
         self.wait_until: int | None = None
+        self.hold: tuple | None = None  # (celulă, minute): oprirea planificată de un step_back
         self.dwell_left = 0
         self.hazards: list[dict] = []
         self._hazard_counter = 0
@@ -198,6 +200,7 @@ class LiveEngine:
         self._last_decision_key: tuple | None = None
         self.route_version = 0  # crește la fiecare traseu nou aplicat (REROUTE, RETURN, EMERGENCY)
         self.suspended_stops: list[dict] = []  # țintele lăsate la un RETURN (pentru RESUME, F4)
+        self._last_resume_check = -10**9
         self._new_hazards: list[dict] = []  # pericolele apărute în tick-ul curent (nivelul 3)
         self._near: set[str] = set()  # pericolele care au declanșat deja replanificarea de proximitate
         self._last_budget_eval = -10**9
@@ -404,6 +407,9 @@ class LiveEngine:
                 walked_min, walked_o2 = walked_min + need, walked_o2 + o2
                 self.remaining.pop(0)
                 self.traveled.append(target)
+                if self.hold is not None and tuple(self.hold[0]) == tuple(target):
+                    self.dwell_left, self.hold = self.dwell_left + int(self.hold[1]), None  # step_back: așteaptă aici
+                    break
                 stop = next((s for s in self.stops_left if s["cell"] == target), None)
                 if stop is not None:
                     self.stops_left.remove(stop)
@@ -431,13 +437,14 @@ class LiveEngine:
     def _remaining_minutes(self) -> tuple[float, float]:
         """(minute de mers, minute de oprire) până la capătul traseului curent."""
         walk, _ = self._remaining_walk()
-        dwell = self.dwell_left + sum(s["dwell_min"] for s in self.stops_left)
+        dwell = self.dwell_left + sum(s["dwell_min"] for s in self.stops_left) + (self.hold[1] if self.hold else 0)
         return walk, dwell
 
     def _o2_at_end(self, extra_rest_min: float = 0.0) -> tuple[float, float, float]:
         """(O₂ % la capătul traseului, minute de mers, minute de oprire) cu ritmul de acum."""
         walk, walk_o2 = self._remaining_walk()
-        dwell = self.dwell_left + sum(s["dwell_min"] for s in self.stops_left) + extra_rest_min
+        dwell = (self.dwell_left + sum(s["dwell_min"] for s in self.stops_left) + extra_rest_min
+                 + (self.hold[1] if self.hold else 0))
         return self._o2_after(walk, dwell, walk_o2), walk, dwell
 
     def _o2_factor(self) -> float:
@@ -756,6 +763,14 @@ class LiveEngine:
         if self.pos is None:
             return None
         smart = self._site is not None
+        # RESUME: pe drumul spre casă după un pericol, la RESUME_EVERY_MIN și la sosirea acasă (înainte de
+        # egress), se verifică dacă țintele lăsate se pot relua.
+        if smart and self.suspended_stops and self.returning \
+                and (t - self._last_resume_check >= RESUME_EVERY_MIN or not self.remaining):
+            self._last_resume_check = t
+            msg = self._try_resume(t)
+            if msg is not None:
+                return msg
         contacts = self._contacts(t)
         hits = [(eta, x) for eta, x in contacts if eta - t <= REACT_WINDOW_MIN]
         hit = hits[0] if hits else None
@@ -854,7 +869,7 @@ class LiveEngine:
             preset=self.preset, effects=self._effects(t, specs), phase=self.phase,
             dwell_now_min=float(self.dwell_left + waiting), limits=self.limits, last_switch_t=self._last_switch_t,
             dose_rate_usv_h=float(self._sensors(t)["dose_rate_usv_h"]),
-            pnr_floor_pct=self._plan_pnr_floor(),
+            pnr_floor_pct=self._plan_pnr_floor(), hold=self.hold,
         )
 
     def _plan_pnr_floor(self) -> float | None:
@@ -875,6 +890,27 @@ class LiveEngine:
             sunset_min=self.sunset_min, preset=self.preset, limits=self.limits)
         self._pnr_floor = core_replanner.plan_pnr_margin(state)
         return self._pnr_floor
+
+    def _try_resume(self, t: int) -> dict | None:
+        """RESUME (F4, 15.11): după un RETURN / EMERGENCY cauzat de pericol, verifică periodic dacă
+        țintele lăsate au redevenit accesibile (pericolul a trecut, O₂-ul și lumina ajung). Replanificarea
+        V2 se face ca și cum țintele ar fi încă în plan; dacă alege o variantă validă care le păstrează pe
+        toate (nivelul 0, „destinația întâi”), astronautul reia drumul spre ele. Altfel continuă spre casă."""
+        saved = (self.stops_left, self.phase)
+        self.stops_left, self.phase = list(self.suspended_stops), "OUTBOUND"
+        try:
+            decision = core_replanner.plan(self._replan_state(t))[0]
+        except (NotImplementedError, ValueError, KeyError, AttributeError, IndexError) as exc:
+            log.warning("RESUME: replanificarea nu a mers (%s).", exc)
+            decision = None
+        chosen = next((a for a in decision.alternatives if a.id == decision.alternative_id), None) if decision else None
+        if (decision is None or chosen is None or not chosen.valid or chosen.science_lost
+                or decision.decision not in ("REROUTE", "WAIT")):
+            self.stops_left, self.phase = saved
+            return None
+        self.suspended_stops, self.returning = [], False
+        decision.reason_code = "HAZARD_CLEARED"
+        return self._decide(t, "resume", None, None, decision)
 
     def _choose(self, t: int, h: dict | None) -> Decision:
         """Cu sit: replanificarea V2 din core (ARHITECTURA_RUTARE_V2). Fără sit sau dacă replanificarea
@@ -997,6 +1033,16 @@ class LiveEngine:
         alt = next((a for a in decision.alternatives if a.id == decision.alternative_id), None)
         if alt is None or decision.decision == "CONTINUE":
             return
+        if getattr(alt, "hold_index", None) is not None and len(alt.path) > 1:
+            # step_back: merge până la locul sigur, stă acolo hold_min minute, apoi continuă pe același traseu.
+            path = [_cell(p) for p in alt.path]
+            here = _cell(self.pos)
+            self.remaining = path[1:] if path[0] == here else path
+            self.hold = (path[alt.hold_index], int(round(alt.hold_min)))
+            self.wait_until = None
+            self.route_version += 1
+            self._last_switch_t = t
+            return
         if decision.decision == "WAIT" or alt.kind == "WAIT":
             # Și sub EMERGENCY: așteptarea pe loc nu înlocuiește traseul (calea ei are o singură celulă;
             # aplicată ca rută, ar goli traseul rămas și misiunea s-ar „termina” pe teren deschis).
@@ -1007,11 +1053,13 @@ class LiveEngine:
         path = [_cell(p) for p in alt.path]
         self.remaining = path[1:] if path and path[0] == here else path
         self.wait_until = None
+        self.hold = None  # un traseu nou anulează oprirea planificată a unui step_back
         self.route_version += 1
         self._last_switch_t = t
-        if alt.science_lost:  # replan_stops / ocolire care renunță la o oprire
+        is_return = decision.decision in ("RETURN", "EMERGENCY") or alt.kind == "RETURN"
+        if alt.science_lost and not is_return:  # replan_stops / ocolire care renunță la o oprire
             self.stops_left = [x for x in self.stops_left if x["id"] not in alt.science_lost]
-        if decision.decision in ("RETURN", "EMERGENCY") or alt.kind == "RETURN":
+        if is_return:  # țintele se pun deoparte (nu se șterg): RESUME le poate relua după ce trece pericolul
             self.phase = "INBOUND"
             self.returning = True
             self.suspended_stops = self.stops_left + self.suspended_stops

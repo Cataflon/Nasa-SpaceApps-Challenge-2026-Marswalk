@@ -97,3 +97,31 @@ def test_selection_is_deterministic():
     alts = lambda: [alt("current", "CONTINUE", risk=0.9, exposure_min=3), alt("detour_south", "REROUTE", o2_end_pct=55),
                     alt("detour_north", "REROUTE", o2_end_pct=55), alt("wait", "WAIT", extra_min=5)]
     assert len({sel.select(alts()).alternative_id for _ in range(10)}) == 1
+
+
+def test_destination_first_valid_detour_beats_cheaper_return():
+    """Destinația întâi (15.11): o ocolire validă care păstrează țintele câștigă în fața întoarcerii,
+    chiar dacă întoarcerea are scor S mai bun (mai mult O₂ rămas); la fel traseul curent valid,
+    chiar cu astronautul încă în amprenta pericolului. RETURN doar fără altă variantă validă."""
+    ctx = sel.Context(in_hazard=True, react=True, contact_min=2)
+    current = alt("current", "CONTINUE", o2_end_pct=60, risk=0.4)  # risc peste prag: se caută altceva
+    detour = alt("detour_free", "REROUTE", o2_end_pct=55, extra_min=8)
+    ret = alt("return", "RETURN", o2_end_pct=95, science_lost=["t"], science_lost_value=1.0)
+    d = sel.select([current, detour, ret], ctx)
+    assert (d.decision, d.alternative_id) == ("REROUTE", "detour_free")
+    safe_current = alt("current", "CONTINUE", o2_end_pct=60)
+    d = sel.select([safe_current, alt("wait", "WAIT", o2_end_pct=50, risk=0.9, crosses_hazard=True),
+                    alt("return", "RETURN", o2_end_pct=95, science_lost=["t"], science_lost_value=1.0)], ctx)
+    assert (d.decision, d.alternative_id) == ("CONTINUE", "current")
+    blocked = alt("detour_free", "REROUTE", o2_end_pct=20)  # sub rezerva de O₂: invalidă
+    d = sel.select([alt("current", "CONTINUE", risk=0.9, crosses_hazard=True), blocked, ret], ctx)
+    assert d.decision == "RETURN"
+
+
+def test_resume_safe_route_home_is_left_for_a_route_that_keeps_the_targets():
+    """RESUME (15.11): drumul spre casă e sigur, dar pierde ținta; o variantă validă care o păstrează
+    câștigă (fără ROUTE_OK și fără histerezis), ca astronautul să reia drumul după ce trece pericolul."""
+    home = alt("current", "CONTINUE", o2_end_pct=90, science_lost=["t"], science_lost_value=1.0)
+    resume = alt("detour_free", "REROUTE", o2_end_pct=60, extra_min=90)
+    d = sel.select([home, resume], sel.Context())
+    assert (d.decision, d.alternative_id) == ("REROUTE", "detour_free")
