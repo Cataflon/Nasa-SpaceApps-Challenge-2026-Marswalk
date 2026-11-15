@@ -22,6 +22,11 @@ LLM_ENABLED = os.getenv("LLM_ENABLED", "1") == "1"
 # 1 = WebSocket-ul redă live_messages.json în buclă, în loc de motorul real (util pentru frontend).
 LIVE_MOCK = os.getenv("LIVE_MOCK", "0") == "1"
 
+# 1 = motorul aplicației rulează și evenimentele programate ale scenariului demo (vârtej la min 30, front la
+# 80, furtună regională la 125). Implicit 0: pericolele apar doar când le injectează utilizatorul.
+# Testele le păstrează (tests/conftest.py), iar un LiveEngine construit direct le are mereu.
+DEMO_EVENTS = os.getenv("MARSWALK_DEMO_EVENTS", "0") == "1"
+
 FRONTEND_ORIGINS =os.getenv("FRONTEND_ORIGINS", "http://localhost:5173").split(",")
 
 

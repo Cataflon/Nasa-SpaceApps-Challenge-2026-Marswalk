@@ -84,9 +84,18 @@ def effects_from_specs(specs) -> list[EffectWindow]:
     return out
 
 
-def _return_only(specs, t) -> bool:
-    """Un pericol global al cărui singur răspuns permis e RETURN (furtuna regională) e activ?"""
-    return any(s.scope == "global" and s.active(t) and HAZARD_RESPONSES.get(s.kind) == {"RETURN"} for s in specs)
+def _return_only(specs, t, touching: set | None = None) -> bool:
+    """Un pericol al cărui singur răspuns permis e RETURN (furtuna regională) e activ și ne privește?
+
+    Global (acoperă situl): mereu. Local (cercul desenat de utilizator, 15.11): doar dacă prognoza lui
+    atinge traseul sau astronautul e în el (`touching` = id-urile cu contact / care îl conțin). Fără
+    `touching` se păstrează regula veche (orice pericol „doar RETURN” activ)."""
+    for s in specs:
+        if not (s.active(t) and HAZARD_RESPONSES.get(s.kind) == {"RETURN"}):
+            continue
+        if s.scope == "global" or touching is None or s.id in touching:
+            return True
+    return False
 
 
 @dataclass
@@ -649,7 +658,9 @@ def generate_candidates(state: ReplanState) -> Candidates:
             alts.append(ev.evaluate("shelter", "RETURN", spot, flags=[IMPROVISED_REFUGE]))
 
     # Furtuna regională (răspuns permis: doar RETURN): orice variantă care mai vizitează opriri e respinsă (V5).
-    if _return_only(state.specs, state.t_now):
+    # Locală (cerc desenat): doar dacă prognoza ei atinge traseul curent sau astronautul e în ea.
+    touching = {c.hazard_id for c in contacts} | {h.id for h in ev.holding}
+    if _return_only(state.specs, state.t_now, touching):
         for a in alts:
             if set(ev.stops) - set(a.science_lost):
                 a.exposure_over_limit = True

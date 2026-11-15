@@ -187,6 +187,23 @@
   - **Teste:** `test_selection.py` (2), `test_engine.py::test_return_keeps_targets_for_resume`.
   - **Cunoscut:** cu o furtună mare și rapidă, decizia poate oscila EMERGENCY ↔ reluare de câteva ori până trece furtuna.
 
+- **Furtuna regională respectă cercul desenat (15.11, cu acordul utilizatorului):**
+  - **Motorul** (`_specs`) o trimite ca pericol local, cu nucleu blocat, deci traiectoria ei e verificată ca la orice furtună.
+  - **Dimensiunea:** peste 60% din hartă (ex. implicit, 30 km), `normalize` o face globală, ca înainte.
+  - **`replanner._return_only(specs, t, touching)`:** regula „doar RETURN” se aplică unei regionale locale doar dacă prognoza ei atinge traseul curent sau astronautul e în ea.
+  - **Verificat pe Jezero:**
+
+    | Furtună regională | Rezultat |
+    |---|---|
+    | departe, îndreptată în altă parte | CONTINUE |
+    | vine spre traseu | RETURN, apoi reluare după ce trece |
+    | implicită | RETURN |
+
+  - Test: `tests/core/test_replanner.py::test_regional_storm_requires_return_only_when_it_reaches_the_route`.
+- **Evenimentele programate ale scenariului demo** (min 30 / 80 / 125) sunt oprite în aplicație; `MARSWALK_DEMO_EVENTS=1` le pornește. Testele le păstrează (`tests/conftest.py`).
+
+- **Pericolele expirate dispar și de pe hartă (15.11):** `engine._expire_hazards` scoate pericolele al căror `HazardSpec.end_min` a trecut (zona de cutremur: 60 min, furtuna solară: 48 h). Înainte, algoritmul nu le mai vedea, dar harta le desena în continuare (ex. traseu reluat „prin” cutremur după 60 min). Test: `test_marsquake_zone_disappears_after_its_lifetime`.
+
 ## În lucru
 
 ## Cereri

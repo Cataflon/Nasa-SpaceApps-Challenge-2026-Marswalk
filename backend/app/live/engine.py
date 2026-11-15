@@ -26,7 +26,7 @@ import threading
 import time
 from collections.abc import AsyncIterator, Awaitable, Callable
 
-from app.config import CONTRACTS_DIR
+from app.config import CONTRACTS_DIR, DEMO_EVENTS
 from app.core import alternatives as core_alternatives
 from app.core import hazard_spec as core_spec
 from app.core import hazards as core_hazards
@@ -711,7 +711,10 @@ class LiveEngine:
             margin = max(h["axes_m"]) / self.cell_size_m
             return r < -margin or r > rows + margin or c < -margin or c > cols + margin
 
-        self.hazards = [h for h in self.hazards if not gone(h)]
+        # Pericolele cu durată (ex. zona de cutremur: 60 min, core/hazard_spec.py) expiră: algoritmul nu le
+        # mai vede, deci nici harta (tick.hazards) nu le mai desenează.
+        ended = {s.id for s in self._specs(t) if math.isfinite(s.end_min) and t > s.end_min}
+        self.hazards = [h for h in self.hazards if not gone(h) and h["id"] not in ended]
 
     # ------------------------------------------------------------------ decizie
 
@@ -831,12 +834,17 @@ class LiveEngine:
         shape = tuple(self._meta.get("shape", [500, 500]))
         out = []
         for h in self.hazards:
+            # Furtuna regională respectă cercul desenat (centru, rază, direcție): pericol local, cu nucleu
+            # blocat, ca traiectoria ei să fie verificată ca la orice furtună. Dacă acoperă > 60 % din hartă
+            # (ex. 30 km, valoarea implicită), normalize o face globală, ca înainte.
+            extra = ({"scope": "local", "effects": {"block": "core", "soft_halo": True}}
+                     if h["kind"] == "regional_storm" else {})
             res = core_spec.normalize(
                 {"id": h["id"], "kind": h["kind"],
                   "shape": {"center": {"row": h["center0"][0], "col": h["center0"][1]}, "axes_m": list(h["axes_m"]),
                             "theta_deg": h["angle_deg"]},
                   "motion": [{"from_min": h["t0"], "velocity_ms": list(h["velocity_ms"])}],
-                  "intensity": h["intensity"], "lifetime": {"start_min": h["t0"]}, **h.get("raw", {})},
+                  "intensity": h["intensity"], "lifetime": {"start_min": h["t0"]}, **extra, **h.get("raw", {})},
                 h["kind"], cell_size_m=self.cell_size_m, t_now=h["t0"], shape=shape, hazard_id=h["id"],
                 rev=int(h.get("rev", 1)))
             if res.ok:
@@ -1222,7 +1230,8 @@ class LiveEngine:
             await asyncio.sleep(1.0 / max(self.clock_speed, 0.1))
 
 
-engine = LiveEngine()
+# Motorul aplicației: fără evenimentele programate ale scenariului demo, dacă nu sunt cerute (config.DEMO_EVENTS).
+engine = LiveEngine(scheduled_events=None if DEMO_EVENTS else [])
 
 
 async def mock_stream(interval_s: float = 1.0) -> AsyncIterator[dict]:

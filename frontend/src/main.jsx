@@ -15,3 +15,4 @@ import "./explorer.css";
 import "./workflows.css";
 import "./ux.css";
 import "./mission-overlay.css";
+import "./sim-compact.css";

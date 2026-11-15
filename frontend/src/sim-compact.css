@@ -1,0 +1,42 @@
+/* Simulation, layout compact (15.11): trei vederi sus, instrumentele sub hartă, copilotul lângă ele,
+   controalele într-un rând mic, telemetria la final. */
+.sim-compact{padding-top:14px}
+.sim-compact .flight-workspace{margin-bottom:14px}
+.sim-compact .flight-map-column .instrument-strip{margin-top:12px}
+.sim-compact .flight-devices{align-items:start}
+
+/* Răspunsul copilotului (LLM), sub tracker și ceas, pe toată lățimea coloanei de dispozitive */
+.sim-copilot-card{grid-column:1/-1;background:#201a16;border:1px solid #453123;border-radius:14px;padding:14px 16px;min-width:0}
+.sim-copilot-card.offline{opacity:.6}
+.sim-copilot-card .copilot-section{margin:0}
+.sim-copilot-card .section-title h3{font-size:13px}
+.sim-copilot-card .decision-title{font-size:18px;margin:6px 0}
+.sim-copilot-card .decision-description{font-size:13px;line-height:1.5;margin:0 0 6px}
+.sim-copilot-card details{font-size:11px}
+
+/* Controale mai mici: un singur rând, compozitorul de evenimente fără titlu mare */
+.sim-compact .flight-controls{padding:10px 14px;gap:10px 18px;margin-bottom:14px}
+.sim-compact .flight-controls .button{min-height:34px;padding:7px 12px;font-size:12px}
+.sim-compact .flight-run-controls{gap:10px}
+.sim-compact .flight-run-controls label{font-size:11px}
+.sim-compact .flight-run-controls select{padding:6px 8px;font-size:12px}
+.sim-compact .event-composer{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;padding:0;border:0;background:transparent;margin:0}
+.sim-compact .event-compact-title{font-size:11px;color:#b68c69;text-transform:uppercase;letter-spacing:.06em}
+.sim-compact .event-place-row{align-items:center;gap:10px}
+.sim-compact .event-place-row label{font-size:11px}
+.sim-compact .event-place-row select{padding:6px 8px;font-size:12px}
+.sim-compact .event-help{font-size:11px;margin:0}
+.sim-compact .event-advanced{font-size:11px}
+.sim-compact .event-advanced .event-fields{margin-top:6px}
+
+/* Un singur rând pe ecran lat: Start/Reset/viteză | evenimentul */
+@media(min-width:1100px){
+  .sim-compact .flight-controls{display:flex;flex-wrap:nowrap;align-items:center}
+  .sim-compact .event-composer,.sim-compact .event-place-row{flex-wrap:nowrap}
+  .sim-compact .flight-controls .flight-run-controls{flex:0 0 auto;width:auto;border:0;padding:0;margin:0}
+  .sim-compact .flight-controls .event-composer{flex:1 1 auto;width:auto;border:0;border-left:1px solid #453123;border-top:0;padding:0 0 0 16px;margin:0}
+}
+.sim-compact .event-place-row label{display:flex;align-items:center;gap:6px}
+.sim-compact .event-help{max-width:340px;color:#ab8c72}
+.sim-compact .flight-controls .button{white-space:nowrap}
+.sim-compact .event-place-row label{flex-direction:row}

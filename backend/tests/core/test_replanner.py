@@ -167,3 +167,21 @@ def test_watchdog_reports_contacts_and_inside():
     assert w.contacts and w.first_contact > 0 and w.in_hazard == []
     w = rp.watchdog(state(site, route, [disk(route[0], 100.0)]))
     assert w.in_hazard == ["h1"]
+
+
+def test_regional_storm_requires_return_only_when_it_reaches_the_route():
+    """Furtuna regională desenată ca cerc (locală): RETURN obligatoriu doar dacă prognoza atinge traseul
+    sau astronautul e în ea; globală (acoperă situl): mereu (15.11)."""
+    from app.core import hazard_spec as hs
+    from app.core import replanner as rp
+
+    raw = {"id": "r1", "kind": "regional_storm", "scope": "local",
+           "shape": {"center": {"row": 10, "col": 10}, "axes_m": [200, 200]},
+           "motion": [{"from_min": 0, "velocity_ms": [0, 0]}], "lifetime": {"start_min": 0}}
+    local = hs.normalize(raw, "regional_storm", cell_size_m=20, t_now=0, shape=(500, 500), hazard_id="r1").spec
+    assert local.scope == "local"
+    assert rp._return_only([local], 1, touching=set()) is False
+    assert rp._return_only([local], 1, touching={"r1"}) is True
+    huge = hs.normalize({**raw, "shape": {"center": {"row": 250, "col": 250}, "axes_m": [30000, 30000]}},
+                        "regional_storm", cell_size_m=20, t_now=0, shape=(500, 500), hazard_id="r2").spec
+    assert huge.scope == "global" and rp._return_only([huge], 1, touching=set()) is True

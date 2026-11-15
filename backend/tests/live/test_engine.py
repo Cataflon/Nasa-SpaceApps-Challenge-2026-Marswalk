@@ -399,3 +399,23 @@ def test_return_keeps_targets_for_resume():
                        science_lost_value=1.0)
     e._apply_decision(Decision("RETURN", "return", "HAZARD_ON_ROUTE", [back]), e.t_min)
     assert e.returning and e.stops_left == [] and [s["id"] for s in e.suspended_stops] == ["clay_delta"]
+
+
+def test_marsquake_zone_disappears_after_its_lifetime():
+    """Zona de cutremur expiră după 60 min (core/hazard_spec.py): motorul o scoate, deci nici harta
+    (tick.hazards) n-o mai desenează după ce algoritmul n-o mai vede (15.11)."""
+    import sys
+    from pathlib import Path
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "core"))
+    from grids import make_site
+
+    site = make_site(np.zeros((40, 80), dtype=np.float32), habitat=(20, 2),
+                     targets=[{"id": "t", "name": "T", "kind": "clay", "row": 20, "col": 77,
+                               "science_value": 10, "dwell_min": 10, "image": None}])
+    out = [[20, c] for c in range(2, 78)]
+    e = started({"path": out + out[::-1][1:], "stops": [{"id": "t", "index_in_path": 75, "dwell_min": 10}],
+                 "budget": {"sunset_min": 600}}, site_provider=lambda: site)
+    e.inject("marsquake", {"center": {"row": 5, "col": 40}, "axes_m": [60, 60]})
+    ticks = [m for m in run(e, 70) if m["type"] == "tick"]
+    assert ticks[0]["hazards"] and not ticks[-1]["hazards"] and not e.hazards
