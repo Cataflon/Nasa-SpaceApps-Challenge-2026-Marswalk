@@ -1,0 +1,49 @@
+/* Simulation layout: copilot across the top, then map + tracker + watch on one line with their
+   captions underneath, then the metrics, then a roomier event composer with one tile per hazard. */
+
+/* ---------- Copilot, full width, first on the page ---------- */
+.sim-copilot-top{margin:0 0 18px;padding:18px 22px;border-radius:16px;background:linear-gradient(160deg,#241c16,#191512 65%);border:1px solid #5a3f2b;box-shadow:0 10px 30px #0005}
+.sim-copilot-top .scan-line{margin-bottom:14px;padding:10px 14px;font-size:13px}
+.sim-copilot-top .copilot-section{display:grid;grid-template-columns:minmax(230px,300px) minmax(0,1fr);column-gap:28px;align-items:start;padding:0;border:0;background:transparent}
+.sim-copilot-top .copilot-section>.section-title{grid-column:1;margin:0}
+.sim-copilot-top .copilot-section>.decision-title{grid-column:1;font-size:24px;margin:8px 0 0}
+.sim-copilot-top .copilot-section>.decision-description{grid-column:2;grid-row:1/span 2;align-self:center;margin:0;font-size:15px;line-height:1.6;color:#ead5c1}
+.sim-copilot-top .copilot-section>.source-label{grid-column:2;margin-top:6px}
+.sim-copilot-top .copilot-section>details{grid-column:1/-1;margin-top:12px}
+
+/* ---------- Map, tracker and watch: same top edge, captions on one line underneath ---------- */
+.sim-compact .flight-workspace{align-items:stretch}
+.sim-compact .flight-workspace>.flight-map-column{display:flex;flex-direction:column}
+.sim-compact .flight-workspace>.flight-map-column .map-stage{flex:1 1 auto;height:auto;min-height:460px}
+.sim-compact .flight-devices{align-items:stretch;padding-top:0;padding-bottom:0}
+.sim-compact .flight-tracker-slot,.sim-compact .flight-watch-slot{display:flex;flex-direction:column;padding-top:0}
+.sim-compact .flight-workspace .device-section-label{margin:auto 0 0;padding:16px 0 0;min-height:0;font-size:14px;font-weight:500;letter-spacing:.02em;color:#d7b99b;text-align:center}
+.sim-under-map{margin-bottom:14px}
+.sim-under-map .instrument-strip{margin-top:0}
+
+/* ---------- Event composer ---------- */
+.simulation-workspace.sim-compact .flight-controls{display:block;padding:24px 28px 26px}
+.simulation-workspace.sim-compact .flight-controls .flight-run-controls{width:100%;gap:14px;padding:0 0 22px;margin:0 0 22px;border:0;border-bottom:1px solid #453123}
+.simulation-workspace.sim-compact .flight-controls .event-composer{display:flex;flex-direction:column;align-items:stretch;flex-wrap:nowrap;gap:18px;width:100%;padding:0;margin:0;border:0}
+.event-head{display:flex;align-items:baseline;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.simulation-workspace.sim-compact .event-compact-title{font-size:13px;letter-spacing:.08em;color:#dcad83}
+.event-head-note{font-size:12px;color:#ab8c72}
+.event-kinds{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:12px}
+.event-kind{--kind:#e97845;display:flex;flex-direction:column;align-items:center;gap:10px;padding:16px 10px 14px;border:1px solid #453123;border-radius:13px;background:#1a1410;color:#cdb39b;font-size:12px;line-height:1.3;text-align:center;cursor:pointer;transition:border-color .2s ease,background-color .2s ease,color .2s ease,transform .2s cubic-bezier(.22,1,.36,1),box-shadow .28s ease}
+.event-kind.kind-weather{--kind:#e97845}.event-kind.kind-ground{--kind:#e25d5d}.event-kind.kind-radiation{--kind:#ffc24a}.event-kind.kind-suit{--kind:#6fb8e8}
+.event-kind-icon{width:42px;height:42px;display:grid;place-items:center;border-radius:12px;background:color-mix(in srgb,var(--kind) 14%,transparent);color:var(--kind);transition:transform .3s cubic-bezier(.34,1.56,.64,1),background-color .2s ease}
+.event-kind:hover{border-color:color-mix(in srgb,var(--kind) 55%,#453123);color:#f4ece6;transform:translateY(-2px)}
+.event-kind:hover .event-kind-icon{transform:scale(1.1)}
+.event-kind:active{transform:scale(.97)}
+.event-kind[aria-checked=true]{border-color:var(--kind);background:color-mix(in srgb,var(--kind) 10%,#1a1410);color:#f4ece6;box-shadow:0 8px 22px color-mix(in srgb,var(--kind) 22%,transparent)}
+.event-kind[aria-checked=true] .event-kind-icon{background:var(--kind);color:#1c1510}
+.event-kind:focus-visible{outline:2px solid var(--kind);outline-offset:2px}
+.simulation-workspace.sim-compact .event-place-row{display:flex;align-items:center;flex-wrap:wrap;gap:16px}
+.simulation-workspace.sim-compact .event-place-row .button{min-height:42px;padding:10px 20px;font-size:13px}
+.simulation-workspace.sim-compact .event-help{flex:1 1 260px;max-width:none;font-size:13px;line-height:1.5}
+.simulation-workspace.sim-compact .event-advanced{margin:0;padding-top:16px;font-size:12px}
+.simulation-workspace.sim-compact .event-advanced .event-fields{margin-top:14px;gap:16px}
+@media(max-width:1250px){.event-kinds{grid-template-columns:repeat(4,minmax(0,1fr))}}
+@media(max-width:900px){.sim-copilot-top .copilot-section{grid-template-columns:1fr}.sim-copilot-top .copilot-section>.decision-description{grid-column:1;grid-row:auto;margin-top:8px}.sim-copilot-top .copilot-section>.source-label{grid-column:1}}
+@media(max-width:760px){.event-kinds{grid-template-columns:repeat(2,minmax(0,1fr))}.simulation-workspace.sim-compact .flight-controls{padding:18px}}
+@media(prefers-reduced-motion:reduce){.event-kind,.event-kind-icon{transition:none}.event-kind:hover{transform:none}}

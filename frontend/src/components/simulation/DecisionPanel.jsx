@@ -1,5 +1,5 @@
-import { alternatives, decisions, number, violation } from '../utils';
-import Icon from './Icon';
+import { alternatives, decisions, number, violation } from '../../utils';
+import Icon from '../Icon';
 export default function DecisionPanel({ live, route }) {
   const decision = live.decision, explanation = decision && live.explanations[decision.decision_id];
   return <section className="copilot-section"><div className="section-title"><h3><Icon name="shield" size={17}/> Copilot</h3><span className="small muted">{decision ? `t+${decision.t_min}` : 'Standing by'}</span></div>

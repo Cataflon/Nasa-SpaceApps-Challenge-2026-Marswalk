@@ -15,7 +15,8 @@ async function start() {
       req.pipe(upstream); return;
     }
     const root = path.resolve(__dirname, '../dist');
-    const file = path.resolve(root, '.' + decodeURIComponent(url.pathname === '/' ? '/index.html' : url.pathname));
+    // Page routes (/planning, /simulation, /sensors) have no file extension: they all serve the app shell.
+    const file = path.resolve(root, '.' + decodeURIComponent(path.extname(url.pathname) ? url.pathname : '/index.html'));
     if (!file.startsWith(root + path.sep)) { res.writeHead(403); res.end(); return; }
     fs.stat(file, (error, stat) => { if (error || !stat.isFile()) { res.writeHead(404); res.end(); return; } res.setHeader('Content-Type', types[path.extname(file)] || 'application/octet-stream'); fs.createReadStream(file).pipe(res); });
   });

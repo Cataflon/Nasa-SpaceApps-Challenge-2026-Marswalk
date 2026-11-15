@@ -1,8 +1,9 @@
 ﻿import { useEffect, useState } from 'react';
-import { bearingTo, distanceTo, routeFrame } from '../terrain/navigation';
-import { decisions, number } from '../utils';
-import Icon from './Icon';
-import '../watch.css';
+import { bearingTo, distanceTo, routeFrame } from '../../terrain/navigation';
+import { decisions, number } from '../../utils';
+import Icon from '../Icon';
+import {eventSpecs} from '../../simulation/events';
+import '../../watch.css';
 
 function CompassDial({kind,bearing,arrived,unavailable,trace=[]}) {
   const available=Number.isFinite(bearing)&&!unavailable&&!arrived;
@@ -19,7 +20,7 @@ function CompassDial({kind,bearing,arrived,unavailable,trace=[]}) {
   </div>;
 }
 
-export default function EVAWatch({equipment,site,route,live,position,path,frame,progress,setProgress,playing,setPlaying,embedded=false}) {
+export default function EVAWatch({equipment,site,route,live,scan,position,path,frame,progress,setProgress,playing,setPlaying,embedded=false}) {
   const active=!!live.tick&&live.state!=='idle';
   const [clock,setClock]=useState(()=>new Date());
   useEffect(()=>{const timer=setInterval(()=>setClock(new Date()),1000);return()=>clearInterval(timer);},[]);
@@ -39,6 +40,13 @@ export default function EVAWatch({equipment,site,route,live,position,path,frame,
   const trace=guidance&&origin?[[75,75],[75+(guidance.ahead.col-origin.col)*6,75+(guidance.ahead.row-origin.row)*6]]:[];
   const time=clock.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
   const decision=live.decision?.decision;
+  // Danger takeover: any hazard on the map (or a danger scan) covers the screen until the astronaut
+  // acknowledges it. A new hazard or a new copilot decision brings it back.
+  const hazards=active?live.tick.hazards??[]:[],danger=hazards.length>0||active&&scan?.status==='danger';
+  const dangerKey=hazards.map(h=>h.id).join('|')+'/'+(live.decision?.decision_id??'');
+  const [dismissed,setDismissed]=useState(null);
+  const explanation=live.decision&&live.explanations?.[live.decision.decision_id]?.text;
+  const hazardNames=[...new Set(hazards.map(h=>eventSpecs[h.kind]?.label??h.kind))].join(' · ');
   return <div className={`eva-watch-layout ${embedded?'embedded-watch':''}`}>
     <div className="wrist-assembly">
       <div className="watch-strap strap-top" aria-hidden="true"><i/><i/><i/></div>
@@ -46,6 +54,7 @@ export default function EVAWatch({equipment,site,route,live,position,path,frame,
         <div className="watch-bezel-text">MARSWALK <span>EVA / NAVIGATION</span></div><i className="watch-case-screw one"/><i className="watch-case-screw two"/>
         <div className="watch-crown" aria-hidden="true"/>
         <div className="eva-watch-screen">
+          {danger&&dismissed!==dangerKey&&<div className="watch-danger" role="alert"><div className="watch-danger-flag"><Icon name="alert" size={30}/><strong>DANGER</strong></div>{hazardNames&&<span className="watch-danger-kind">{hazardNames}</span>}<div className="watch-danger-copilot"><span>Copilot</span><b>{decision?decisions[decision]??decision:'Stand by'}</b><p>{explanation??scan?.text??(decision?'Preparing the explanation…':'Hazard detected. Waiting for the copilot decision.')}</p></div><button onClick={()=>setDismissed(dangerKey)}>Acknowledge</button></div>}
           <div className="wrist-status"><span className={offline?'link-lost':''}><i/>{offline?'LINK LOST':active?'MISSION LIVE':'ROUTE PREVIEW'}</span><time>{time}<small> LOCAL</small></time></div>
           <div className="wrist-heading"><span>{waiting?'Hold position':atGoal?'Route complete':decision==='RETURN'?'Return to habitat':'Surface navigation'}</span><Icon name={waiting?'pause':'compass'} size={17}/></div>
           <div className="dual-compasses"><CompassDial kind="home" bearing={baseBearing} arrived={atBase} unavailable={offline}/><CompassDial kind="route" bearing={routeBearing} arrived={atGoal} unavailable={offline||waiting} trace={trace}/></div>

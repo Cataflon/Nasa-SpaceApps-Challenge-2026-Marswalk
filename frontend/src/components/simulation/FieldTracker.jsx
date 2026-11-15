@@ -1,7 +1,7 @@
 ﻿import {lazy,Suspense} from 'react';
-import Icon from './Icon';
-import {decisions,number} from '../utils';
-const TerrainView=lazy(()=>import('./TerrainView'));
+import Icon from '../Icon';
+import {decisions,number} from '../../utils';
+const TerrainView=lazy(()=>import('../map/TerrainView'));
 export default function FieldTracker({equipment,site,route,live,transport,selected,onSelect}){
   const {frame,path,position,isLive,mode,progress,playing}=transport,bearing=frame?.heading;
   const names=['N','NE','E','SE','S','SW','W','NW'],direction=Number.isFinite(bearing)?names[Math.round(bearing/45)%8]:'—';

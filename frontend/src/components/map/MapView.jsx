@@ -1,4 +1,4 @@
-﻿import Icon from './Icon';
+﻿import Icon from '../Icon';
 import { lazy, Suspense, useEffect, useState } from 'react';
 const TerrainView=lazy(()=>import('./TerrainView'));
 export default function MapView({site,route,live,position,selected,onSelect,onRoutePreview,compact=false,mapTitle="Mission Terrain Explorer",layersOpen,onLayersToggle,layerPanel,overlay,...explorerProps}){

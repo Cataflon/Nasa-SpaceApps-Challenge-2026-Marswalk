@@ -1,0 +1,127 @@
+/* Motion layer: one place for every transition and entrance animation.
+   Only transform and opacity are animated where possible, so the 3D map keeps its frame rate.
+   Everything is switched off for people who ask for reduced motion (bottom of the file). */
+:root{--ease-out:cubic-bezier(.22,1,.36,1);--ease-spring:cubic-bezier(.34,1.56,.64,1);--ease-in-out:cubic-bezier(.65,0,.35,1);--t-fast:.16s;--t-mid:.28s;--t-slow:.5s}
+
+/* ---------- Page transitions (React Router) ---------- */
+.page-transition{animation:page-in .46s var(--ease-out) backwards}
+@keyframes page-in{from{opacity:0;transform:translateY(14px) scale(.992)}}
+.page-loading{padding:60px 0;text-align:center;font-size:12px;color:#ab8c72;animation:fade-in .4s .25s backwards}
+.context-page{display:inline-block;animation:slide-right .4s var(--ease-out) backwards}
+@keyframes fade-in{from{opacity:0}}
+@keyframes slide-right{from{opacity:0;transform:translateX(-8px)}}
+@keyframes rise-in{from{opacity:0;transform:translateY(16px)}}
+@keyframes pop-in{from{opacity:0;transform:scale(.9)}}
+@keyframes drop-in{from{opacity:0;transform:translateY(-10px) scale(.97)}}
+
+/* Sections of a page arrive one after another */
+.simulation-workspace>*,.equipment-page>*{animation:rise-in .55s var(--ease-out) backwards}
+.simulation-workspace>:nth-child(2),.equipment-page>:nth-child(2){animation-delay:.07s}
+.simulation-workspace>:nth-child(3),.equipment-page>:nth-child(3){animation-delay:.14s}
+.simulation-workspace>:nth-child(4),.equipment-page>:nth-child(4){animation-delay:.21s}
+.simulation-workspace>:nth-child(n+5),.equipment-page>:nth-child(n+5){animation-delay:.28s}
+.flight-devices>*{animation:rise-in .6s var(--ease-out) backwards}
+.flight-devices>:nth-child(1){animation-delay:.12s}.flight-devices>:nth-child(2){animation-delay:.2s}.flight-devices>:nth-child(3){animation-delay:.28s}
+.planning-map-legend,.trip-profile{animation:rise-in .6s .12s var(--ease-out) backwards}
+
+/* ---------- Loading screen ---------- */
+.loading-brand-logo{animation:logo-breathe 2.2s var(--ease-in-out) infinite}
+.loading-screen p{animation:fade-in .6s .2s backwards}
+@keyframes logo-breathe{50%{opacity:.6;transform:scale(.97)}}
+
+/* ---------- Buttons ---------- */
+.button,.icon-button,.text-button,.nav-collapse,.segmented button,.terrain-toolbar button,.map-layer-trigger,.mo-remove,.mo-name,.map-popup-close,.map-popup-delete,.placement-hint button,.catalog-use,.trip-chip button,.workflow-info button,.equipment-action,.pip-heading button,.pip-return{transition:background-color var(--t-fast) ease,border-color var(--t-fast) ease,color var(--t-fast) ease,box-shadow var(--t-mid) var(--ease-out),transform var(--t-fast) var(--ease-out),opacity var(--t-fast) ease}
+.button:hover:not(:disabled){transform:translateY(-1px);box-shadow:0 6px 18px #0006}
+.button.primary:hover:not(:disabled){box-shadow:0 8px 22px #e9784540}
+.button:active:not(:disabled),.terrain-toolbar button:active:not(:disabled),.segmented button:active:not(:disabled),.icon-button:active,.nav-collapse:active,.mo-remove:active:not(:disabled),.map-popup-close:active,.catalog-use:active,.placement-hint button:active{transform:scale(.95);transition-duration:.06s}
+.button:disabled{transition:opacity var(--t-mid) ease}
+/* A soft light sweeps across primary buttons on hover */
+.button.primary{position:relative;overflow:hidden}
+.button.primary::after{content:'';position:absolute;inset:0;background:linear-gradient(105deg,transparent 35%,#ffffff55 50%,transparent 65%);transform:translateX(-120%);pointer-events:none}
+.button.primary:hover:not(:disabled)::after{transform:translateX(120%);transition:transform .7s var(--ease-out)}
+.button svg,.text-button svg{transition:transform var(--t-mid) var(--ease-spring)}
+.button:hover:not(:disabled) svg{transform:scale(1.14)}
+.terrain-toolbar button:hover:not(:disabled) svg,.icon-button:hover svg{transform:scale(1.12)}
+.terrain-toolbar button svg,.icon-button svg{transition:transform var(--t-mid) var(--ease-spring)}
+.terrain-toolbar button[aria-pressed=true]{animation:pop-in .3s var(--ease-spring)}
+
+/* ---------- Sidebar ---------- */
+.field-masthead{transition:width .34s var(--ease-out),padding .34s var(--ease-out)}
+.workflow-shell{transition:padding-left .34s var(--ease-out)}
+.app-brand-logo{transition:width .34s var(--ease-out),height .34s var(--ease-out)}
+.field-masthead nav{position:relative}
+a.field-tab,a.field-wordmark{text-decoration:none}
+.field-tab{position:relative;z-index:1;transition:color var(--t-mid) ease,background-color var(--t-fast) ease,transform var(--t-fast) var(--ease-out)}
+.field-tab.current,.field-tab.current:hover{background:transparent}
+.field-tab:active{transform:scale(.96)}
+.field-tab svg{transition:transform var(--t-mid) var(--ease-spring),color var(--t-mid) ease}
+.field-tab:hover svg{transform:scale(1.14)}
+.field-tab>span{animation:slide-right .3s var(--ease-out) backwards}
+.nav-pill{position:absolute;left:0;top:0;z-index:0;border-radius:11px;background:#34281e;box-shadow:inset 0 0 0 1px #6b4c3555,0 6px 16px #0004;pointer-events:none;transition:transform .42s var(--ease-out),width .34s var(--ease-out),height .34s var(--ease-out)}
+.nav-collapse svg{transition:transform .34s var(--ease-out)}
+.field-link-status i{transition:background-color var(--t-mid) ease,box-shadow var(--t-mid) ease}
+.connection-banner{animation:drop-in .4s var(--ease-out) backwards}
+.workflow-info{animation:drop-in .4s var(--ease-out) backwards}
+
+/* ---------- Menus and floating panels ---------- */
+.planning-layer-drawer{transform-origin:top right;animation:menu-in .3s var(--ease-out) backwards}
+@keyframes menu-in{from{opacity:0;transform:translateY(-8px) scale(.95)}}
+.planning-layer-drawer>*{animation:fade-in .3s .08s backwards}
+.map-layer-trigger[aria-expanded=true] svg{transform:rotate(180deg) scale(1.1)}
+.map-layer-trigger svg{transition:transform .4s var(--ease-spring)}
+.map-popup-body{transform-origin:50% calc(100% + 12px);animation:popup-in .32s var(--ease-spring) backwards}
+.map-popup[data-flip="1"] .map-popup-body{transform-origin:50% -12px}
+@keyframes popup-in{from{opacity:0;transform:scale(.82) translateY(8px)}}
+.mission-overlay{animation:panel-in .5s var(--ease-out) backwards;transition:border-color var(--t-mid) ease,box-shadow var(--t-mid) ease}
+@keyframes panel-in{from{opacity:0;transform:translateX(26px)}}
+.mo-stops li{animation:stop-in .38s var(--ease-out) backwards;transition:opacity var(--t-mid) ease}
+@keyframes stop-in{from{opacity:0;transform:translateX(14px)}}
+.mo-order{transition:background-color var(--t-mid) ease,color var(--t-mid) ease,transform var(--t-mid) var(--ease-spring)}
+.mo-stops li:hover .mo-order{transform:scale(1.12)}
+.mo-status,.verdict{transition:color var(--t-mid) ease,border-color var(--t-mid) ease,background-color var(--t-mid) ease}
+.mo-o2,.mo-budget,.mo-error,.mo-note{animation:fade-in .4s backwards}
+.placement-hint{animation:hint-in .36s var(--ease-out) backwards}
+@keyframes hint-in{from{opacity:0;transform:translate(-50%,-14px)}}
+.placement-step{transition:background-color var(--t-mid) ease}
+.placement-hint span{animation:fade-in .3s backwards}
+.event-note,.flight-controls .error,.mo-error{animation:rise-in .35s var(--ease-out) backwards}
+.terrain-toolbar{animation:toolbar-in .5s .15s var(--ease-out) backwards}
+@keyframes toolbar-in{from{opacity:0;translate:0 12px}}
+.terrain-message{animation:fade-in .4s backwards}
+.terrain-canvas canvas{animation:fade-in .7s var(--ease-out) backwards}
+.restore-pip,.pip-heading{animation:drop-in .3s var(--ease-out) backwards}
+
+/* Disclosures open and close with their real height */
+:root{interpolate-size:allow-keywords}
+details::details-content{height:0;opacity:0;overflow:clip;transition:height .34s var(--ease-out),opacity .28s ease,content-visibility .34s allow-discrete}
+details[open]::details-content{height:auto;opacity:1}
+summary{transition:color var(--t-fast) ease}
+summary:hover{color:#ffd1a1}
+
+/* ---------- Cards, fields, meters ---------- */
+.planning-card,.sim-copilot-card,.flight-controls,.trip-profile,.tp-stats div{transition:border-color var(--t-mid) ease,box-shadow var(--t-mid) ease,transform var(--t-mid) var(--ease-out)}
+.tp-stats div:hover{transform:translateY(-2px);border-color:#6b4c35;box-shadow:0 8px 20px #0005}
+input,select,textarea{transition:border-color var(--t-fast) ease,box-shadow var(--t-mid) ease,background-color var(--t-fast) ease}
+input:focus-visible,select:focus-visible{box-shadow:0 0 0 3px #e9784533}
+.meter span{transition:width .6s var(--ease-out),background-color var(--t-mid) ease}
+.scan-line{transition:border-color var(--t-mid) ease,background-color var(--t-mid) ease}
+.scan-line span{animation:fade-in .3s backwards}
+.segmented button{transition:background-color var(--t-mid) ease,color var(--t-mid) ease}
+
+/* ---------- Trip profile ---------- */
+.tp-reveal{transform-box:fill-box;transform-origin:left center;animation:profile-draw 1.1s var(--ease-in-out) backwards}
+@keyframes profile-draw{from{transform:scaleX(0)}}
+.tp-stats div{animation:rise-in .45s var(--ease-out) backwards;animation-delay:calc(var(--i,0)*45ms)}
+.tp-cursor circle{transition:r var(--t-fast) ease}
+.tp-tip{animation:fade-in .16s backwards;transition:left .08s linear}
+.tp-bar{transition:opacity var(--t-fast) ease}
+.tp-chart svg:hover .tp-bar{opacity:.4}
+.tp-chart svg:hover .tp-bar.tp-steep{opacity:.95}
+.tp-label{transition:color var(--t-mid) ease,border-color var(--t-mid) ease}
+.trip-profile.is-busy .tp-label{animation:soft-pulse 1.1s ease-in-out infinite}
+@keyframes soft-pulse{50%{opacity:.45}}
+
+@media(prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.001ms!important;animation-delay:0s!important;animation-iteration-count:1!important;transition-duration:.001ms!important;scroll-behavior:auto!important}
+  .button:hover:not(:disabled),.tp-stats div:hover{transform:none}
+}

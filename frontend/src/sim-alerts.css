@@ -1,0 +1,51 @@
+/* Simulation: route playback bar, danger takeover on the watch, site-wide solar glow on the map. */
+
+/* ---------- Route playback ---------- */
+.flight-progress.route-playback{--p:0%;display:block;padding:16px 20px 14px;margin:0 0 14px;border:1px solid #5a3f2b;border-radius:14px;background:linear-gradient(160deg,#261c14,#1b1511 70%)}
+.playback-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:14px}
+.playback-head>span{display:flex;align-items:center;gap:8px;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:#dcad83}
+.flight-progress.route-playback .playback-head strong{float:none;font-size:22px;font-weight:600;color:#ffd1a1;font-variant-numeric:tabular-nums}
+.playback-head small{font-size:12px;margin-left:2px;color:#dcad83}
+.flight-progress.route-playback input[type=range]{-webkit-appearance:none;appearance:none;display:block;width:100%;height:26px;margin:0;background:transparent;cursor:pointer}
+.route-playback input[type=range]::-webkit-slider-runnable-track{height:10px;border-radius:99px;border:1px solid #00000066;background:linear-gradient(90deg,#4bc3a2 0%,#e9b545 calc(var(--p)*.6),#ff8a4c var(--p),#3a2c22 var(--p),#3a2c22 100%);box-shadow:inset 0 1px 3px #0009}
+.route-playback input[type=range]::-moz-range-track{height:10px;border-radius:99px;background:#3a2c22}
+.route-playback input[type=range]::-moz-range-progress{height:10px;border-radius:99px;background:linear-gradient(90deg,#4bc3a2,#ff8a4c)}
+.route-playback input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:26px;height:26px;margin-top:-9px;border-radius:50%;border:4px solid #fff3e2;background:#ff8a4c;box-shadow:0 0 0 5px #ff8a4c40,0 4px 12px #000a;transition:transform .16s cubic-bezier(.22,1,.36,1),box-shadow .2s ease}
+.route-playback input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;border:4px solid #fff3e2;background:#ff8a4c;box-shadow:0 0 0 5px #ff8a4c40}
+.route-playback input[type=range]:hover::-webkit-slider-thumb{transform:scale(1.12);box-shadow:0 0 0 8px #ff8a4c33,0 4px 14px #000a}
+.route-playback input[type=range]:active::-webkit-slider-thumb{transform:scale(1.2);box-shadow:0 0 0 11px #ff8a4c2b,0 4px 14px #000a}
+.route-playback input[type=range]:focus-visible{outline:none}
+.route-playback input[type=range]:focus-visible::-webkit-slider-thumb{box-shadow:0 0 0 3px #1b1511,0 0 0 6px #fff3e2}
+.playback-ends{display:flex;justify-content:space-between;gap:10px;margin-top:8px;font-size:11px;color:#ab8c72}
+.playback-ends span:nth-child(2){color:#e7c19b}
+.playback-ends span:first-child::before,.playback-ends span:last-child::before{content:'';display:inline-block;width:7px;height:7px;margin-right:6px;border-radius:50%;background:#4bc3a2}
+.playback-ends span:last-child::before{background:#6b5646}
+
+/* ---------- Danger takeover on the watch ---------- */
+.eva-watch-screen{position:relative}
+.watch-danger{position:absolute;inset:0;z-index:5;display:flex;flex-direction:column;align-items:center;gap:8px;padding:16px 12px 12px;border-radius:inherit;background:radial-gradient(ellipse at 50% 0%,#7a1512,#2a0806 62%,#170403);color:#ffe3df;text-align:center;overflow:hidden;animation:danger-in .3s cubic-bezier(.34,1.56,.64,1) backwards}
+.watch-danger::before{content:'';position:absolute;inset:0;border-radius:inherit;border:3px solid #ff3b30;pointer-events:none;animation:danger-blink .7s steps(2,jump-none) infinite}
+.watch-danger-flag{display:flex;flex-direction:column;align-items:center;gap:2px;color:#ff5247;animation:danger-blink .7s steps(2,jump-none) infinite}
+.watch-danger-flag strong{font-size:27px;line-height:1;font-weight:800;letter-spacing:.12em;margin-right:-.12em;text-shadow:0 0 16px #ff3b30aa}
+.watch-danger-kind{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:#ffb1aa}
+.watch-danger-copilot{flex:1 1 auto;min-height:0;width:100%;display:flex;flex-direction:column;gap:4px;padding:9px 10px;border-radius:12px;background:#0d0303cc;border:1px solid #ff3b3055;overflow:auto;text-align:left}
+.watch-danger-copilot span{font-size:8px;letter-spacing:.12em;text-transform:uppercase;color:#ff9c94}
+.watch-danger-copilot b{font-size:15px;line-height:1.2;color:#fff}
+.watch-danger-copilot p{margin:0;font-size:11px;line-height:1.45;color:#ffd9d4}
+.watch-danger button{flex:none;border:1px solid #ff8a82;border-radius:99px;background:#ff3b30;color:#fff;font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:7px 16px;cursor:pointer;transition:transform .15s ease,background-color .15s ease}
+.watch-danger button:hover{background:#ff5a4f}
+.watch-danger button:active{transform:scale(.95)}
+@keyframes danger-blink{0%{opacity:1}100%{opacity:.25}}
+@keyframes danger-in{from{opacity:0;transform:scale(.9)}}
+
+/* ---------- Solar particle event: the whole map glows and pulses ---------- */
+.solar-flash{position:absolute;inset:0;z-index:1;pointer-events:none;border-radius:inherit;mix-blend-mode:screen;background:radial-gradient(ellipse at 50% 45%,#ffd978cc 0%,#ffb02e88 45%,#ff7a1a55 100%);box-shadow:inset 0 0 90px 20px #ffc24acc;animation:solar-pulse 1.8s ease-in-out infinite,solar-ignite .5s ease-out backwards}
+@keyframes solar-pulse{0%,100%{opacity:.28}50%{opacity:.85}}
+@keyframes solar-ignite{from{filter:brightness(3)}}
+.solar-badge{position:absolute;left:50%;bottom:104px;transform:translateX(-50%);z-index:7;display:flex;align-items:center;gap:8px;padding:7px 13px;border-radius:99px;background:#2a1c05ee;border:1px solid #ffc24a;color:#ffe3a3;font-size:11px;white-space:nowrap;pointer-events:none;animation:hint-in .4s cubic-bezier(.22,1,.36,1) backwards}
+.solar-badge i{width:8px;height:8px;border-radius:50%;background:#ffc24a;animation:danger-blink .9s steps(2,jump-none) infinite}
+
+@media(prefers-reduced-motion:reduce){
+  .watch-danger::before,.watch-danger-flag,.solar-badge i{animation:none}
+  .solar-flash{animation:none;opacity:.5}
+}
