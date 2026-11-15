@@ -1,462 +1,420 @@
 # Marswalk Copilot
 
-> **Harta îți spune pe unde să mergi. Copilotul îți spune când să schimbi drumul și dacă te mai poți întoarce.**
+> **The map tells you where to walk. The copilot tells you when to change course and whether you can still make it back.**
 
-NASA Space Apps Challenge 2026: ideea, planul complet și sursele de date.
+A project for the **NASA Space Apps Challenge 2026**, challenge [Interplanetary Survival Guide: Martian Map](https://www.spaceappschallenge.org/2026/challenges/interplanetary-survival-guide-martian-map/).
 
-## Pornire rapidă
+Marswalk Copilot is an application for an astronaut on a surface walk (EVA) on Mars, in **Jezero crater**. It has two parts:
 
-Cerințe: Python 3.11+, Node 18+, opțional [Ollama](https://ollama.com) cu `qwen2.5:7b-instruct`. Pe Windows, din rădăcina repo-ului:
+1. **A hyperlocal map** of 10 × 10 km, built from data from several NASA missions (MRO, Mars Odyssey, Mars 2020, MSL). The astronaut plans the EVA on it: science targets, route, oxygen, return time and point of no return.
+2. **A live copilot** that follows the EVA minute by minute. It scans the surroundings, predicts where hazards will be (dust storms, dust devils, marsquakes, radiation), replans the route and decides: continue, detour, wait or turn back. A local LLM explains each decision to the astronaut.
 
-```powershell
-scripts\setup.ps1   # .venv, dependențe, npm, sit sintetic
-scripts\dev.ps1     # backend :8000 + frontend :5173
+> **Language:** the application (interface, API messages, LLM explanations) is in English for the international jury. The team's internal notes (role files, `docs/roles/`) are in Romanian.
+
+---
+
+## Contents
+
+1. [Principles](#1-principles)
+2. [What the astronaut sees](#2-what-the-astronaut-sees)
+3. [Site and data](#3-site-and-data)
+4. [How it works](#4-how-it-works)
+5. [Safety limits and events](#5-safety-limits-and-events)
+6. [Results: benchmark](#6-results-benchmark)
+7. [Getting started](#7-getting-started)
+8. [API](#8-api)
+9. [Repository layout](#9-repository-layout)
+10. [Tests](#10-tests)
+11. [Desktop app and hosting](#11-desktop-app-and-hosting)
+12. [Team and documentation](#12-team-and-documentation)
+13. [Known limitations](#13-known-limitations)
+
+---
+
+## 1. Principles
+
+- **The code decides, the LLM explains.** Route, O₂, time, dose and the decision itself are computed deterministically. The LLM receives the situation and the decision already taken, and only writes the reason.
+- **The validator has the last word.** No option that breaks a safety limit reaches the astronaut as a normal recommendation.
+- **The destination comes first.** When a hazard appears, the copilot first tries to keep every target (detour, wait, step back), then to drop some of them. Going home is the last resort and is not final: if the hazard passes, the EVA resumes.
+- **It works without the LLM.** If Ollama does not answer within 3 s, the decision stays the same and the explanation comes from a template.
+- **One routing algorithm: the backend.** The frontend does not compute routes. It only displays what the backend plans, with the same limits.
+
+---
+
+## 2. What the astronaut sees
+
+The application has three pages.
+
+### Planning
+
+- A 3D map of the area (USGS CTX relief, vertically exaggerated 6× for readability), with the habitat and the three science targets.
+- Click a target or anywhere on the terrain → **Add to trip**. Your own waypoints can be added as well.
+- When you click a point, the map shows the route computed by the backend in two variants: **Safety** (penalises slope) and **Minimum time**.
+- **The Mission panel**, updated on every change to the itinerary:
+  - the GO / CAUTION / NO-GO verdict;
+  - the stops, in the order chosen by the planner;
+  - O₂ on return, distance, duration;
+  - **Return by** (local time on Mars, LTST), the point of no return and the dose.
+- Below the map, the route's **elevation and slope profile**.
+- **Start simulation** starts the live EVA at 1× speed. While an EVA is running, **End EVA & edit plan** stops it and unlocks the plan.
+
+### Simulation
+
+- **The Scan line:** the result of scanning the surroundings every simulated minute. The states are `clear`, `watch`, `warning` and `danger`, for example "Dust devil 1.1 km away, not on your route: safe to continue."
+- **The Copilot card:** the current decision (Continue / Reroute / Wait / Return / Emergency), the LLM's explanation, the compared alternatives and the decision history.
+- **Three views:**
+  - the map with the astronaut, the remaining route, the hazards and their forecast;
+  - a **first-person tracker** (what the astronaut sees ahead);
+  - an **EVA watch** with compasses towards the habitat and along the route.
+- **Controls:** start, pause, reset, clock speed (1×–60×) and **placing events on the map** (dust devil, dust storm, marsquake, solar particle event, suit leak, fatigue).
+
+### Sensors
+
+A panel with the suit and environment sensors: O₂, radiation dose rate, temperature, pressure, wind, dust opacity.
+
+---
+
+## 3. Site and data
+
+### The area
+
+- **Location:** the delta front in Jezero crater, centred on **18.44° N, 77.45° E**, explored by Perseverance and Ingenuity.
+- **Extent:** 10 × 10 km, the range of a realistic walk.
+- **Planning grid:** 500 × 500 cells of 20 m (250,000 cells).
+- **Science targets** confirmed in the literature:
+
+| Target | What is there | Source |
+|---|---|---|
+| Clay, delta front (Hawksbill Gap) | Fe/Mg clays in the delta | Goudge et al. 2015 (CRISM) |
+| Carbonates, crater margin unit | carbonates on the crater margin | Horgan et al. 2020 |
+| Olivine, Séítah (crater floor) | olivine cumulate | Liu et al. 2022 |
+
+- **Real NASA hardware**, as points of interest: the Three Forks sample depot (10 tubes for Mars Sample Return), the Mars 2020 landing hardware, Ingenuity, plus Perseverance's real traverse (306 localised positions).
+
+### Map layers (`data/processed/jezero/`)
+
+| Layer | Data type | Mission / instrument | Role |
+|---|---|---|---|
+| `elevation` | topographic | MRO HiRISE (5 DTMs, 94% of the area) + CTX | relief, ascent, walking speed |
+| `slope` | topographic | HiRISE + CTX (maximum of the 4 m slopes in each cell) | the 20° limit, walking cost |
+| `unsafe` | topographic | HiRISE + CTX (slope > 35° at 4 m) | forbidden cells |
+| `terrain` | thermal | Mars Odyssey THEMIS night IR + HiRISE roughness | terrain classes: sand, bedrock, boulders |
+| `minerals` | spectral | units confirmed by Perseverance (PIXL/SHERLOC) + delta outline; CRISM papers | science targets |
+| `radiation` | radiation | altitude model calibrated on MSL RAD | dose integrated along the route |
+
+### Data for the simulation and its calibration
+
+| What | Source |
+|---|---|
+| Wind, gusts, dust devils | Mars 2020 MEDA (Viúdez-Moreiras 2022, Newman 2022) |
+| Pressure, temperature, dust opacity | MEDA, Mastcam-Z, Curiosity REMS |
+| Radiation and the solar particle event (dose ×2.5) | MSL RAD (Hassler 2014, Zeitlin 2018), MAVEN |
+| Dust storms | MRO MARCI |
+| Daylight, local time, sunset | the Mars24 algorithm (NASA GISS) |
+| Suited O₂ consumption | Apollo reports (Waligora 1975, NASA TN D-7883) |
+| Walking speed vs slope | Tobler's hiking function, with a suit factor |
+| "What you will see" images at each target | Perseverance Mastcam-Z (raw images) |
+
+The full list, with links and DOIs: [docs/sources.md](docs/sources.md). Every constant is marked **source** or **assumption** in [docs/how-we-calculate.md](docs/how-we-calculate.md).
+
+---
+
+## 4. How it works
+
+```
+pipeline/ (offline, once)                   backend/ (FastAPI)                          frontend/ (React + three.js)
+──────────────────────────                  ────────────────────────────────            ────────────────────────────
+USGS STAC: HiRISE + CTX DTM ─┐              core/  deterministic algorithms             Planning: 3D map + Mission
+THEMIS, mineral units ───────┼─► .npy +     live/  simulation engine (1 tick = 1 min)   Simulation: scan, copilot,
+RAD model, Mastcam-Z images ─┘   meta.json  llm/   Ollama: explanations + chat           tracker, EVA watch
+                                 (20 m grid) api/  REST + WebSocket  ◄──────────────►   Sensors
+                                                    │
+                                                    └─► local Ollama (qwen3:4b-instruct)
 ```
 
-Manual:
+### Phase 1: the data (offline)
+
+`pipeline/` searches USGS STAC for the DTMs and reads only the 10 × 10 km window. It computes slope at full resolution and aggregates it to 20 m, keeping the maximum slope so obstacles are not lost. Then it adds the terrain classes, minerals and radiation. The output (`.npy`, `meta.json`, PNGs, target images) is committed to git. The backend only reads these files and needs no internet access.
+
+### Phase 2: planning
+
+1. **Cost map:** `(1 + slope_k · (slope / 20°)²) × terrain factor + radiation`. Above 20° or on `unsafe` cells the cost is infinite. The preset (Safety / Minimum time / Science value) changes the weights.
+2. **Routing:**
+   - **A\*** for each segment;
+   - **reverse Dijkstra** from the habitat (the cost of returning from any cell, which also gives the point of no return);
+   - the **shortest order of the stops**, with CP-SAT (OR-Tools) when a subset of targets must be chosen.
+3. **Budget:** time, O₂, dose, return-by time and sunset.
+4. **The validator** gives the GO / CAUTION / NO-GO verdict.
+
+Custom waypoints (`custom_stops`) are validated by the backend. A point on forbidden slope, or one that cannot be reached, is rejected with a clear message.
+
+### Phase 3: the live EVA
+
+One **tick = 1 simulated minute**. On every tick the engine:
+
+1. **Moves the astronaut** along the route at Tobler speed and consumes O₂ and dose with the same model as the planner (plan vs live differ by less than 0.2 O₂ points).
+2. **Scans the surroundings** (`tick.scan`) and announces every new situation: clear route, a distant hazard that does not reach the route, a hazard on the route.
+3. **Forecasts the hazards.** Each hazard (`HazardSpec`) has a shape, velocity, lifetime and effect (blocks its core, or penalises a halo). The forecast reaches 3 hours ahead, with growing uncertainty.
+4. **Re-evaluates the route** according to an alert mode: `NOMINAL` (every 15 min), `MONITOR` (5 min), `REACT` and `EMERGENCY` (every minute). It also re-evaluates immediately on a new event or when a hazard is within 450 m.
+5. **Generates alternatives:** the current route, detours, waiting in place, stepping back and waiting, leaving the zone, dropping a blocked stop, returning, sheltering.
+6. **Validates them and chooses deterministically.**
+   - The choice works in tiers: first the options that keep every stop, then those that drop some, and only then the return home.
+   - Within a tier, the best score wins.
+   - A hysteresis stops the route from changing every minute.
+7. **Sends the decision immediately** over the WebSocket. The LLM's explanation arrives separately, 1–3 s later, without blocking the simulation.
+8. **Resumes the EVA** when the hazard has passed (`HAZARD_CLEARED`). On the way home, the remaining targets are rechecked every 5 minutes.
+
+### The LLM
+
+- **Model:** `qwen3:4b-instruct`, run locally through Ollama, without thinking mode, at `temperature 0`, with a JSON schema for the answer. Each explanation takes about 1.5–2 s.
+- **Input:** short facts (the decision, the hazard and its distance, whether it reaches the route, O₂ on arrival, dose vs the limit).
+- **Output:** one sentence of at most 25 words.
+- **Cache and fallback:**
+  - answers are cached by situation summary, prompt version and model;
+  - if the LLM is late, returns invalid JSON or contradicts the decision, the template text is used instead.
+- **Chat with tools** for planning (`plan_route`, `oxygen_budget`, `layer_value`, `science_stops`, `daylight`, `eva_status`), available at `POST /api/chat`.
+
+---
+
+## 5. Safety limits and events
+
+### The limits (validator)
+
+| Rule | Limit |
+|---|---|
+| O₂ on arrival at the habitat | at least **30%** |
+| Return | at least **30 min before sunset** (dust brings sunset earlier) |
+| Maximum slope on the route | **20°** (NASA lunar EVA concept of operations; Apollo 15 crossed ~17°) |
+| Radiation dose per EVA | at most **1 mSv** |
+| Hazards | the route does not cross a hazard's core within the forecast window |
+
+The astronaut's rules on one page: [docs/survival-guide.md](docs/survival-guide.md).
+
+### Simulated events
+
+| Event | What it does | Typical copilot response |
+|---|---|---|
+| `dust_devil` | small moving vortex | detour or wait |
+| `local_storm` (dust front) | wide, fast front | wait or step back, then resume |
+| `regional_storm` | large storm; covers the whole map only if it is huge | return only if its forecast reaches the route |
+| `marsquake` | static zone for 60 min, blocks slopes above 15° | reconfigures the route |
+| `solar_particle_event` | dose ×2.5 across the whole site for 4 hours | continue while the dose stays below the limit |
+| `suit_leak` | higher O₂ consumption | budget replan, possibly return |
+| `fatigue` | slower walking, higher consumption | budget replan |
+
+---
+
+## 6. Results: benchmark
+
+The copilot compared with "the initial plan only", on **100 dust storm scenarios** at Jezero (same storms for both strategies, no LLM, seed 42):
+
+| | Plan only | Copilot |
+|---|---|---|
+| Home safely | 51% | **81%** |
+| Minimum O₂ on arrival | 70% | 60.3% |
+| Mean dose | 0.072 mSv | 0.045 mSv |
+| Targets visited | 100% | 41% |
+
+The copilot rescued 30 EVAs and made none worse. The price of safety is lost science: it heads home more often.
+
+> These numbers come from `data/processed/jezero/benchmark.json`, measured on 14 Nov, before the latest live replanning changes (destination-first tiers, step back, resume). Rerun with `pipeline/run_benchmark.py`.
+
+---
+
+## 7. Getting started
+
+### Requirements
+
+- **Python 3.11+**, **Node 18+**.
+- Optional: **[Ollama](https://ollama.com)** with the model used:
 
 ```bash
-python -m venv .venv && .venv/Scripts/pip install -r backend/requirements.txt
-.venv/Scripts/python pipeline/make_synthetic_site.py
-cd backend && ../.venv/Scripts/python -m uvicorn app.api.main:app --reload --port 8000
-cd frontend && npm install && npm run dev
+ollama pull qwen3:4b-instruct
 ```
 
-Teste: `cd backend && ../.venv/Scripts/python -m pytest`.
+### Install and run (Windows, from the repository root)
 
-**Starea scheletului:** rutele încă neimplementate întorc mock-urile din `shared/contracts/` (antet `X-Mock: 1`), iar WebSocket-ul live redă `live_messages.json`. Funcțiile de făcut au `TODO (rolul N)` și `NotImplementedError`. Deja funcționale: situl sintetic, încărcarea sitului, validatorul, regula de decizie, șabloanele și clientul LLM cu fallback.
-
----
-
-> **Limba:** toată aplicația e în engleză (interfața, mesajele din API, explicațiile LLM-ului, slide-urile), pentru că juriul e internațional. Documentația internă a echipei (acest README, fișierele de rol) rămâne în română.
-
-## 🆕 Noutăți (14.11.2026): 7 adăugări ieftine, cu impact mare
-
-> **Fiecare rol citește aici ce are nou de implementat.** Detaliile sunt și în fișierul rolului (`docs/roles/ROLn_*.md`), în caseta „🆕 NOU” de la început.
-
-Challenge-ul se numește chiar **„Interplanetary Survival Guide”**. Adăugările de mai jos leagă proiectul direct de temă, folosind date pe care le avem deja.
-
-| # | Ce | De ce | Rol 1 (date) | Rol 2 (algoritmi) | Rol 3 (backend) | Rol 4 (frontend) |
-|---|---|---|---|---|---|---|
-| 1 | **Survival Guide printabil**, mutat din bonus în **prioritate (P1)**: o fișă de o pagină per ieșire cu traseul, ora-limită de întoarcere, punctul de neîntoarcere și ce faci la furtună locală / regională / solară | Cea mai bună potrivire cu tema, pentru câteva ore de lucru | Textul regulilor: `docs/survival-guide.md` | — (datele există deja în `plan_route`) | — | Pagina printabilă (CSS de print) |
-| 2 | **Contorul „Pământul vs. copilotul”**: „Houston's help would arrive in 14 min · copilot decided in 0.05 s” | O idee pe care juriul o reține imediat | Întârzierea Pământ-Marte, cu sursă: `scenario.EARTH_ONE_WAY_DELAY_MIN` | — | `compute_ms` în mesajul `decision` + întârzierea în `/api/site` | Contorul în panoul copilotului |
-| 3 | **Ceasul de întoarcere ca cifră principală**: „Return by 14:20” | E prima informație pe care o vrea un astronaut | Ora de start a ieșirii (LTST): `scenario.EVA_START_LTST_H` | `return_by_min` corect în buget | `eva_start_ltst_h` în `/api/site` | Cifra mare, mereu vizibilă |
-| 4 | **Click pe orice punct de pe hartă**, cu valorile din fiecare misiune și sursa lor: „slope 12° · HiRISE · MRO” | Face vizibile cele „5 misiuni” și întărește partea de hartă | `mission` / `instrument` / `product_id` pe fiecare strat din `meta.json` | — | `sources` în `GET /api/point` | Popup la click |
-| 5 | **Un singur număr de titlu din benchmark**: „The copilot brought the astronaut home safely in X% of storms; the fixed plan, in Y%” | Pe primul slide și în video | Pe slide și în video | `headline` în `run_benchmark` | `headline` în `GET /api/benchmark` | Afișat în UI |
-| 6 | **Ecranul „How we calculate”**, cu fiecare constantă marcată **source** sau **assumption** | Onestitatea despre limite crește încrederea (Validity) | `docs/how-we-calculate.md` complet, mutat la **P1** | Toate constantele la nivel de modul, cu comentariul `sursă:` sau `presupunere` | — | Badge-uri pe coloana „Status” |
-| 7 | **Un slide despre Pământ (Influence):** același motor, cu un model de teren din munții noștri, pentru salvamont | Doar pe slide, **nu în cod** | `docs/slides.md` | — | — | — |
-| 8 | 🆕 **Hardware NASA real pe hartă** ([harta oficială Perseverance](https://science.nasa.gov/mission/mars-2020-perseverance/location-map/)): depozitul de probe **Three Forks** (10 tuburi de titan, țintă de recuperare pentru Mars Sample Return), locul de aterizare, sky crane-ul, parașuta și scutul termic, Ingenuity, plus **traseul real al roverului** | Legătură directă cu misiunea reală NASA; demo: „mergi să recuperezi tuburile de la Three Forks”; detaliu de siguranță: cercuri de precauție în jurul resturilor | **Gata:** `artifacts` și `rover_traverse` în `meta.json`, poziții din waypoint-urile oficiale ale roverului | — (POI statice, **nu** intră în rutare) | **Gata:** `/api/site` le trimite | Strat activabil „NASA hardware”, iconițe per tip, cerc de precauție, popup, traseul roverului |
-
-**Câmpuri noi în contracte, toate opționale** (se adaugă cu acordul echipei; până atunci frontendul are fallback):
-- `site.json`: `eva_start_ltst_h` (ex. `9.0`), `earth_delay_min` (`{"one_way": 14, "round_trip": 28, "source": "…"}`), iar în `layers[]` etichetele `mission`, `instrument`, `data_type`, `source` (deja trimise de `/api/site`).
-- `GET /api/point`: `sources` (`{"slope": {"mission": "MRO", "instrument": "HiRISE", "data_type": "topographic"}, …}`).
-- `live_messages.json`, mesajul `decision`: `compute_ms` (cât a durat decizia; se măsoară doar pentru afișare, nu intră în logică).
-- `GET /api/benchmark`: `headline` (`{"copilot_safe_pct": X, "plan_safe_pct": Y, "n_scenarios": 100}`).
-- 🆕 `site.json` / `meta.json`: `artifacts` (listă de POI: `id`, `name`, `type` = `recovery_target | landmark | historical_hardware | hazard_debris`, `row`, `col`, `lat`, `lon`, `caution_radius_m`, `note`, `source`, `status` = `verified | to verify | synthetic`) și `rover_traverse` (`{"name", "source", "sols", "path": [[row, col], …]}` sau `null` pe situl sintetic). **Deja în contracte și în `/api/site`.**
-
----
-
-## 1. Ideea
-
-### Problema
-
-Primii astronauți pe Marte vor ieși din habitat pe jos, cu oxigen limitat, fără GPS și cu ajutor de pe Pământ care vine cu 4-24 de minute întârziere. În timpul ieșirii, condițiile se pot schimba: o furtună de praf, o rafală de radiație, oboseală sau o problemă la costum. Astronautul trebuie să decidă singur și repede: continuă, ocolește, așteaptă sau se întoarce?
-
-Unelte precum Mars Trek arată datele ca straturi pe o hartă globală, dar challenge-ul spune explicit că nu sunt făcute pentru zona mică a unei singure ieșiri și nu iau decizii.
-
-### Soluția
-
-Marswalk Copilot are două părți:
-
-1. **O hartă hiperlocală** (10×10 km în jurul deltei Jezero) construită din date din mai multe misiuni NASA: relief, imagine, minerale, termic, radiație, vreme.
-2. **Un copilot** care urmărește ieșirea în timp real. La fiecare pas citește senzorii, prezice unde va fi pericolul, generează trasee alternative, elimină variantele nesigure și alege determinist varianta sigură cu riscul cel mai mic. Un LLM local explică decizia pe limba astronautului.
-
-### Principii
-
-- **Cifrele vin din cod, nu din LLM.** Distanța, O₂-ul, timpul și riscul se calculează determinist.
-- **Codul decide, LLM-ul explică.** Regula alege varianta, iar LLM-ul primește situația și decizia deja luată și scrie motivul. LLM-ul nu se află pe calea critică.
-- **Validatorul are ultimul cuvânt.** Nicio variantă nesigură nu ajunge la astronaut.
-- **Sistemul merge și fără LLM.** Dacă Ollama nu răspunde, decizia rămâne aceeași și explicația vine dintr-un șablon.
-- **Fiecare etapă e un demo complet.**
-
----
-
-## 2. Zona de lucru
-
-- **Locul:** frontul deltei din craterul Jezero (centrul craterului ≈ 18,4°N, 77,5°E). E bine documentat, are DTM HiRISE și ținte științifice clare (argile, carbonați, probele Perseverance).
-- **Perimetrul:** ~10×10 km, adică raza unei ieșiri realiste pe jos (3-5 km de la habitat).
-- **Grila pentru algoritmi:** 20 m, deci 500×500 = 250.000 de celule. E suficient de rapid pentru replanificare live.
-- **Afișarea:** imagini de 0,25-1 m, separat de grila de calcul.
-- **Combinarea datelor:** CTX (~20 m) acoperă tot pătratul, iar HiRISE (1 m) fâșia principală peste deltă, cu prioritate acolo unde există.
-
----
-
-## 3. Sursele de date
-
-### A. Date NASA statice (straturile hărții)
-
-| Strat | Misiune / instrument | Tip de date | De unde | Rol în aplicație |
-|---|---|---|---|---|
-| Relief de detaliu + imagine | MRO HiRISE DTM (1 m) + ortoimagini (0,25 m), hillshade, FOM | topografic, optic | [USGS STAC](https://stac.astrogeology.usgs.gov/docs/data/mars/hirise_dtms) | Pantă, obstacole, fundalul hărții; FOM maschează zonele nesigure |
-| Relief de context | MRO CTX DTM (~20 m) | topografic | [AWS Open Data](https://registry.opendata.aws/nasa-usgs-controlled-mro-ctx-dtms/) (CC0) | Acoperirea completă a zonei de 10×10 km |
-| Catalog și API | — | — | [STAC docs](https://stac.astrogeology.usgs.gov/docs/data/) | Căutare după coordonate, citire de COG fără descărcarea fișierelor întregi |
-| Relief global | MGS MOLA | topografic | [NASA Mars Trek](https://trek.nasa.gov/mars/) | Doar contextul și alegerea locului |
-| Minerale | MRO CRISM | spectral | [PDS Geosciences / ODE](https://ode.rsl.wustl.edu/mars/) | Ținte științifice (argile, carbonați) |
-| Rocă și nisip | Mars Odyssey THEMIS (inerție termică) | termic | [THEMIS](https://themis.mars.asu.edu/) și Mars Trek | Costul de mers pe tipuri de teren |
-| Geologie | Harta geologică Jezero, USGS SIM 3464 | geologic | [doi:10.3133/sim3464](https://doi.org/10.3133/sim3464) | Contextul științific al opririlor |
-| Imagini de la sol | Perseverance (Mastcam-Z, Navcam) | optic | [Raw images](https://mars.nasa.gov/mars2020/multimedia/raw-images/) | „Ce vei vedea" la fiecare oprire |
-
-### B. Date NASA pentru calibrarea simulării
-
-| Variabilă | Misiune / instrument | De unde | Folosit pentru |
-|---|---|---|---|
-| Praf (opacitate tau), vânt, temperatură, presiune | Perseverance MEDA, Curiosity REMS | [PDS Atmospheres Node](https://atmos.nmsu.edu/) | Valori realiste în seriile simulate |
-| Furtuni de praf (mărime, frecvență, deplasare) | MRO MARCI, MCS | [Rapoarte meteo MARCI](https://www.msss.com/msss_images/latest_weather.html) | Modelul furtunii |
-| Doză de radiație, evenimente solare | Curiosity RAD, MAVEN | [PDS PPI Node](https://pds-ppi.igpp.ucla.edu/) | Stratul de radiație și evenimentul „furtună solară" |
-| Lumina zilei | Algoritmul Mars24 (NASA GISS) | [Mars24](https://www.giss.nasa.gov/tools/mars24/) | Răsărit, apus, fereastra de lucru |
-
-### C. Surse pentru formule
-
-| Ce | Sursă |
-|---|---|
-| Consum metabolic și de O₂ în costum | Rapoarte [NASA NTRS](https://ntrs.nasa.gov/) despre ieșirile Apollo și testele de mers în costum |
-| Viteza de mers după pantă | Funcția lui Tobler, ajustată pentru gravitația Marte (0,38 g) și costum |
-| Praguri de pantă și rezerve | Studii NASA de ieșiri umane (de verificat), altfel declarate ca presupuneri |
-
-### D. Date generate de noi
-
-- **Generatorul de scenarii** (`scenario.py`): serii de timp pentru praf, vânt, temperatură și radiație, plus furtuni care se mișcă. Valorile sunt calibrate pe datele de la punctul B și au seed fix, deci sunt reproductibile.
-- **Situl sintetic:** un crater fals, cu deltă și obstacole, ca echipa să poată lucra până sunt gata datele reale.
-
-În prezentare scriem clar: *„scenarii simulate, calibrate pe MEDA, REMS și RAD"*.
-
-**Total:** 6+ tipuri de date (topografic, optic, spectral, termic, atmosferic, radiație) din cel puțin 5 misiuni (MRO, Odyssey, MGS, Perseverance, Curiosity, MAVEN). Challenge-ul cere minimum 3.
-
-> ⚠️ Doar linkurile de la A (STAC și AWS) au fost citite efectiv. Cele de la B și C sunt cunoscute din memorie: verificați-le rapid înainte să intre în prezentare.
-
----
-
-## 4. Workflow-ul
-
-Pe scurt: **codul decide, LLM-ul explică.** Workflow-ul are 3 faze.
-
-### Faza 1: Pregătirea datelor (offline, o singură dată)
-
-Rulăm `pipeline/` înainte de demo, iar rezultatul se salvează pe disc. De aici, backendul doar citește fișiere, fără internet.
-
-```
-STAC (HiRISE + CTX) ──► decupaj 10×10 km ──► pantă ──► grilă 20 m
-CRISM, THEMIS, radiație ───────────────────────────────► aceeași grilă
-                                                          │
-                                         elevation.npy, slope.npy, terrain.npy, …
+```powershell
+scripts\setup.ps1   # .venv, Python dependencies, npm install, synthetic site
+scripts\dev.ps1     # backend :8000 + frontend :5173, in separate windows
 ```
 
-### Faza 2: Planificarea (înainte de ieșire)
+The app: http://localhost:5173. Backend status: http://localhost:8000/api/health.
 
-Astronautul spune: „Vreau proba de argilă de la deltă, am 5 ore."
+### Manually
 
-1. **A\*** găsește traseul habitat → țintă pe harta de cost.
-2. **Dijkstra invers** calculează, o singură dată, costul de întoarcere din orice celulă. De aici iese punctul de neîntoarcere.
-3. **Bugetul** calculează pe traseu timpul, O₂-ul, doza și ora apusului.
-4. **Validatorul** dă verdictul GO / CAUTION / NO-GO.
-5. **LLM-ul** (opțional) explică planul în chat.
+Backend, from `backend/`:
 
-### Faza 3: Ieșirea live (inima proiectului)
-
-Un **tick = 1 minut simulat**. La fiecare tick:
-
-```
-┌─ 1. SENZORI ── scenario.py dă: poziție, O₂, praf, vânt, radiație
-│
-├─ 2. PERICOL ── hazards.py: unde e furtuna acum + unde va fi la t+10…t+180
-│
-├─ 3. VERIFICARE ── traseul rămas intersectează pericolul prezis?
-│        │
-│        ├── NU ──► CONTINUE (nimic nu se schimbă, majoritatea tick-urilor)
-│        │
-│        └── DA ──► 4. ALTERNATIVE (ocolire nord, ocolire sud, WAIT, RETURN)
-│                       │  calculate cu A* spațiu-timp + Dijkstra invers
-│                       ▼
-│                   5. VALIDATOR ── elimină ce încalcă O₂ / lumină / pantă / doză
-│                       │
-│                       ▼
-│                   6. REGULA ── alege varianta validă cu riscul cel mai mic
-│                       │        (determinist, < 50 ms)
-│                       ▼
-│                   7. UI (WebSocket) ── decizia apare IMEDIAT pe hartă
-│                       │
-│                       ▼  (în paralel, nu blochează)
-│                   8. LLM ── primește situația + decizia → scrie „de ce"
-│                            (2-3 s; dacă pică → text din șablon)
-└─ următorul tick
+```bash
+../.venv/Scripts/python.exe -m uvicorn app.api.main:app --reload --port 8000
 ```
 
-**Histerezisul** împiedică traseul să se schimbe din minut în minut: se schimbă doar dacă riscul trece pragul și alternativa e clar mai bună.
+Frontend, from `frontend/`:
 
-### Exemplu concret (scena 4 din demo)
+```bash
+npm install
+npm run dev
+```
 
-- **Minutul 72:** praful crește, iar senzorii văd o furtună locală la 3 km vest, care se deplasează spre est.
-- **Predicția:** furtuna taie traseul în 16 minute.
-- **Alternativele:** ocolire nord (+25 min, O₂ final 31%), ocolire sud (+40 min, O₂ final 22%), WAIT, RETURN.
-- **Validatorul:** elimină ocolirea sud, pentru că 22% e sub rezerva de 30%.
-- **Regula:** alege ocolirea nord, care are cel mai mic risc. Pe hartă, traseul se redesenează instant.
-- **LLM-ul**, 2 secunde mai târziu: *„Storm reaches your route in 16 min. The north detour adds 25 min and leaves 31% O₂, above the 30% reserve."*
+### Configuration (backend environment variables)
 
-Dacă furtuna e regională, nicio ocolire nu trece validatorul și regula alege RETURN pe ruta din Dijkstra invers.
-
-### Cine face ce
-
-| Componentă | Determinist? | Poate greși decizia? |
+| Variable | Default | What it does |
 |---|---|---|
-| A*, Dijkstra, buget | da | nu, sunt doar calcule |
-| Validator | da | nu, sunt reguli fixe |
-| Regula de alegere | da | nu |
-| LLM | aproape | **nu**, doar explică |
+| `MARSWALK_SITE` | `jezero` | the site: `jezero` (real data) or `synthetic` |
+| `OLLAMA_URL` | `http://localhost:11434` | Ollama address |
+| `OLLAMA_MODEL` | `qwen3:4b-instruct` | LLM model |
+| `LLM_ENABLED` | `1` | `0` = templates only, no LLM |
+| `LLM_TIMEOUT_S` | `3` | when to fall back to the template |
+| `MARSWALK_SCAN_ANNOUNCE` | `1` | scan announcements ("safe to continue") |
+| `MARSWALK_DEMO_EVENTS` | `0` | `1` = the demo scenario's scheduled events |
+| `FRONTEND_ORIGINS` | `http://localhost:5173` | allowed origins (CORS) |
+
+The frontend forwards `/api` to `BACKEND_URL` (default `http://localhost:8000`, in `frontend/vite.config.js`).
+
+### Rebuilding the data (optional)
+
+The processed Jezero data is already in the repository. To rebuild it from USGS STAC:
+- install `pipeline/requirements.txt`;
+- run `pipeline/fetch_stac.py`, then `pipeline/build_layers.py`.
+
+The synthetic site used by the tests is built by `pipeline/make_synthetic_site.py`.
 
 ---
 
-## 5. Componentele
+## 8. API
 
-### 5.1 Pipeline-ul de date (offline, o singură dată)
-
-1. Caută DTM-urile HiRISE și CTX pentru Jezero în API-ul STAC (`pystac-client`).
-2. Citește doar fereastra de 10×10 km din COG (`rasterio`).
-3. Calculează panta la rezoluția completă.
-4. Agregă la grila de 20 m, păstrând panta maximă din fiecare celulă, ca să nu se piardă obstacolele.
-5. Adaugă CRISM, THEMIS și radiația, reeșantionate pe aceeași grilă.
-6. Salvează `elevation.npy`, `slope.npy`, `terrain.npy`, `minerals.npy`, `radiation.npy`, `meta.json`, plus PNG-urile pentru frontend.
-
-### 5.2 Harta de cost
-
-```
-cost = distanță × f(pantă) × f(teren) + w_pericol × pericol(x, y, t) + w_radiatie × doză
-```
-
-- Pantă peste limită (de exemplu 25°) sau FOM nesigur înseamnă celulă interzisă.
-- Ponderile `w_*` vin din 3 preset-uri fixe: **sigur**, **rapid**, **științific**. Nu le modifică LLM-ul, ca harta de cost să rămână deterministă.
-
-### 5.3 Algoritmii
-
-| Algoritm | Rol |
+| Route | Purpose |
 |---|---|
-| A* | Traseul inițial habitat → țintă |
-| A* spațiu-timp | Ocolirea unui pericol care se mișcă: o celulă e interzisă doar cât timp pericolul e acolo |
-| Dijkstra invers de la habitat | Costul de întoarcere din orice punct: punctul de neîntoarcere și ruta de urgență, instant |
-| Generator de alternative | Trasee cu ponderi diferite: rapid, sigur, științific |
-| CP-SAT (OR-Tools) | Ce ținte științifice vizitezi și în ce ordine, ca să maximizezi valoarea științifică sub O₂, apus și doză. Costurile între ținte vin din Dijkstra. Rulează la planificare și la re-planificarea live, când bugetul scade („renunțăm la carbonat, păstrăm argila”). Plan B: forță brută la ≤6 opriri |
-| Regula de decizie | Alege dintre alternativele validate pe cea cu riscul cel mai mic (filtru + sortare, < 1 ms) |
+| `GET /api/health` | backend and site status |
+| `GET /api/site` | area, habitat, targets, limits, layers with their provenance, NASA hardware, rover traverse |
+| `GET /api/layers` | layers (PNG + legend), served from `/static/layers/` |
+| `GET /api/point?row=&col=` | values of every layer at a point, with mission and instrument |
+| `POST /api/route` | route + budget + verdict; accepts custom waypoints (`custom_stops`) and `preview: true` (not stored for the simulation) |
+| `POST /api/chat` | chat with the agent (NDJSON streaming) |
+| `WS /api/live` | the live simulation: `state`, `tick` (with `scan`), `event`, `decision` and `explanation` messages |
+| `POST /api/live/control` | `start` / `pause` / `reset` / `speed`; a `start` after a finished EVA starts a new one |
+| `POST /api/live/event` | inject an event (simple format, or a `HazardSpec` with `op` = `add` / `update` / `remove`) |
+| `GET /api/benchmark` | benchmark results and the headline numbers |
 
-**CP-SAT determinist:** `num_workers = 1`, `random_seed` fix și limită `max_deterministic_time`, nu `max_time_in_seconds`. Limita în secunde depinde de viteza CPU-ului și poate schimba rezultatul.
-
-### 5.4 Modelul de pericol
-
-- **Furtuna:** o zonă eliptică, cu intensitate mai mare în centru, care se mișcă cu viteză și direcție date.
-- **Predicție** la t+10, t+20, … t+180 min, cu raza mărită pe măsură ce crește orizontul (incertitudine).
-- **Clasificare:** dust devil (ocolibil), furtună locală (ocolibilă sau adăpost), furtună regională (întoarcere obligatorie).
-- **Histerezis:** traseul se schimbă doar dacă riscul trece pragul și alternativa e mai bună cu cel puțin X%.
-- **Alte evenimente:** furtună solară (adăpost sau întoarcere), cutremur (zonă blocată), scurgere în costum (consum mai mare), oboseală (viteză mai mică, consum mai mare).
-
-### 5.5 Bugetul
-
-- **Viteza:** Tobler după pantă × factorul de costum × factorul de echipament × oboseala.
-- **O₂:** după efortul metabolic pe fiecare segment.
-- **Doza de radiație:** integrată pe traseu.
-- **Punctul de neîntoarcere:** din Dijkstra invers.
-- **Lumina:** apusul efectiv din Mars24, mai devreme dacă e praf.
-
-### 5.6 Validatorul (reguli hard)
-
-- O₂ la sosirea în habitat ≥ rezerva (de exemplu 30%).
-- Întoarcere cu ≥ 30 min înainte de apusul efectiv.
-- Pantă ≤ limita maximă.
-- Doza de radiație ≤ limita pe ieșire.
-- Traseul nu trece prin pericol în fereastra prezisă.
-
-### 5.7 LLM-ul (Ollama)
-
-- **Hardware de dezvoltare/demo:** Ryzen 7 7840HS, 24 GB RAM, RTX 4050 cu 6 GB VRAM.
-- **Model ales:** `qwen3:4b-instruct` (Qwen3-4B-Instruct-2507, ~2,9 GB în VRAM, 100% GPU, fără mod de gândire, tool calling). Măsurat pe laptop: încărcare 7,9 s, apoi p50 1,3 s · p95 1,5 s pe explicație. **Atenție:** tag-ul `qwen3:4b` simplu e varianta „Thinking”, care gândește mereu și e prea lentă. Rezervă: `qwen2.5:7b-instruct-q4_K_S` (~4,5 GB). Comparația: `scripts/llm_bench.py --model <tag>`.
-- **Model chat/explicații (opțional):** un 14B (ex. `qwen2.5:14b`) nu încape în 6 GB și se împarte între GPU și CPU, deci e mai lent (câțiva tokeni/s). Se folosește doar unde latența nu contează, nu pentru decizia live.
-- **Setări:** `temperature: 0`, `seed: 42`, format cu schemă JSON, context mic (2-4k) ca să rămână în VRAM.
-- **Rol:** doar explică. Decizia e deja luată de regulă și afișată în UI înainte ca LLM-ul să înceapă.
-- **Când rulează:** doar la evenimente (pas 8 din Faza 3) și la cererile din chat. Rulează asincron și nu blochează tick-ul.
-- **Intrare:** prompt scurt (< 500 de tokeni). Partea fixă (instrucțiunile) stă la început, ca Ollama să o refolosească din cache, iar partea variabilă (situația, alternativele validate, decizia aleasă) la sfârșit.
-- **Ieșire** (schemă JSON, ~60 de tokeni):
-
-```json
-{"decision": "REROUTE",
- "alternative_id": "detour_north",
- "reason": "Storm reaches your route in 16 min. The north detour adds 25 min and leaves 31% O₂, above the 30% reserve."}
-```
-
-  `decision` și `alternative_id` sunt copiate din decizia regulii (servesc ca verificare de consistență), iar `reason` are maxim 25 de cuvinte, în engleză.
-- **Viteză:** `keep_alive: -1` și un request de încălzire la pornirea backendului, ca prima explicație să nu plătească încărcarea modelului.
-- **Chat cu unelte** pentru planificare: `plan_route`, `oxygen_budget`, `layer_value`, `science_stops`, `daylight`. Puține unelte, cu parametri simpli, pentru că un 7B le apelează nesigur.
-- **Fallback:** dacă nu răspunde în ~3 s, JSON-ul e invalid sau `alternative_id` nu se potrivește cu decizia, se afișează un text din șablon (ex. „Hazard on route in {t} min. Detour {name}: +{extra} min, O₂ on arrival {o2}%.").
-- **Reproductibilitate:** `temperature: 0` și `seed` reduc variația, dar nu o garantează la bit. De aceea explicațiile se pun în cache după hash-ul stării, iar demo-ul și benchmark-ul se repetă identic.
-
-### 5.8 Backendul (FastAPI, Python 3.11)
-
-| Rută | Rol |
-|---|---|
-| `GET /api/site` | Zona, limitele, habitatul, țintele, ora de start a ieșirii (`eva_start_ltst_h`), întârzierea Pământ-Marte (`earth_delay_min`) |
-| `GET /api/layers` | Straturile (PNG, legendă și etichetele de misiune / instrument) |
-| `GET /api/point` | Valorile tuturor straturilor într-un punct + sursa fiecăruia (`sources`: misiune, instrument) |
-| `POST /api/route` | Traseu + buget + verdict GO / CAUTION / NO-GO |
-| `POST /api/chat` | Chat cu agentul (streaming) |
-| `WS /api/live` | Simularea live: tick-uri, evenimente, decizii |
-| `POST /api/live/event` | Injectează un eveniment |
-| `GET /api/benchmark` | Copilot față de „doar planul", pe aceleași scenarii, plus numărul de titlu (`headline`) |
-
-### 5.9 Frontendul (React + Vite, pornit din machetă)
-
-- **Ceasul de întoarcere, cifra principală de pe ecran:** „Return by 14:20” (ora locală pe Marte, LTST), mereu vizibil, nu ascuns într-un panou.
-- **Harta:** straturi activabile, habitat, astronaut în mișcare, furtuna cu conul de predicție, traseul curent, alternativele colorate, punctul de neîntoarcere.
-- **Click pe orice punct:** valorile din fiecare strat cu misiunea și instrumentul lor („slope 12° · HiRISE · MRO”).
-- **Panoul copilotului:** decizia curentă, explicația, chatul și uneltele chemate, plus contorul **„Pământul vs. copilotul”** („Houston's help would arrive in 14 min · copilot decided in 0.05 s”).
-- **Bugetul:** O₂, timp, lumină, doză și profilul de altitudine.
-- **Controale de simulare:** start/pauză, viteza ceasului, butoane de evenimente.
-- **Imagini Perseverance** la opriri.
-- **Survival Guide printabil (prioritate, nu bonus):** o pagină per ieșire, cu traseul, ora-limită de întoarcere, punctul de neîntoarcere și ce faci la furtună locală / regională / solară.
-- **Numărul de titlu din benchmark:** „home safe: copilot X% · fixed plan Y%”.
-- **Ecranul „How we calculate":** formulele, pragurile și sursele; fiecare constantă e marcată **source** sau **assumption**.
-- **Bonus:** vedere HUD (ce vede astronautul în cască).
+The exact shape of every message: the examples in [shared/contracts/](shared/contracts/) and [shared/contracts/README.md](shared/contracts/README.md). The frontend's proposed contract (v1.1): [frontend/contracts/FRONTEND_BACKEND_ALGORITHM.md](frontend/contracts/FRONTEND_BACKEND_ALGORITHM.md).
 
 ---
 
-## 6. Structura repo-ului (monorepo)
+## 9. Repository layout
 
 ```
-marswalk-copilot/
-├── pipeline/                  # date offline (rolul 1)
-│   ├── fetch_stac.py          # caută și decupează HiRISE + CTX
-│   ├── build_layers.py        # pantă, agregare 20 m, CRISM, THEMIS, radiație
-│   └── make_synthetic_site.py # crater fals, gata în prima oră
+├── pipeline/                 # offline data (role 1)
+│   ├── fetch_stac.py         # finds and crops HiRISE + CTX from USGS STAC
+│   ├── build_layers.py       # slope, 20 m aggregation, terrain (THEMIS), minerals, radiation
+│   ├── fetch_stop_images.py  # Mastcam-Z images of the targets
+│   ├── meda_winds.py         # MEDA wind statistics
+│   ├── run_benchmark.py      # copilot vs plan benchmark
+│   └── make_synthetic_site.py
+├── data/
+│   ├── processed/jezero/     # .npy, meta.json, PNGs, benchmark.json (in git)
+│   └── synthetic/            # synthetic site for the tests
 ├── backend/
 │   ├── app/
-│   │   ├── api/               # FastAPI: rute REST + WebSocket (rolul 3)
-│   │   │   └── main.py
-│   │   ├── core/              # algoritmi puri, fără server (rolul 2)
-│   │   │   ├── site_data.py   # încarcă grilele
-│   │   │   ├── costmap.py     # fuziunea straturilor + preset-uri de ponderi
-│   │   │   ├── routing.py     # A*, A* spațiu-timp, Dijkstra invers
-│   │   │   ├── hazards.py     # modelul pericolelor + predicție
-│   │   │   ├── budget.py      # viteză, O₂, doză, punct de neîntoarcere
-│   │   │   ├── daylight.py    # Mars24
-│   │   │   ├── validator.py   # reguli hard
-│   │   │   ├── decision.py    # regula de alegere dintre alternative
-│   │   │   ├── stops.py       # CP-SAT: alegerea și ordinea opririlor
+│   │   ├── api/              # FastAPI: REST + WebSocket (role 3)
+│   │   ├── core/             # deterministic algorithms, no server (role 2)
+│   │   │   ├── costmap.py, costfield.py   # static and time-dependent cost maps
+│   │   │   ├── routing.py, planner.py, stops.py, tour.py   # A*, Dijkstra, CP-SAT, stop order
+│   │   │   ├── budget.py, daylight.py, validator.py        # budget, Mars24, hard rules
+│   │   │   ├── hazard_spec.py, hazards.py, storms.py, conflict.py   # hazards and forecast
+│   │   │   ├── replanner.py, selection.py, modes.py        # live replanning
 │   │   │   └── benchmark.py
-│   │   ├── live/              # motorul de tick-uri (rolul 3)
-│   │   │   ├── engine.py
-│   │   │   └── scenario.py    # generatorul de date dinamice
-│   │   └── llm/               # Ollama (rolul 3)
-│   │       ├── client.py
-│   │       ├── prompts.py
-│   │       ├── templates.py   # explicații de rezervă
-│   │       └── cache.py
+│   │   ├── live/             # simulation engine, scenario, planning for the API (role 3)
+│   │   ├── llm/              # Ollama: prompts, templates, cache, chat with tools (role 3)
+│   │   ├── config.py, schemas.py
 │   └── tests/
-├── frontend/                  # React + Vite, pornit din machetă (rolul 4)
-├── shared/
-│   └── contracts/             # exemple JSON pentru API și mesajele WS + mock-uri
-├── data/
-│   ├── raw/                   # DTM-uri descărcate (în .gitignore)
-│   ├── processed/jezero/      # .npy + meta.json (mici, intră în git)
-│   └── synthetic/
-├── docs/                      # „Cum calculăm", surse, slide-uri
-└── scripts/                   # pornire dev, înregistrare demo
+├── frontend/                 # React 18 + Vite + three.js (role 4)
+│   ├── src/
+│   │   ├── pages/            # Planning, Simulation, Sensors
+│   │   ├── components/       # map/, planning/, simulation/, sensors/
+│   │   ├── mission/          # state shared by the pages (MissionContext)
+│   │   ├── hooks/, api/, terrain/, simulation/, sensors/
+│   ├── public/terrain/       # 3D relief model (USGS CTX) and display grid
+│   ├── desktop/              # Electron app for Windows
+│   ├── contracts/            # frontend ↔ backend contract v1.1
+│   └── tests/, e2e/
+├── shared/contracts/         # JSON examples of the API and live messages (also the mocks)
+├── docs/                     # sources, calculations, survival guide, demo, slides, roles
+└── scripts/                  # setup.ps1, dev.ps1, llm_bench.py
 ```
 
-- **`core/` e separat de `api/`:** algoritmii sunt funcții Python pure, testabile fără server, deci rolul 2 nu așteaptă după backend.
-- **`shared/contracts/`** fixează forma JSON-urilor din prima oră, ca frontendul să lucreze pe mock-uri până e gata backendul.
-- **În git intră doar grilele procesate.** Un `.npy` de 500×500 are ~1 MB; DTM-urile brute rămân în `data/raw/`, ignorat.
+- `core/` is separate from `api/`: the algorithms are pure Python functions, testable without a server.
+- `shared/contracts/` fixes the shape of the JSON messages. If the backend does not answer, the frontend shows these examples, labelled "DEMO DATA".
 
 ---
 
-## 7. Planul pe două zile
+## 10. Tests
 
-**Reguli:** la sfârșitul zilei 1 merg traseul și bugetul pe date reale. La mijlocul zilei 2 merge reroute-ul live. Tot ce vine după e bonus.
+Backend, from `backend/`:
 
-### Ziua 1: fundația
+```bash
+../.venv/Scripts/python.exe -m pytest
+```
 
-| Interval | Backend | Algoritmi | Date | Frontend |
-|---|---|---|---|---|
-| H0–H1 | **Toți:** contractele (`meta.json`, semnăturile din `core/`, `shared/contracts/`) | | Situl sintetic | |
-| H1–H3 | Repo, FastAPI, `/health`, Ollama instalat + încălzit | A* pe situl sintetic | `fetch_stac.py`: caută HiRISE + CTX pentru Jezero | Portează macheta, date mock |
-| H3–H7 | `/site`, `/layers`, `/route` | Dijkstra invers, punctul de neîntoarcere | Decupaj 10×10 km, pantă, agregare la 20 m | Hartă + straturi + traseu |
-| H7–H12 | `budget.py`, `daylight.py` | `hazards.py`: furtuna care se mișcă, predicția | CRISM, THEMIS, stratul de radiație | Bugetul, profilul de altitudine |
+The tests run on the synthetic site, without the LLM (`tests/conftest.py`).
 
-**Gata la sfârșitul zilei 1:** harta Jezero reală, traseul A*, bugetul și punctul de neîntoarcere.
+Frontend unit tests (Node), from `frontend/`:
 
-### Ziua 2: copilotul live
+```bash
+node --test tests/
+```
 
-| Interval | Backend | Algoritmi | Date | Frontend |
-|---|---|---|---|---|
-| H12–H18 | WebSocket `/live` | A* spațiu-timp, alternativele, validatorul | `scenario.py` calibrat pe MEDA, REMS, RAD | Astronaut animat, furtuna, conul, alternativele |
-| H18–H24 | `llm/` (explicații) + șabloane, chatul; `compute_ms`, `sources`, `eva_start_ltst_h` | Histerezis, WAIT și RETURN, CP-SAT pentru opriri | Imaginile Perseverance la opriri, `survival-guide.md` | Panoul de decizie, explicația, chatul, contorul Pământ vs. copilot, ceasul de întoarcere |
-| H24–H30 | Benchmark + `headline` | Teste pe scenarii, `headline` în benchmark | Ecranul „Cum calculăm” (fiecare constantă: sursă / presupunere), sursele | **Survival Guide printabil**, apoi HUD (bonus) |
-| H30–H34 | Stabilizare | Stabilizare | Slide-uri (numărul de titlu, slide-ul salvamont), video demo | Finisaje |
-| H34–H36 | Îngheț de cod | | Repetiție demo | |
-
-Ajustați orele după deadline-ul real. Înregistrați video-ul de rezervă cu cel puțin 3-4 ore înainte de termen.
-
-### Rolurile (echipă de 4)
-
-| Rol | Foldere | Ce face | Livrează către |
-|---|---|---|---|
-| **1. Date & prezentare** | `pipeline/`, `data/`, `docs/` | sit sintetic (prima oră!), STAC, straturi, calibrarea scenariilor, surse, slide-uri, video | `.npy` + `meta.json` → rolul 2 |
-| **2. Algoritmi** | `backend/app/core/` | harta de cost, A\*, A\* spațiu-timp, Dijkstra invers, pericole, buget, validator, regula de decizie, CP-SAT, benchmark | funcții Python → rolul 3 |
-| **3. Backend & LLM** | `backend/app/api/`, `live/`, `llm/` | FastAPI, WebSocket, motorul de tick-uri, Ollama, prompturi, șabloane, chat cu unelte; integrarea finală | JSON pe REST/WS → rolul 4 |
-| **4. Frontend** | `frontend/` | harta, straturile, animația, conul furtunii, panourile, HUD | demo-ul |
-
-- **LLM-ul nu are rol separat:** doar explică, deci e o muncă de 4-6 ore, legată direct de motorul live.
-- **Rolul 3 îl ia cine are laptopul cu GPU**, pentru că Ollama rulează acolo și demo-ul pornește de pe el.
-
-Instrucțiunile complete pentru fiecare rol (pentru 4 agenți care lucrează în paralel) sunt în [docs/roles/](docs/roles/README.md).
-
-### Regulile de lucru
-
-1. **Ora 0 (o oră, toți împreună):** stabiliți contractele: formatul grilelor (`meta.json`), semnăturile funcțiilor din `core/` (de exemplu `plan_route(grid, start, goal, preset) -> Route`) și JSON-urile din `shared/contracts/`.
-2. **Situl sintetic e gata în prima oră**, ca nimeni să nu aștepte datele reale.
-3. **Fiecare om lucrează în folderele lui, pe branch-ul lui, și face merge în `main` des**, de câteva ori pe zi.
-4. **Prima integrare cap-coadă se face la finalul zilei 1**, chiar dacă e urâtă.
+`frontend/e2e/` holds a Playwright test, which needs Playwright installed and the app running.
 
 ---
 
-## 8. Demo-ul (≈2 min)
+## 11. Desktop app and hosting
 
-0. Deschidere cu numărul de titlu: „The copilot brought the astronaut home safely in 81% of storms; the fixed plan, in 51%” (benchmark Jezero, 14.11; 5 s). Scenariul complet, secundă cu secundă: [docs/demo.md](docs/demo.md); slide-urile: [docs/slides.md](docs/slides.md).
-1. Harta Jezero cu straturile: „date din 4 misiuni NASA” (MRO, Mars Odyssey, Mars 2020, MSL). Click pe ținta de argilă: „slope 7° · HiRISE + CTX · MRO”; stratul „NASA hardware” cu depozitul Three Forks (15 s).
-2. Planificare: „Vreau o probă de argilă de la deltă, am 5 ore" → traseu (5,9 km, 148 min), buget, punct de neîntoarcere, imaginea Perseverance de la țintă și ceasul mare „Return by 11:56” (25 s).
-3. Pornim ieșirea, iar astronautul merge pe hartă (10 s).
-4. 🆕 Minutul 30: un vârtej de praf mare (130 m) taie traseul: apare conul de predicție, apar alternativele, validatorul le elimină pe cele nesigure, regula alege ocolirea spre nord, iar LLM-ul explică de ce. Contorul: „Houston's help would arrive in 27 min · copilot decided in <0.1 s” (30 s).
-   Minutul 80: frontul unei furtuni de praf (30 km, 15 m/s) ajunge peste astronaut la țintă: nicio variantă nu-l ocolește, deci copilotul îl trimite acasă imediat (EMERGENCY) (15 s).
-5. Minutul 125: furtună regională: sistemul decide RETURN, pentru că nu poate fi ocolită. Astronautul ajunge acasă la minutul 145 (10:21) (8 s).
-6. Benchmark: copilot față de „doar planul", pe 100 de scenarii: în siguranță 81% față de 51%, dar cu 41% din probe față de 100% (7 s).
-7. Închidere: Survival Guide-ul printabil al ieșirii (5 s).
+**Desktop (Windows, Electron)**, from `frontend/`:
+- `npm run desktop` builds the interface and opens it in its own window;
+- `npm run desktop:package` produces `release/Marswalk-win32-x64/Marswalk.exe`.
+
+The backend stays a separate process, set through `BACKEND_URL`. Details: [frontend/desktop/README.md](frontend/desktop/README.md).
+
+**Hosting with the local LLM:** everything runs on the laptop that has Ollama. Only the built frontend is published, through a tunnel (for example Cloudflare Tunnel to `vite preview`), and it forwards `/api` and the WebSocket to the local backend.
+- The 3D relief model is ~34 MB, so the first load depends on the laptop's upload speed.
+- For public access, a named tunnel with caching on `/terrain/*` is recommended.
 
 ---
 
-## 9. Riscuri și plan B
+## 12. Team and documentation
 
-| Risc | Plan B |
+| Role | Folders | Responsibilities |
+|---|---|---|
+| **1. Data & presentation** | `pipeline/`, `data/`, `docs/` | NASA data, layers, scenario calibration, sources, slides, video |
+| **2. Algorithms** | `backend/app/core/` | cost map, routing, hazards, budget, validator, replanning, benchmark |
+| **3. Backend & LLM** | `backend/app/api/`, `live/`, `llm/` | API, WebSocket, live engine, scanning, Ollama, prompts, integration |
+| **4. Frontend** | `frontend/` | 3D map, planning, simulation, tracker, watch, sensors, desktop app |
+
+| Document | Contents |
 |---|---|
-| STAC-ul e lent sau DTM-ul nu se decupează | Doar CTX; dacă nici asta nu merge, situl sintetic + straturile NASA arătate separat |
-| CRISM sau THEMIS durează prea mult | Ținte științifice puse manual după harta geologică USGS |
-| Ollama e lent sau nu e instalat | Decizia nu e afectată (o ia regula); explicația vine din șablon |
-| A* spațiu-timp e prea lent | Orizont mai scurt (30-60 min), grilă de 100 m la replanificare, `numpy`/`numba`, sau zona furtunii „umflată" static |
-| Integrarea frontend–backend întârzie | Frontendul rulează pe scenarii înregistrate (mock) |
-| Internetul pică la demo | Totul local + video de rezervă |
-| Juriul întreabă dacă AI-ul poate greși | AI-ul nu ia decizia: o ia regula, dintre variante validate. LLM-ul doar explică; benchmark-ul rulează fără LLM și e reproductibil |
+| [docs/sources.md](docs/sources.md) | every data source and paper, with links |
+| [docs/how-we-calculate.md](docs/how-we-calculate.md) | formulas and constants, each marked source / assumption |
+| [docs/survival-guide.md](docs/survival-guide.md) | the astronaut's rules, on one page |
+| [docs/hazards-research.md](docs/hazards-research.md) | research on the hazards |
+| [docs/demo.md](docs/demo.md), [docs/slides.md](docs/slides.md), [docs/pitch.md](docs/pitch.md) | demo, slides, pitch |
+| [docs/RAPORT_PANTA_20.md](docs/RAPORT_PANTA_20.md) | check of the 20° slope limit (Romanian) |
+| [docs/plan-replanificare-live.md](docs/plan-replanificare-live.md) | live replanning plan (Romanian) |
+| [docs/roles/](docs/roles/README.md) | instructions per role, routing architecture V2, reference parameters, work notes (Romanian) |
 
 ---
 
-## 10. Cum răspundem criteriilor juriului
+## 13. Known limitations
 
-| Criteriu | Argument |
-|---|---|
-| **Influence** | Siguranța primelor ieșiri umane pe Marte; un slide arată același motor, cu un model de teren din munții noștri, pentru salvamont |
-| **Creativity** | Replanificare în timp real cu predicția pericolului, nu o hartă statică; contorul „Pământul vs. copilotul” |
-| **Validity** | DTM-uri oficiale NASA/USGS, date din 4 misiuni NASA (vizibile la click pe hartă), decizii deterministe, benchmark măsurat, ecranul „Cum calculăm” cu fiecare constantă marcată sursă sau presupunere |
-| **Relevance** | Acoperă cerințele: hiperlocal, ≥3 tipuri de date, siguranță, radiație, mobilitate în costum, obiective științifice, imagini de la sol; produce chiar un **Survival Guide** per ieșire |
-| **Presentation** | Demo vizual: furtuna se mișcă, traseul se reface, decizia e explicată; un singur număr de titlu din benchmark |
+- **Layers in the interface.** The map shows relief and slope, but not the minerals, terrain and radiation layers, even though the backend serves them (`/api/layers`). The slope shown and the elevation profile are computed on the frontend's display grid, not on the backend's slope layer.
+- **Backend features not yet shown in the interface:**
+  - the Mastcam-Z images of the targets;
+  - the chat with the agent;
+  - the values at a clicked point (`/api/point`);
+  - the benchmark;
+  - the "Houston vs copilot" counter (`compute_ms`);
+  - the survival guide.
+- **One simulation per server.** Everyone connected to the same backend sees and controls the same EVA.
+- **Starting without a plan.** A `start` with no `route_id` and no planned route uses the example route from the contract. The interface always sends the planned route.
+- **The marsquake zone is only penalised on flat ground**, not blocked, so the copilot may cross it.
+- **The scenarios are simulated**, calibrated on MEDA, REMS and RAD, not live data from Mars.
+- **The benchmark should be rerun** after the latest live replanning changes (see section 6).

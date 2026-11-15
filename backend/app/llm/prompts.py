@@ -11,7 +11,7 @@ import json
 
 from app.llm.summary import NO_ALTERNATIVE
 
-PROMPT_VERSION = 7  # +3: regula „name the hazard”, formulări „your route crosses”, „right beside you”, exemplu furtună solară (15.11). 4: +1: scanare („safe to continue”), pericol care nu atinge traseul, furtună solară (15.11)
+PROMPT_VERSION = 8  # +1: exemplele CONTINUE scurtate la ≤ 25 de cuvinte (15.11). 7: +3: regula „name the hazard”, formulări „your route crosses”, „right beside you”, exemplu furtună solară (15.11). 4: +1: scanare („safe to continue”), pericol care nu atinge traseul, furtună solară (15.11)
 
 SYSTEM = """You are the copilot of an astronaut walking on Mars.
 The safety system has ALREADY decided what to do. You never change the decision and you never compute anything.
@@ -173,12 +173,12 @@ EXAMPLES = [
     (
         {"decision": "CONTINUE", "alternative_id": "current", "hazard": "solar_particle_event",
          "o2_end_pct": 61.0, "o2_reserve_pct": 30.0, "dose_msv": 0.2, "dose_limit_msv": 1.0},
-        "Continue on your route: a solar particle event is raising radiation, but your dose stays at 0.2 mSv, below the 1 mSv limit. You return with 61% O2.",
+        "Continue on your route: a solar particle event raises radiation, but your dose stays at 0.2 mSv, below the 1 mSv limit.",
     ),
     (
         {"decision": "CONTINUE", "alternative_id": "current", "hazard": "marsquake", "eta_hazard_min": 6,
          "o2_end_pct": 66.0, "o2_reserve_pct": 30.0, "dose_msv": 0.1},
-        "Continue on your route: it crosses a marsquake zone in about 6 min and stays within limits. I am monitoring it. You return with 66% O2.",
+        "Continue on your route: it crosses a marsquake zone in about 6 min, within limits. Monitoring it. You return with 66% O2.",
     ),
 ]
 

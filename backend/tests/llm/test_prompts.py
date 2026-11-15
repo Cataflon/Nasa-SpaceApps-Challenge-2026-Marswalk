@@ -43,7 +43,8 @@ def test_alt_names(alt_id, name):
 def test_examples_follow_the_rules():
     for example, reason in prompts.EXAMPLES:
         assert len(reason.split()) <= 25, reason
-        assert reason.split(":")[0].split()[0] in ("Take", "Return", "Stop", "Head"), reason
+        # „Continue” = exemplele de CONTINUE (scanare liberă, pericol care nu atinge traseul).
+        assert reason.split(":")[0].split()[0] in ("Take", "Return", "Stop", "Head", "Continue"), reason
         numbers = [w.strip(".,%") for w in reason.split() if any(c.isdigit() for c in w)]
         facts = prompts.facts(example)
         assert all(n in facts for n in numbers), (numbers, facts)

@@ -144,7 +144,7 @@ def _terrain_numbers(result: dict, s) -> None:
     """Panta maximă și urcarea totală pe traseu, din straturile backendului (`slope`, `elevation`),
     ca frontendul să nu le mai calculeze pe grila lui de afișare (docs/RAPORT_PANTA_20.md, R5)."""
     path = [tuple(c) for c in result.get("path", [])]
-    if not path:
+    if not path or "budget" not in result or not hasattr(s, "layers"):
         return
     slope, elev = s.layers["slope"], s.layers["elevation"]
     z = [float(elev[r, c]) for r, c in path]
