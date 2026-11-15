@@ -1,5 +1,5 @@
-import Icon from './Icon';
-import {effectiveVerdict,number,pointOfNoReturnLabel} from '../utils';
+import Icon from '../Icon';
+import {effectiveVerdict,number,pointOfNoReturnLabel} from '../../utils';
 // Translucent mission card on the left of the planning map: stops, live estimate from the backend,
 // compact settings and the way into the simulation. Appears once the trip has a stop.
 const MARS_HOUR_MIN=61.65;

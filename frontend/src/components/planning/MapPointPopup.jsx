@@ -1,5 +1,5 @@
 import {useEffect,useState} from 'react';
-import Icon from './Icon';
+import Icon from '../Icon';
 // Small menu anchored on the map at the selected location: name a new point and add it to the trip.
 export default function MapPointPopup({selected,points,trip,onAdd,onDelete,onClose}){
   const [name,setName]=useState('');

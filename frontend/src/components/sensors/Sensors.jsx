@@ -1,8 +1,8 @@
 ﻿import { useEffect, useRef, useState } from 'react';
-import Icon from './Icon';
-import { events, number } from '../utils';
-import { modules, stateNames } from '../sensors/equipment';
-import '../sensors.css';
+import Icon from '../Icon';
+import { events, number } from '../../utils';
+import { modules, stateNames } from '../../sensors/equipment';
+import '../../sensors.css';
 import EquipmentSource from './EquipmentSource';
 
 function ModuleImage({module}) {

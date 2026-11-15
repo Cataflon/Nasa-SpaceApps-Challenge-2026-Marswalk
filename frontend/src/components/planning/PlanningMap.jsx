@@ -1,6 +1,6 @@
 ﻿import {useEffect,useRef,useState} from 'react';
-import MapView from './MapView';
-import Icon from './Icon';
+import MapView from '../map/MapView';
+import Icon from '../Icon';
 export default function PlanningMap({children,onFloatingChange,...mapProps}){
   const anchor=useRef(null),[floating,setFloating]=useState(false),[dismissed,setDismissed]=useState(false);
   useEffect(()=>{const node=anchor.current;if(!node)return;const observer=new IntersectionObserver(([entry])=>{const away=!entry.isIntersecting&&entry.boundingClientRect.bottom<80;setFloating(away);if(entry.isIntersecting)setDismissed(false);},{threshold:0});observer.observe(node);return()=>observer.disconnect();},[]);

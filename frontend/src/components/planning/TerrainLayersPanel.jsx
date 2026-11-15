@@ -1,6 +1,6 @@
-﻿import Icon from './Icon';
-import LayerSources from './LayerSources';
-import { number } from '../utils';
+﻿import Icon from '../Icon';
+import LayerSources from '../LayerSources';
+import { number } from '../../utils';
 export default function TerrainLayersPanel({site,info,settings,onChange,hazardCount,hideOverview=false}) {
   const layer=(id)=>onChange({...settings,layer:settings.layer===id?'surface':id});
   const options=[['elevation','layers','Elevation',true,'Original DTM elevations'],['slope','activity','Slope',true,'Derived from CTX / 20 m'],['minerals','target','Minerals',false,'No aligned mineral raster loaded'],['difficulty','shield','Terrain difficulty',false,'No aligned difficulty raster loaded']];
