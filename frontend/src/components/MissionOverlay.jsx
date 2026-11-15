@@ -8,7 +8,7 @@ function clock(site,minutes){
   const hours=(site.eva_start_ltst_h??8)+minutes/MARS_HOUR_MIN;
   return `${String(Math.floor(hours)%24).padStart(2,'0')}:${String(Math.floor(hours%1*60)).padStart(2,'0')}`;
 }
-export default function MissionOverlay({site,points,trip,route,mock,estimate,settings,onSettings,locked,onSelect,onSimulate}){
+export default function MissionOverlay({site,points,trip,route,mock,estimate,settings,onSettings,locked,busy,onEndEva,onSelect,onSimulate}){
   if(!trip.ids.length)return <aside className="mission-overlay mission-overlay-hint" aria-label="How to plan"><Icon name="target" size={15}/><p>Click a science site or anywhere on the terrain, then press <strong>Add to trip</strong>. The mission estimate appears here.</p></aside>;
   const all=[...site.targets,...points],byId=id=>all.find(p=>p.id===id);
   const visit=Object.fromEntries((route?.stops??[]).map((s,i)=>[s.id,s.visit_order??i+1]));
@@ -48,7 +48,7 @@ export default function MissionOverlay({site,points,trip,route,mock,estimate,set
       <label>Max duration (min)<input type="number" min="30" max="720" step="10" value={settings.duration} disabled={locked} onChange={e=>onSettings({...settings,duration:Math.max(30,Math.min(720,Number(e.target.value)||300))})}/></label>
       <label className="mo-check"><input type="checkbox" checked={trip.returnHome} disabled={locked} onChange={e=>trip.setReturnHome(e.target.checked)}/>Return to habitat</label>
     </details>
-    {locked?<p className="mo-note">EVA in progress. Reset it in Simulation to change the plan.</p>
+    {locked?<><button className="button secondary full" disabled={busy} onClick={onEndEva}><Icon name="reset" size={14}/>End EVA &amp; edit plan</button><p className="mo-note">An EVA is in progress. End it to change the plan.</p></>
       :<button className="button primary full" disabled={blocked} onClick={onSimulate}><Icon name="play" size={14}/>Start simulation</button>}
     {!locked&&verdict==='NO-GO'&&<p className="mo-note">NO-GO: the plan breaks a safety limit. Remove a stop or change the settings.</p>}
   </aside>;

@@ -39,7 +39,7 @@ def test_api_route_matches_route_response_contract(client, contract, audit):
     assert r.status_code == 200
     assert r.headers.get("X-Mock") != "1"
     # Câmpurile opționale adăugate de API (puncte proprii, contractul frontendului 1.1; README, „Puncte proprii”).
-    optional = {"$.omitted", "$.validation_status"} | {f"$.stops[].{k}" for k in ("name", "row", "col", "source", "visit_order")}
+    optional = {"$.omitted", "$.validation_status", "$.budget.max_slope_deg", "$.budget.ascent_m"}         | {f"$.stops[].{k}" for k in ("name", "row", "col", "source", "visit_order")}
     assert audit.shape_diff(contract("route_response.json"), r.json(), nullable={"$.point_of_no_return"},
                             optional=optional) == []
 

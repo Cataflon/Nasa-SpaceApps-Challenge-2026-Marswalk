@@ -196,6 +196,7 @@ def route(req: RouteRequest, response: Response):
             start_time_min=req.start_time_min,
             max_duration_min=req.max_duration_min,
             return_to_habitat=req.return_to_habitat,
+            store=not req.preview,
             custom_stops=list(req.custom_stops),
         )
     except planning.PlanningError as exc:
@@ -273,7 +274,15 @@ def _require_active_eva() -> None:
 async def live_control(ctrl: LiveControl):
     if ctrl.action == "start":
         if engine.state == "finished":
-            raise HTTPException(409, "The EVA has finished. Reset the mission before starting again.")
+            # O misiune încheiată nu mai are nimic de pierdut: un start nou o resetează singur și pornește
+            # ruta cerută (sau din nou aceeași rută, dacă route_id lipsește).
+            if ctrl.route_id is not None and engine.store.get(ctrl.route_id) is None:
+                raise HTTPException(404, f"Route {ctrl.route_id} does not exist. Plan it with POST /api/route.")
+            previous = (engine.route or {}).get("route_id")
+            route_id = ctrl.route_id or (previous if engine.store.get(previous or "") else None)
+            engine.reset()
+            engine.start(route_id, ctrl.speed)
+            return {"ok": True, "state": engine.state, "t_min": engine.t_min}
         if ctrl.route_id is not None and engine.state in ("running", "paused"):
             # Un plan nou nu înlocuiește în tăcere o misiune în curs: întâi reset.
             raise HTTPException(409, f"An EVA is {engine.state}. Reset the mission before starting route {ctrl.route_id}.")

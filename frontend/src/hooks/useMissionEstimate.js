@@ -2,7 +2,7 @@ import {useEffect,useRef,useState} from 'react';
 import {planRoute} from '../api/client';
 // Asks the mission backend for a validated plan whenever the trip or the settings change.
 // Catalog targets are sent by id; saved waypoints travel as `custom_stops` (contract 1.1, §5).
-export function useMissionEstimate({site,ids,points,returnHome,preset,duration,locked,onResult}){
+export function useMissionEstimate({site,siteMock=false,ids,points,returnHome,preset,duration,locked,onResult}){
   const [busy,setBusy]=useState(false),[error,setError]=useState('');
   const version=useRef(0);
   const used=points.filter(p=>ids.includes(p.id));
@@ -18,7 +18,7 @@ export function useMissionEstimate({site,ids,points,returnHome,preset,duration,l
       try{
         const r=await planRoute({start:site.habitat,stops:ids,custom_stops:custom,return_to_habitat:returnHome,preset,start_time_min:0,max_duration_min:Number(duration)});
         if(token!==version.current)return;
-        if(r.mock&&custom.length){onResult(null);setError('Mission service unavailable: custom points need the planning backend.');}
+        if(r.mock&&(custom.length||!siteMock)){onResult(null);setError('Mission service unavailable: routes are planned only by the backend.');}
         else onResult(r);
       }catch(e){if(token===version.current){onResult(null);setError(e.message);}}
       finally{if(token===version.current)setBusy(false);}

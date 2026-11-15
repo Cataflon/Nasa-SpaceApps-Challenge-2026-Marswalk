@@ -132,9 +132,24 @@ def plan(
         result = {**_contract("route_response.json"), "preset": preset}
     else:
         _describe_stops(result, s.meta, stops)
+        _terrain_numbers(result, s)
     if store:
         routes.add(result)
+    else:
+        result["route_id"] = "preview"
     return result, mock
+
+
+def _terrain_numbers(result: dict, s) -> None:
+    """Panta maximă și urcarea totală pe traseu, din straturile backendului (`slope`, `elevation`),
+    ca frontendul să nu le mai calculeze pe grila lui de afișare (docs/RAPORT_PANTA_20.md, R5)."""
+    path = [tuple(c) for c in result.get("path", [])]
+    if not path:
+        return
+    slope, elev = s.layers["slope"], s.layers["elevation"]
+    z = [float(elev[r, c]) for r, c in path]
+    result["budget"]["max_slope_deg"] = round(max(float(slope[r, c]) for r, c in path), 1)
+    result["budget"]["ascent_m"] = round(sum(max(0.0, b - a) for a, b in zip(z, z[1:])), 1)
 
 
 def _describe_stops(result: dict, meta: dict, requested: list[str]) -> None:

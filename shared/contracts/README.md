@@ -62,6 +62,12 @@ Adăugiri compatibile la `POST /api/route`:
   - punctele proprii nu apar în `GET /api/site`;
   - erorile (în afara grilei, teren interzis sau inaccesibil, id lipsă sau duplicat) dau 422 cu `detail` text.
 
+### Traseele vin doar din backend (15.11, `docs/RAPORT_PANTA_20.md`)
+
+- Frontendul nu mai are rutare proprie (`routing.worker.js` a fost șters): previzualizarea la clic pe hartă și traseul misiunii vin din `POST /api/route`.
+- `route_request.preview` (opțional, implicit `false`): `true` = doar previzualizare. Traseul nu e salvat pentru simulare, iar `route_id` e `"preview"`.
+- `route_response.budget.max_slope_deg` și `budget.ascent_m` (opționale): panta maximă și urcarea totală pe traseu, din straturile backendului (`slope`, `elevation`). Frontendul le afișează în loc să le calculeze pe grila lui de afișare.
+
 ### Câmpuri noi, opționale (arhitectura de rutare V2, `docs/roles/ARHITECTURA_RUTARE_V2.md`)
 
 Adăugiri compatibile: exemplele vechi rămân valide, consumatorii le tratează ca opționale.

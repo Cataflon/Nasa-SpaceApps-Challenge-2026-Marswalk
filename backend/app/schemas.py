@@ -50,6 +50,9 @@ class RouteRequest(BaseModel):
     # Orizontul motorului live (engine.MAX_DURATION_MIN = 720): un plan mai lung n-ar putea fi
     # simulat până la capăt, deci se respinge aici (contractul frontendului 1.1, §5).
     max_duration_min: float = Field(default=300, gt=0, le=720)
+    # true = doar previzualizare (harta din Planning): traseul nu e salvat pentru motorul live și nu
+    # primește `route_id` de misiune (`route_id: "preview"`).
+    preview: bool = False
 
 
 class LiveEvent(BaseModel):

@@ -32,6 +32,17 @@ async function fallback(call, value) {
 }
 export const getSite = () => fallback(() => request('/api/site'), mockSite);
 export const planRoute = data => fallback(() => post('/api/route', data), mockRoute);
+// Previzualizarea unei destinații (clic pe hartă în Planning): o calculează planificatorul din backend, ca orice
+// traseu, pentru Safety și Minimum time. `preview: true` = nu se salvează pentru simulare; fără fallback pe mock.
+export async function previewRoute(site, goal) {
+  const own = String(goal.id).startsWith('note_'), point = goal.kind === 'custom', id = own ? goal.id : point ? 'note_preview' : goal.id;
+  const custom = own || point ? [{ id, name: String(goal.name || 'Selected location').replace(/[<>]/g, '').slice(0, 60), row: Math.round(goal.row), col: Math.round(goal.col), tag: goal.tag ?? 'waypoint', dwell_min: 0 }] : [];
+  const body = preset => ({ start: { row: site.habitat.row, col: site.habitat.col }, stops: [id], custom_stops: custom, return_to_habitat: false, preset, start_time_min: 0, max_duration_min: 720, preview: true });
+  const [safe, fast] = await Promise.all(['safe', 'fast'].map(preset => post('/api/route', body(preset))));
+  if (safe.mock || fast.mock) throw new Error('Route preview needs the planning backend.');
+  const brief = ({ data }) => ({ path: data.path, distance: data.budget?.distance_m, ascent: data.budget?.ascent_m, maxSlope: data.budget?.max_slope_deg });
+  return { safe: brief(safe), short: brief(fast) };
+}
 export const getPoint = (row, col, signal) => request(`/api/point?row=${row}&col=${col}`, { signal }).then(r => r.data).catch(() => null);
 // Player demonstrativ: valori înregistrate, fără calcule de siguranță în frontend.
 const listeners = new Set();

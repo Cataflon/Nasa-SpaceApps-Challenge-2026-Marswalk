@@ -40,9 +40,12 @@ export function useLive(route) {
     setBusy(true); setError('');
     try {
       // Backendul reia misiunea cand route_id lipseste; retrimiterea lui o reseteaza.
-      const r = await controlLive({ action, speed: nextSpeed, ...(action === 'start' && state === 'idle' ? { route_id: routeId } : {}) }, mock);
+      // Dupa o EVA terminata, un start nou porneste ruta curenta de la zero (backendul reseteaza singur).
+      const fresh = action === 'start' && (state === 'idle' || state === 'finished');
+      const r = await controlLive({ action, speed: nextSpeed, ...(fresh ? { route_id: routeId } : {}) }, mock);
       if (!r.data?.ok) throw new Error('Comanda nu a fost confirmată.');
-      if (action === 'reset') dispatch({ type: 'reset' });
+      // Urma, deciziile si ultimul tick ale EVA vechi se sterg (altfel tick-urile noi, cu t mai mic, ar fi ignorate).
+      if (action === 'reset' || (fresh && state === 'finished')) dispatch({ type: 'reset' });
       setState(r.data.state); setSpeed(nextSpeed);
     } catch (e) { setError(e.message); } finally { setBusy(false); }
   }

@@ -215,6 +215,29 @@
   - Test: `tests/live/test_engine.py::test_scan_runs_every_tick_and_announces_safe_situations`.
   - **Pentru rolul 2:** pe teren plat zona de cutremur e doar penalizare, deci la apariția ei pe traseu decizia e întâi CONTINUE („traseul o traversează, în limite”), apoi REROUTE când astronautul intră în ea, și poate alterna `detour_free` / `exit_zone` cât o traversează. Anunțurile spun corect ce a decis codul, dar se văd multe mesaje. Soluția ține de modelul din `core/hazard_spec.py`.
 
+- **O simulare nouă după una încheiată, fără blocaj (15.11):**
+  - Înainte: după final (`finished`) „Start simulation” nu pornea nimic, „Start EVA” era dezactivat, iar backendul dădea 409 până la un Reset manual. Cât EVA rula sau era pe pauză, Planning era blocat fără niciun buton.
+  - Backend (`api/main.py`): `start` după `finished` resetează singur și pornește ruta cerută (sau aceeași rută, fără `route_id`). Cu o EVA în curs, o rută nouă dă în continuare 409. Test: `tests/api/test_live_api.py::test_new_route_starts_after_finished_eva`.
+  - **Pentru rolul 4** (făcut cu acordul echipei):
+    - `useMission.js`: trimite `route_id` și din `finished` și golește local urma și deciziile EVA vechi;
+    - `App.jsx`: „Start simulation” pornește și din `finished`;
+    - `MissionOverlay.jsx`: buton „End EVA & edit plan” cât EVA e în curs;
+    - `SimulationControls.jsx`: „Start new EVA” după final;
+    - `useNavigationTransport.js`: butonul tracker-ului nu mai e blocat după final.
+
+- **Tot traseul vine din backend; rutarea din frontend a fost ștearsă (15.11, `docs/RAPORT_PANTA_20.md`):**
+  - Problema: `frontend/src/terrain/routing.worker.js` avea propriul A* (limită 25° scrisă în cod, grila de afișare `jezero.json`, fără masca `unsafe`). Trasa linia de previzualizare și traseul afișat când backendul refuza; spre `carbonate_rim` trecea prin pante de 36,9° raportate ca 7,8°.
+  - Backend: `RouteRequest.preview` (nu se salvează, `route_id: "preview"`); `planning._terrain_numbers` adaugă în `budget` `max_slope_deg` și `ascent_m` din straturile backendului.
+  - **Pentru rolul 4** (făcut cu acordul echipei):
+    - `TerrainView.jsx`: previzualizarea (Safety / Minimum time) cere `previewRoute` din `api/client.js`;
+    - `useWaypointTrip.js`: ține doar itinerarul;
+    - `App.jsx`: harta și playerul arată doar planul din backend;
+    - `useMissionEstimate.js`: pe un sit real, fără traseul mock;
+    - șterse: `routing.worker.js`, `tests/waypoint_trip.test.mjs`;
+    - `TripPanel.jsx` (nefolosit) încă citește `trip.result`; se poate șterge.
+  - Verificat: previzualizarea spre `carbonate_rim` are acum 18,5° (backend), punctul (260, 75) are 12,8° (worker: 58,3°), iar un punct pe pantă de 35° primește 422 cu mesaj clar.
+  - Rămân din raport: R3 (start live fără `route_id` → traseul mock; frontendul trimite acum mereu `route_id`) și R4 (relieful 3D exagerat de 6×).
+
 ## În lucru
 
 ## Cereri

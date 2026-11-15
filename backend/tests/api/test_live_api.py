@@ -77,3 +77,11 @@ def test_new_route_does_not_replace_running_eva(client):
     assert client.post("/api/live/control", json={"action": "start", "route_id": route_id}).status_code == 409
     assert client.post("/api/route", json={"start": {"row": 300, "col": 200}, "stops": ["clay_delta"],
                                            "max_duration_min": 900}).status_code == 422  # peste orizontul de 720 min
+
+
+def test_new_route_starts_after_finished_eva(client):
+    """După o EVA încheiată, un start cu rută nouă o pornește de la zero, fără reset manual (15.11)."""
+    route_id = client.post("/api/route", json={"start": {"row": 300, "col": 200}, "stops": ["clay_delta"]}).json()["route_id"]
+    engine.state = "finished"
+    r = client.post("/api/live/control", json={"action": "start", "route_id": route_id, "speed": 1})
+    assert r.status_code == 200 and r.json()["state"] == "running" and engine.route["route_id"] == route_id

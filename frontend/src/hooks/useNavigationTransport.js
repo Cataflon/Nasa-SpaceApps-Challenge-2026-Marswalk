@@ -13,7 +13,7 @@ export function useNavigationTransport({route,tripRoute,navigationRoute,live,liv
   useEffect(()=>{if(!playing||mode!=='preview'||!total)return;let raf,last=performance.now();const run=now=>{if(now-last<32){raf=requestAnimationFrame(run);return;}const elapsed=Math.min(.1,(now-last)/1000);last=now;setProgress(p=>{const next=advancePreview(p,elapsed*100,total,cellSize);if(next===1)setPlaying(false);return next;});raf=requestAnimationFrame(run);};raf=requestAnimationFrame(run);return()=>cancelAnimationFrame(raf);},[playing,mode,total,cellSize]);
   const seek=useCallback(value=>{if(mode!=='preview')return;setPlaying(false);setProgress(Math.max(0,Math.min(1,Number(value))));},[mode]);
   const step=useCallback(meters=>{if(mode!=='preview')return;setPlaying(false);setProgress(p=>advancePreview(p,meters,total,cellSize));},[mode,total,cellSize]);
-  const canToggle=mode==='preview'?!!frame:!!route&&effectiveVerdict(route)!=='NO-GO'&&!live.busy&&!['offline','reconnecting','invalid'].includes(live.status)&&live.state!=='finished';
+  const canToggle=mode==='preview'?!!frame:!!route&&effectiveVerdict(route)!=='NO-GO'&&!live.busy&&!['offline','reconnecting','invalid'].includes(live.status);
   const toggle=()=>{if(!canToggle)return;if(mode==='live'){if(route&&!live.busy)live.control(live.state==='running'?'pause':'start');}else if(frame){setPlaying(p=>!p);}};
   const reset=()=>{setProgress(0);setPlaying(false);if(mode==='live')live.control('reset');};
   const chooseMode=next=>{if(next==='preview'&&live.state==='running')return;setPlaying(false);setMode(next);};
