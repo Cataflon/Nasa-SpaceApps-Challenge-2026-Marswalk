@@ -44,6 +44,7 @@ function tick() {
   const a = demo.path[index], b = demo.path[Math.min(index + 1, demo.path.length - 1)], f = demo.cursor - index;
   const position = [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f];
   base.t_min = demo.t; base.astronaut = { row: position[0], col: position[1], speed_ms: 0.9 };
+  base.scan = demo.storm ? { status: 'watch', text: 'Local dust storm on the recorded scene: follow the copilot decision.', t_min: demo.t, problems: [] } : { status: 'clear', text: 'All clear. No hazards detected: safe to continue.', t_min: demo.t, problems: [] };
   base.remaining_path = [position, ...demo.path.slice(index + 1)];
   base.hazards = demo.storm ? base.hazards.map(h => ({ ...h, forecast: h.forecast.map((f, i) => ({ ...f, t_min: demo.t + (i + 1) * 10 })) })) : [];
   if (demo.decision) base.budget.o2_end_pct = demo.decision.alternatives.find(a => a.id === demo.decision.alternative_id)?.o2_end_pct;

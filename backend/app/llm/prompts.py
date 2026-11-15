@@ -11,7 +11,7 @@ import json
 
 from app.llm.summary import NO_ALTERNATIVE
 
-PROMPT_VERSION = 3  # +1: step_back, reluarea țintelor (15.11)
+PROMPT_VERSION = 7  # +3: regula „name the hazard”, formulări „your route crosses”, „right beside you”, exemplu furtună solară (15.11). 4: +1: scanare („safe to continue”), pericol care nu atinge traseul, furtună solară (15.11)
 
 SYSTEM = """You are the copilot of an astronaut walking on Mars.
 The safety system has ALREADY decided what to do. You never change the decision and you never compute anything.
@@ -19,6 +19,7 @@ Your job: tell the astronaut what to do and the main reason, using only the fact
 Rules for `reason`:
 - Start with the action in a few words (for example "Take the east detour:" or "Return to the habitat now:").
 - Then give the main reason with one to three numbers from the facts.
+- If the facts mention a hazard or a problem, name it in the reason.
 - At most 25 words, in English, calm and direct, addressed to the astronaut.
 - Use only numbers that appear in the current facts. Never reuse numbers from the examples.
 - Plain text only: no emojis, no markdown.
@@ -75,19 +76,32 @@ def _action(s: dict) -> str:
         return "Action: return to the habitat now."
     if d == "EMERGENCY":
         return "Action: emergency return to the habitat now. No option meets every safety limit."
-    return "Action: continue on the planned route."
+    return "Action: continue on the planned route. It is safe."
 
 
 def _hazard(s: dict) -> str | None:
     kind = s.get("hazard")
     if not kind:
-        return None
+        # Scanare fără pericole: copilotul confirmă că drumul e liber.
+        return "Scan: no hazards detected around you or on your route." if s.get("scan") == "clear" else None
     name = HAZARD_NAMES.get(kind, kind.replace("_", " "))
     if kind in PROBLEMS:
         return f"Problem: {name} detected."
     eta = s.get("eta_hazard_min")
     if kind == "solar_particle_event":
-        return f"Hazard: {name}, radiation is high now."
+        return f"Hazard: {name} detected, radiation is rising across the whole site."
+    if s.get("hazard_on_route") is False:
+        # Pericol detectat, dar prognoza lui nu atinge traseul: se spune unde e, nu „e pe traseu”.
+        d = s.get("hazard_distance_m")
+        if d is None:
+            where = "nearby"
+        elif d >= 1000:
+            where = f"{d / 1000:.1f} km away"
+        else:
+            where = f"{d} m away" if d >= 50 else "right beside you"
+        return f"Hazard: {name} detected {where}. It does not reach your route."
+    if eta and s["decision"] == "CONTINUE":
+        return f"Hazard: {name} ahead, your route crosses it in about {eta} min. The route stays within limits; the copilot is monitoring it."
     if eta:
         return f"Hazard: {name} reaches your route in {eta} min."
     return f"Hazard: {name} is on your route now."
@@ -103,7 +117,9 @@ def facts(s: dict) -> str:
         side = "above" if o2 >= reserve else "BELOW"
         lines.append(f"O2 when back at the habitat: {o2:.0f}% ({side} the {reserve:.0f}% safety reserve).")
     if "dose_msv" in s and (s.get("hazard") == "solar_particle_event" or s["dose_msv"] >= 0.3):
-        lines.append(f"Radiation dose for this EVA: {s['dose_msv']} mSv.")
+        limit = s.get("dose_limit_msv")
+        under = f" (the limit is {limit:g} mSv)" if limit else ""
+        lines.append(f"Radiation dose for this EVA: {s['dose_msv']} mSv{under}.")
     if s.get("science_lost"):
         lines.append(f"Science lost: {', '.join(x.replace('_', ' ') for x in s['science_lost'])}.")
     rejected = [r for r in s.get("rejected", []) if r["id"] != s.get("alternative_id")]
@@ -143,6 +159,26 @@ EXAMPLES = [
          "o2_end_pct": 22.0, "o2_reserve_pct": 30.0, "dose_msv": 0.1,
          "rejected": [{"id": "current", "why": ["HAZARD"]}, {"id": "return", "why": ["O2_RESERVE"]}]},
         "Head back to the habitat immediately: no route meets every limit. Even returning leaves 22% O2, below the 30% reserve.",
+    ),
+    (
+        {"decision": "CONTINUE", "alternative_id": "current", "scan": "clear",
+         "o2_end_pct": 63.0, "o2_reserve_pct": 30.0, "dose_msv": 0.1},
+        "Continue on your route: the scan shows no hazards around you. You return with 63% O2, above the 30% reserve.",
+    ),
+    (
+        {"decision": "CONTINUE", "alternative_id": "current", "hazard": "dust_devil", "hazard_on_route": False,
+         "hazard_distance_m": 900, "o2_end_pct": 58.0, "o2_reserve_pct": 30.0, "dose_msv": 0.1},
+        "Continue on your route: a dust devil is 900 m away and does not reach your path. You return with 58% O2.",
+    ),
+    (
+        {"decision": "CONTINUE", "alternative_id": "current", "hazard": "solar_particle_event",
+         "o2_end_pct": 61.0, "o2_reserve_pct": 30.0, "dose_msv": 0.2, "dose_limit_msv": 1.0},
+        "Continue on your route: a solar particle event is raising radiation, but your dose stays at 0.2 mSv, below the 1 mSv limit. You return with 61% O2.",
+    ),
+    (
+        {"decision": "CONTINUE", "alternative_id": "current", "hazard": "marsquake", "eta_hazard_min": 6,
+         "o2_end_pct": 66.0, "o2_reserve_pct": 30.0, "dose_msv": 0.1},
+        "Continue on your route: it crosses a marsquake zone in about 6 min and stays within limits. I am monitoring it. You return with 66% O2.",
     ),
 ]
 

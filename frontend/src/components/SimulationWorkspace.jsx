@@ -12,7 +12,7 @@ import {decisions,number} from '../utils';
 import {eventSpecs,eventPayload} from '../simulation/events';
 const previewLive={state:'idle',tick:null,decision:null,trail:[],history:[],explanations:{}};
 export default function SimulationWorkspace({equipment,site,mapSite,route,live,offline,transport,selected,onSelect,onSensors,onPlanning,mock,onCopilotRoute}){
-  const displayedLive=transport.isLive?live:previewLive;
+  const displayedLive=transport.isLive?live:previewLive,scan=live.state==='idle'?null:live.tick?.scan;
   const displayedRoute=useMemo(()=>transport.path?{...route,path:transport.path}:route,[route,transport.path]);
   // Event placement happens on the map: `placing` holds the event being placed, the map reports the result.
   const [placing,setPlacing]=useState(null),[astronautAlert,setAstronautAlert]=useState(false),[zones,setZones]=useState([]),[note,setNote]=useState(null);
@@ -39,7 +39,10 @@ export default function SimulationWorkspace({equipment,site,mapSite,route,live,o
       <MissionMetrics live={live} equipment={equipment}/>
     </section>
     <section className="flight-devices" aria-label="Synchronized astronaut devices"><div className="flight-tracker-slot"><div className="device-section-label">First-person tracker</div><FieldTracker equipment={equipment} site={site} route={route} live={live} transport={transport} selected={selected} onSelect={onSelect}/></div><div className="flight-watch-slot"><div className="device-section-label">Habitat & route compass</div><EVAWatch equipment={equipment} embedded site={site} route={route} live={displayedLive} position={transport.position} path={transport.path} frame={transport.frame} progress={transport.progress} setProgress={transport.seek} playing={transport.playing} setPlaying={()=>transport.toggle()}/></div>
-      <div className={`sim-copilot-card ${offline?'offline':''}`} aria-live="polite"><DecisionPanel live={live} route={route}/></div>
+      <div className={`sim-copilot-card ${offline?'offline':''}`} aria-live="polite">
+        {/* Scanarea împrejurimilor: vine în fiecare tick din backend (`tick.scan`), fără LLM. */}
+        <div className={`scan-line scan-${offline?'offline':scan?.status??'idle'}`} role="status"><i/><strong>Scan</strong><span>{offline?'Link interrupted. Last scan result is shown.':scan?scan.text:live.state==='idle'?'Starts with the EVA: surroundings are checked every tick.':'Scanning…'}</span>{scan&&<small>t+{number(scan.t_min)} min</small>}</div>
+        <DecisionPanel live={live} route={route}/></div>
     </section>
     </div>
     <SimulationControls site={site} route={transport.localTrip?null:route} live={live} transport={transport} offline={offline} placing={placing} onPlace={startPlacing} onCancelPlace={()=>setPlacing(null)} note={note}/>

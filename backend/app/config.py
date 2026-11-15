@@ -27,6 +27,10 @@ LIVE_MOCK = os.getenv("LIVE_MOCK", "0") == "1"
 # Testele le păstrează (tests/conftest.py), iar un LiveEngine construit direct le are mereu.
 DEMO_EVENTS = os.getenv("MARSWALK_DEMO_EVENTS", "0") == "1"
 
+# 1 (implicit) = copilotul anunță și situațiile sigure ale scanării („All clear, safe to continue”, „pericol la
+# 900 m, nu atinge traseul”), explicate de LLM. Testele pe decizii îl opresc (tests/conftest.py).
+SCAN_ANNOUNCE = os.getenv("MARSWALK_SCAN_ANNOUNCE", "1") == "1"
+
 FRONTEND_ORIGINS =os.getenv("FRONTEND_ORIGINS", "http://localhost:5173").split(",")
 
 

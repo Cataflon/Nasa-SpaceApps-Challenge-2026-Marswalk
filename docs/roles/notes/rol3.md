@@ -204,6 +204,17 @@
 
 - **Pericolele expirate dispar și de pe hartă (15.11):** `engine._expire_hazards` scoate pericolele al căror `HazardSpec.end_min` a trecut (zona de cutremur: 60 min, furtuna solară: 48 h). Înainte, algoritmul nu le mai vedea, dar harta le desena în continuare (ex. traseu reluat „prin” cutremur după 60 min). Test: `test_marsquake_zone_disappears_after_its_lifetime`.
 
+- **Scanare la fiecare tick + copilotul anunță mereu situația (15.11):**
+  - `engine._scan(t)` rulează în fiecare tick și pune rezultatul în `tick.scan` (`clear | watch | warning | danger` + text gata de afișat). E cod, nu LLM, deci vine instant și la orice viteză.
+  - La fiecare situație nouă și sigură motorul trimite un anunț: `decision` CONTINUE cu `trigger: scan`, `reason_code` `ALL_CLEAR` (drum liber) sau `MONITORING` (pericol activ care nu atinge traseul). Nu replanifică; între două anunțuri trec cel puțin `SCAN_ANNOUNCE_GAP_MIN = 3` min.
+  - Furtuna solară produce acum și ea un anunț, cu doza estimată față de limită (`_solar`, `_dose_rate`).
+  - LLM-ul primește fapte noi în rezumat: `hazard_distance_m`, `hazard_on_route`, `scan`, `dose_limit_msv`. `PROMPT_VERSION = 7`: regula „numește pericolul”, exemple pentru drum liber, pericol departe, furtună solară, zonă de cutremur pe traseu.
+  - Șablonul de rezervă pentru CONTINUE spune și el ce s-a detectat (`templates._detected`), deci anunțul are sens și fără Ollama.
+  - Comutator: `MARSWALK_SCAN_ANNOUNCE` (implicit 1; testele îl țin pe 0 în `tests/conftest.py`, altfel anunțurile ar apărea ca decizii în plus).
+  - Frontend: linia „Scan” din cardul copilotului (`SimulationWorkspace.jsx`, `sim-compact.css`).
+  - Test: `tests/live/test_engine.py::test_scan_runs_every_tick_and_announces_safe_situations`.
+  - **Pentru rolul 2:** pe teren plat zona de cutremur e doar penalizare, deci la apariția ei pe traseu decizia e întâi CONTINUE („traseul o traversează, în limite”), apoi REROUTE când astronautul intră în ea, și poate alterna `detour_free` / `exit_zone` cât o traversează. Anunțurile spun corect ce a decis codul, dar se văd multe mesaje. Soluția ține de modelul din `core/hazard_spec.py`.
+
 ## În lucru
 
 ## Cereri

@@ -26,7 +26,7 @@ import threading
 import time
 from collections.abc import AsyncIterator, Awaitable, Callable
 
-from app.config import CONTRACTS_DIR, DEMO_EVENTS
+from app.config import CONTRACTS_DIR, DEMO_EVENTS, SCAN_ANNOUNCE
 from app.core import alternatives as core_alternatives
 from app.core import hazard_spec as core_spec
 from app.core import hazards as core_hazards
@@ -75,6 +75,13 @@ SOLAR_DOSE_MULTIPLIER = scenario_mod.SOLAR_PARTICLE_EVENT["dose_rate_multiplier"
 SOLAR_DURATION_MIN = int(scenario_mod.SOLAR_PARTICLE_EVENT["duration_min"])
 
 # --- Parametrii motorului ---
+# Scanarea împrejurimilor rulează la fiecare tick (`tick.scan`, din cod). LLM-ul anunță la fiecare
+# schimbare de situație; între două anunțuri de scanare trec cel puțin atâtea minute (fără „pâlpâire”).
+SCAN_ANNOUNCE_GAP_MIN = 3
+SCAN_NAMES = {"local_storm": "Local dust storm", "regional_storm": "Regional dust storm", "dust_devil": "Dust devil",
+              "marsquake": "Marsquake zone", "solar_particle_event": "Solar particle event",
+              "suit_leak": "Suit leak", "fatigue": "Fatigue", "crewmate_injured": "Injured crewmate",
+              "comm_loss": "Communication loss"}
 RESUME_EVERY_MIN = 5  # pe drumul spre casă după un pericol: cât de des se verifică dacă țintele se pot relua
 REEVAL_MIN = 5  # cât de des se reevaluează un pericol care lovește încă traseul
 # Bucla pe 3 niveluri (docs/plan-replanificare-live.md §4, „Arhitectura deterministă” §6):
@@ -128,6 +135,7 @@ class LiveEngine:
         site_provider: Callable = get_site,
         explain_fn: Callable[[dict], Awaitable[dict]] | None = None,
         scheduled_events: list | None = None,
+        announce_scan: bool = False,
     ):
         self.seed = seed
         self.clock_speed = clock_speed  # minute simulate pe secundă reală
@@ -137,6 +145,9 @@ class LiveEngine:
         self.site_provider = site_provider
         self.explain_fn = explain_fn or default_explain
         self._scheduled_override = scheduled_events  # None = evenimentele scenariului / demo
+        # True = la fiecare situație nouă și sigură a scanării se trimite și un anunț („poți continua”),
+        # explicat de LLM. Aplicația îl pornește (config.SCAN_ANNOUNCE); testele pe decizii îl lasă oprit.
+        self.announce_scan = announce_scan
         self._subscribers: set[asyncio.Queue] = set()
         # step() rulează pe un thread (run), ca o replanificare de ~0,5 s să nu blocheze bucla asyncio
         # (AUDIT-008); comenzile care schimbă starea iau același lock, deci nu apar curse.
@@ -201,6 +212,11 @@ class LiveEngine:
         self.route_version = 0  # crește la fiecare traseu nou aplicat (REROUTE, RETURN, EMERGENCY)
         self.suspended_stops: list[dict] = []  # țintele lăsate la un RETURN (pentru RESUME, F4)
         self._last_resume_check = -10**9
+        self.scan: dict | None = None  # rezultatul scanării din tick-ul curent (vezi _scan)
+        self._scan_key: tuple | None = None  # situația anunțată ultima dată
+        self._last_announce_t = -10**9  # ultimul mesaj `decision` (orice declanșator)
+        self._tick_problem: str | None = None  # evenimentul fără formă din acest tick (scurgere, furtună solară…)
+        self._solar: tuple | None = None  # (până la minutul, rata de doză așteptată µSv/h) cât ține furtuna solară
         self._new_hazards: list[dict] = []  # pericolele apărute în tick-ul curent (nivelul 3)
         self._near: set[str] = set()  # pericolele care au declanșat deja replanificarea de proximitate
         self._last_budget_eval = -10**9
@@ -310,6 +326,7 @@ class LiveEngine:
             self._add_to_scenario(ev, t)  # cele programate sunt deja în scenariu
         self._new_hazards = []
         self._state_event = False
+        self._tick_problem = None
         # Ordinea totală (t, seq): cele programate (inclusiv din trecut, aplicate acum cu avertisment),
         # apoi cele injectate, în ordinea sosirii.
         for ev in sorted(due, key=lambda e: (e["t_min"], e["seq"])) + sorted(self.pending_events, key=lambda e: e["seq"]):
@@ -332,7 +349,16 @@ class LiveEngine:
 
         decision_msg = self._check_route(t)
         msgs[0]["mode"] = self.mode  # modul calculat de watchdog în acest tick (§3)
+        # Scanarea împrejurimilor, la fiecare tick, după decizie (deci pe traseul activ acum).
+        self.scan = self._scan(t)
+        msgs[0]["scan"] = self.scan
+        key = self._scan_key_of(self.scan)
+        if self.announce_scan and decision_msg is None and key != self._scan_key \
+                and self.scan["status"] in ("clear", "watch") \
+                and t - self._last_announce_t >= SCAN_ANNOUNCE_GAP_MIN:
+            decision_msg = self._announce_scan(t, self.scan)  # situație nouă, sigură: „poți continua”
         if decision_msg is not None:
+            self._scan_key, self._last_announce_t = key, t
             msgs.append(decision_msg)
 
         msgs.extend(self._check_end(t))
@@ -496,8 +522,14 @@ class LiveEngine:
             return self._apply_hazard_op(kind, params, t)
         if kind not in HAZARD_DEFAULTS:
             self._last_problem = kind  # pentru explicația unei replanificări de buget
-        if kind in _STATE_EVENTS:
-            self._state_event = True  # nivel 3 (§3)
+        if kind in _STATE_EVENTS or kind == "solar_particle_event":
+            self._state_event = True  # nivel 3 (§3); și furtuna solară: copilotul verifică doza și anunță
+            self._tick_problem = kind
+        if kind == "solar_particle_event":
+            # Doza se estimează cu multiplicatorul complet de la început (senzorii cresc treptat ~2 h).
+            mult = float(params.get("dose_rate_multiplier", SOLAR_DOSE_MULTIPLIER))
+            until = t + int(params.get("duration_min", SOLAR_DURATION_MIN))
+            self._solar = (until, float(self._sensors(t)["dose_rate_usv_h"]) * mult)
         if kind == "crewmate_injured":
             self.fatigue *= _INJURED_SPEED
             self.injured = True
@@ -754,6 +786,105 @@ class LiveEngine:
                 return h
         return None
 
+    def _dose_rate(self, t: int) -> float:
+        """Rata de doză pentru estimări: senzorul de acum, sau rata așteptată a furtunii solare active."""
+        rate = float(self._sensors(t)["dose_rate_usv_h"])
+        if self._solar is not None and t <= self._solar[0]:
+            rate = max(rate, self._solar[1])
+        return rate
+
+    def _problems(self, t: int) -> list[str]:
+        """Problemele fără formă pe hartă, active acum."""
+        out = []
+        if self._solar is not None and t <= self._solar[0]:
+            out.append("solar_particle_event")
+        if self.leak_pct_per_min > 0:
+            out.append("suit_leak")
+        if self.injured:
+            out.append("crewmate_injured")
+        elif self.fatigue < 1:
+            out.append("fatigue")
+        return out
+
+    def _scan(self, t: int) -> dict:
+        """Scanarea împrejurimilor în acest tick (cod, fără LLM), pentru `tick.scan`.
+
+        status: `danger` (astronautul e într-un pericol), `warning` (un pericol atinge traseul în
+        fereastra de reacție), `watch` (pericole sau probleme active, traseul e liber acum), `clear`.
+        """
+        if self.pos is None:
+            return {"status": "clear", "text": "All clear. No hazards detected: safe to continue.", "t_min": t, "problems": []}
+        nearest, gap_m = None, None
+        for h in self.hazards:
+            r, c = self._hazard_center(h, t)
+            gap = max(0.0, math.hypot(r - self.pos[0], c - self.pos[1]) * self.cell_size_m - max(h["axes_m"]))
+            if gap_m is None or gap < gap_m:
+                nearest, gap_m = h, gap
+        contacts = self._contacts(t)
+        inside = next((h for h in self.hazards if self._inside(h, self.pos, t)), None)
+        problems = self._problems(t)
+        focus, eta = nearest, None
+        if inside is not None:
+            status, focus = "danger", inside
+        elif contacts and contacts[0][0] - t <= REACT_WINDOW_MIN:
+            status, focus, eta = "warning", contacts[0][1], contacts[0][0]
+        elif self.hazards or problems:
+            status = "watch"
+            if contacts:
+                focus, eta = contacts[0][1], contacts[0][0]
+        else:
+            status = "clear"
+        name = SCAN_NAMES.get(focus["kind"], focus["kind"].replace("_", " ")) if focus else None
+        eta_min = max(0, int(round(eta - t))) if eta is not None else None
+        distance = None
+        if focus is not None:
+            r, c = self._hazard_center(focus, t)
+            distance = max(0.0, math.hypot(r - self.pos[0], c - self.pos[1]) * self.cell_size_m - max(focus["axes_m"]))
+        far = f"{distance / 1000:.1f} km" if distance is not None and distance >= 1000 else (
+            f"{int(round(distance / 10.0)) * 10} m" if distance is not None else "")
+        if status == "danger":
+            text = f"Inside the {name.lower()}. Follow the copilot route."
+        elif status == "warning":
+            text = f"Your route meets the {name.lower()} in {eta_min} min. Follow the copilot decision."
+        elif status == "watch" and focus is not None and eta_min is not None:
+            text = f"Your route may meet the {name.lower()} in about {eta_min} min. Monitoring: safe to continue for now."
+        elif status == "watch" and focus is not None and distance < 50:
+            text = f"At the edge of the {name.lower()}, which is not on your route: safe to continue."
+        elif status == "watch" and focus is not None:
+            text = f"{name} {far} away, not on your route: safe to continue."
+        elif status == "watch":
+            text = f"{', '.join(SCAN_NAMES.get(p, p) for p in problems)} active. Budget within limits: safe to continue."
+        else:
+            text = "All clear. No hazards detected: safe to continue."
+        out = {"status": status, "text": text, "t_min": t, "problems": problems}
+        if focus is not None:  # câmpurile pericolului urmărit apar doar când există unul
+            out.update({"hazard_id": focus["id"], "hazard": focus["kind"], "distance_m": int(round(distance))})
+        if eta_min is not None:
+            out["eta_min"] = eta_min
+        return out
+
+    @staticmethod
+    def _scan_key_of(scan: dict) -> tuple:
+        """Ce face o situație „nouă” pentru anunț: starea, pericolul urmărit, dacă atinge traseul, problemele."""
+        return (scan["status"], scan.get("hazard_id"), scan.get("eta_min") is not None, tuple(scan.get("problems", [])))
+
+    def _announce_scan(self, t: int, scan: dict) -> dict | None:
+        """Anunțul „poți continua” la o situație nouă și sigură (start, pericol dispărut, pericol care nu
+        atinge traseul). Nu replanifică: decizia e CONTINUE pe traseul activ, cu bugetul de acum."""
+        here = _cell(self.pos)
+        o2_end, walk, dwell = self._o2_at_end()
+        dose = self.dose_msv + self._dose_rate(t) * (walk + dwell) / 60.0 / 1000.0
+        current = Alternative(
+            id="current", kind="CONTINUE", path=[here] + [c for i, c in enumerate(self.remaining) if i or c != here],
+            extra_min=0.0, o2_end_pct=float(o2_end), dose_msv=float(dose), risk=0.0,
+            arrival_habitat_min=float(t + walk + dwell), sunset_min=float(self.sunset_min),
+        )
+        decision = Decision("CONTINUE", "current", "ALL_CLEAR" if scan["status"] == "clear" else "MONITORING", [current])
+        decision.phase = self.phase
+        h = next((x for x in self.hazards if x["id"] == scan.get("hazard_id")), None)
+        eta = t + scan["eta_min"] if scan.get("eta_min") is not None else None
+        return self._decide(t, "scan", h, eta, decision)
+
     def _check_route(self, t: int) -> dict | None:
         """Bucla pe 3 niveluri (§6). Întoarce mesajul `decision` sau None.
 
@@ -876,7 +1007,7 @@ class LiveEngine:
             specs=specs, t_now=float(t), o2_pct=self.o2_pct, dose_msv=self.dose_msv, sunset_min=self.sunset_min,
             preset=self.preset, effects=self._effects(t, specs), phase=self.phase,
             dwell_now_min=float(self.dwell_left + waiting), limits=self.limits, last_switch_t=self._last_switch_t,
-            dose_rate_usv_h=float(self._sensors(t)["dose_rate_usv_h"]),
+            dose_rate_usv_h=self._dose_rate(t),
             pnr_floor_pct=self._plan_pnr_floor(), hold=self.hold,
         )
 
@@ -961,8 +1092,20 @@ class LiveEngine:
 
         decision_id = f"d_{t}"
         eta_min = max(0, int(round(eta - t))) if eta is not None else None
-        kind = h["kind"] if h else self._last_problem
+        # Ce explică LLM-ul: pericolul implicat, sau evenimentul fără formă din acest tick (scurgere,
+        # furtună solară), sau problema activă la o replanificare de buget. La o scanare liberă: nimic.
+        if h is not None:
+            kind = h["kind"]
+        elif trigger == "event":
+            kind = self._tick_problem
+        elif trigger == "budget":
+            kind = self._last_problem
+        elif trigger == "scan":
+            kind = (self._problems(t) or [None])[0]
+        else:
+            kind = None
         summary = build_summary(decision, t_min=t, hazard_kind=kind, eta_hazard_min=eta_min, limits=self.limits)
+        summary.update(self._summary_context(t, h, eta_min, kind))
         self._explain_queue.append({"decision_id": decision_id, "t_min": t, "summary": summary})
         self.last_decision = {"t_min": t, "decision": decision.decision, "alternative_id": decision.alternative_id,
                               "hazard": kind, "eta_hazard_min": eta_min, "trigger": trigger}
@@ -984,6 +1127,21 @@ class LiveEngine:
             "compute_ms": compute_ms,
             "explanation": None,
         }
+
+    def _summary_context(self, t: int, h: dict | None, eta_min: int | None, kind: str | None) -> dict:
+        """Faptele de context pentru explicație: unde e pericolul față de astronaut și dacă atinge traseul
+        (altfel LLM-ul ar spune „e pe traseul tău” și despre un pericol aflat departe)."""
+        out: dict = {}
+        if h is not None:
+            r, c = self._hazard_center(h, t)
+            gap = max(0.0, math.hypot(r - self.pos[0], c - self.pos[1]) * self.cell_size_m - max(h["axes_m"]))
+            out["hazard_distance_m"] = int(round(gap / 50.0)) * 50  # rotunjit: cheie de cache stabilă
+            out["hazard_on_route"] = eta_min is not None or self._inside(h, self.pos, t)
+        elif kind is None:
+            out["scan"] = "clear"
+        if kind == "solar_particle_event":
+            out["dose_limit_msv"] = float(self.limits.max_dose_msv)
+        return out
 
     def _alternatives(self, t: int, h: dict) -> list[Alternative]:
         if self._site is not None:
@@ -1231,7 +1389,7 @@ class LiveEngine:
 
 
 # Motorul aplicației: fără evenimentele programate ale scenariului demo, dacă nu sunt cerute (config.DEMO_EVENTS).
-engine = LiveEngine(scheduled_events=None if DEMO_EVENTS else [])
+engine = LiveEngine(scheduled_events=None if DEMO_EVENTS else [], announce_scan=SCAN_ANNOUNCE)
 
 
 async def mock_stream(interval_s: float = 1.0) -> AsyncIterator[dict]:

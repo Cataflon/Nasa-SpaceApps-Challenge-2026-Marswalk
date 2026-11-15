@@ -6,3 +6,5 @@ os.environ.setdefault("LLM_ENABLED", "0")
 os.environ.setdefault("MARSWALK_SITE", "synthetic")
 # Testele (e2e, scena demo) se bazează pe evenimentele programate ale scenariului demo.
 os.environ.setdefault("MARSWALK_DEMO_EVENTS", "1")
+# Anunțurile de scanare („poți continua”) ar apărea ca decizii în plus în testele pe decizii.
+os.environ.setdefault("MARSWALK_SCAN_ANNOUNCE", "0")

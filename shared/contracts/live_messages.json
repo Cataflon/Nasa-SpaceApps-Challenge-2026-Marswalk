@@ -30,6 +30,7 @@
     "route_id": "plan_0",
     "mode": "MONITOR",
     "route_version": 0,
+    "scan": { "status": "watch", "text": "Local dust storm 1.2 km away, not on your route: safe to continue.", "t_min": 72, "problems": [], "hazard_id": "storm_1", "hazard": "local_storm", "distance_m": 1200 },
     "remaining_path": [[230, 165], [220, 160], [200, 150], [180, 140]],
     "budget": { "o2_end_pct": 46, "return_by_min": 260, "sunset_min": 420 },
     "point_of_no_return": { "row": 200, "col": 150, "t_min": 160 }

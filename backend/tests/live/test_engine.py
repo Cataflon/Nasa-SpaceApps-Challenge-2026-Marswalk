@@ -419,3 +419,19 @@ def test_marsquake_zone_disappears_after_its_lifetime():
     e.inject("marsquake", {"center": {"row": 5, "col": 40}, "axes_m": [60, 60]})
     ticks = [m for m in run(e, 70) if m["type"] == "tick"]
     assert ticks[0]["hazards"] and not ticks[-1]["hazards"] and not e.hazards
+
+
+def test_scan_runs_every_tick_and_announces_safe_situations():
+    """Fiecare tick are `scan` (cod, fără LLM). Cu anunțurile pornite, copilotul spune „poți continua”
+    la start și anunță un pericol apărut departe de traseu, fără să schimbe traseul (15.11)."""
+    e = started(straight_route(), announce_scan=True)
+    msgs = run(e, 3)
+    assert [m["scan"]["status"] for m in msgs if m["type"] == "tick"] == ["clear"] * 3
+    assert [(d["decision"], d["reason_code"], d["trigger"]) for d in decisions(msgs)] == [("CONTINUE", "ALL_CLEAR", "scan")]
+
+    e.inject("marsquake", {"center": {"row": 290, "col": 500}, "axes_m": [60, 60]})  # 6 km lateral de traseu
+    msgs = run(e, 5)
+    scan = [m for m in msgs if m["type"] == "tick"][-1]["scan"]
+    assert scan["status"] == "watch" and scan["hazard"] == "marsquake" and "safe to continue" in scan["text"]
+    assert decisions(msgs) and all(d["decision"] == "CONTINUE" for d in decisions(msgs))
+    assert "Marsquake zone detected" in asyncio.run(e.explain_pending())[-1]["text"]
